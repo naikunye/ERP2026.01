@@ -72,6 +72,8 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
     if (e.target.files && e.target.files[0]) {
       processFile(e.target.files[0]);
     }
+    // Reset value to allow selecting the same file again if user fixes it
+    e.target.value = '';
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -89,28 +91,55 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   };
 
   const processFile = (file: File) => {
-    if (file.type !== "application/json") {
+    // Robust check: Check MIME type OR file extension (case insensitive)
+    const isJsonType = file.type === "application/json";
+    const isJsonExt = file.name.toLowerCase().endsWith('.json');
+
+    if (!isJsonType && !isJsonExt) {
       setImportStatus('error');
-      setImportMessage('格式错误：仅支持 JSON 文件');
+      setImportMessage(`格式错误：不支持的文件类型 (${file.type || 'unknown'})，请上传 .json 文件`);
       return;
     }
+
     setImportStatus('processing');
+    setImportMessage('正在解析数据...');
+
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const json = JSON.parse(e.target?.result as string);
+        const content = e.target?.result as string;
+        if (!content) throw new Error("File is empty");
+
+        const json = JSON.parse(content);
+        
         if (Array.isArray(json)) {
             onImportData(json as Product[]);
             setImportStatus('success');
             setImportMessage(`成功导入 ${json.length} 条数据`);
+        } else if (typeof json === 'object' && json !== null) {
+            // Support importing a single object wrapped in an array
+            if ('id' in json && 'sku' in json) {
+                onImportData([json] as Product[]);
+                setImportStatus('success');
+                setImportMessage(`成功导入 1 条数据`);
+            } else {
+                throw new Error("Invalid structure: Expected Array or Product Object");
+            }
         } else {
-            throw new Error("Invalid structure");
+            throw new Error("Invalid JSON structure");
         }
       } catch (err) {
+        console.error("Import Error:", err);
         setImportStatus('error');
-        setImportMessage('文件解析失败');
+        setImportMessage('文件解析失败：JSON 格式不正确');
       }
     };
+    
+    reader.onerror = () => {
+        setImportStatus('error');
+        setImportMessage('读取文件发生系统错误');
+    };
+
     reader.readAsText(file);
   };
 
@@ -214,20 +243,30 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                       }`}
                       onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
                    >
-                        <input type="file" id="file-upload" className="hidden" accept=".json" onChange={handleFileChange} />
+                        {/* Note: onChange requires re-selection if we don't clear value, handled in handleFileChange */}
+                        <input type="file" id="file-upload" className="hidden" accept=".json,application/json" onChange={handleFileChange} />
 
                         {importStatus === 'processing' ? (
-                            <Loader2 size={40} className="text-neon-purple animate-spin" />
+                            <div className="flex flex-col items-center">
+                                <Loader2 size={40} className="text-neon-purple animate-spin mb-2" />
+                                <div className="text-xs text-gray-400">{importMessage}</div>
+                            </div>
                         ) : importStatus === 'success' ? (
                             <div className="text-center">
                                 <CheckCircle2 size={40} className="text-neon-green mx-auto mb-2" />
                                 <div className="text-xs text-gray-400">{importMessage}</div>
-                                <button onClick={() => setImportStatus('idle')} className="mt-2 text-xs text-neon-blue underline">继续导入</button>
+                                <label htmlFor="file-upload" className="mt-2 text-xs text-neon-blue underline cursor-pointer inline-block">继续导入</label>
                             </div>
                         ) : (
                             <>
+                                {importStatus === 'error' && (
+                                    <div className="absolute top-4 left-0 right-0 text-center text-xs text-red-400 flex items-center justify-center gap-1">
+                                        <AlertCircle size={12} /> {importMessage}
+                                    </div>
+                                )}
                                 <Upload size={28} className="text-gray-400 mb-4" />
                                 <label htmlFor="file-upload" className="cursor-pointer text-neon-purple font-bold hover:underline">点击导入 JSON</label>
+                                <div className="text-[10px] text-gray-500 mt-2">支持拖拽上传</div>
                             </>
                         )}
                    </div>
