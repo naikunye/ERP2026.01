@@ -52,6 +52,11 @@ export interface Product {
   note?: string;
   supplier?: string;
   
+  // Enhanced Fields for Restock Module
+  inboundId?: string; // 入库单号
+  dailySales?: number; // 日均销量
+  restockDate?: string; // 建议补货日期
+  
   // Real ERP Data Fields
   logistics?: LogisticsInfo;
   financials?: FinancialInfo;

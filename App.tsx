@@ -225,7 +225,11 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : DEMO_SHIPMENTS;
   });
 
-  const [influencers, setInfluencers] = useState<Influencer[]>(DEMO_INFLUENCERS);
+  const [influencers, setInfluencers] = useState<Influencer[]>(() => {
+    const saved = localStorage.getItem('aero_erp_influencers');
+    return saved ? JSON.parse(saved) : DEMO_INFLUENCERS;
+  });
+
   const [transactions, setTransactions] = useState<Transaction[]>(DEMO_TRANSACTIONS);
 
   const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined);
@@ -239,6 +243,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('aero_erp_shipments', JSON.stringify(shipments));
   }, [shipments]);
+
+  useEffect(() => {
+    localStorage.setItem('aero_erp_influencers', JSON.stringify(influencers));
+  }, [influencers]);
 
   useEffect(() => {
     localStorage.setItem('aero_erp_transactions', JSON.stringify(transactions));
@@ -323,8 +331,25 @@ const App: React.FC = () => {
       });
   };
   
+  // Logistics Handlers
   const handleAddShipment = (newShipment: Shipment) => {
       setShipments(prev => [newShipment, ...prev]);
+  }
+  const handleUpdateShipment = (updatedShipment: Shipment) => {
+      setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
+  }
+
+  // Influencer Handlers
+  const handleAddInfluencer = (newInfluencer: Influencer) => {
+      setInfluencers(prev => [newInfluencer, ...prev]);
+  }
+  const handleUpdateInfluencer = (updatedInfluencer: Influencer) => {
+      setInfluencers(prev => prev.map(inf => inf.id === updatedInfluencer.id ? updatedInfluencer : inf));
+  }
+  const handleDeleteInfluencer = (id: string) => {
+      if(window.confirm('确定删除此达人档案吗？')) {
+          setInfluencers(prev => prev.filter(inf => inf.id !== id));
+      }
   }
 
   const handleAddTransaction = (newTx: Transaction) => {
@@ -346,10 +371,23 @@ const App: React.FC = () => {
           />
         );
       case 'orders':
-        return <LogisticsModule shipments={shipments} onAddShipment={handleAddShipment} />;
-      case 'influencers': // New Route
-        return <InfluencerModule influencers={influencers} />;
-      case 'finance': // New Route
+        return (
+            <LogisticsModule 
+                shipments={shipments} 
+                onAddShipment={handleAddShipment} 
+                onUpdateShipment={handleUpdateShipment}
+            />
+        );
+      case 'influencers': 
+        return (
+            <InfluencerModule 
+                influencers={influencers} 
+                onAddInfluencer={handleAddInfluencer}
+                onUpdateInfluencer={handleUpdateInfluencer}
+                onDeleteInfluencer={handleDeleteInfluencer}
+            />
+        );
+      case 'finance': 
         return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
       case 'datasync':
         return (

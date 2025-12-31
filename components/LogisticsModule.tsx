@@ -3,43 +3,76 @@ import { Shipment } from '../types';
 import { 
   Truck, Plane, Ship, Navigation, Search, Plus, MapPin, 
   Anchor, Package, Calendar, Clock, ArrowRight, Container, 
-  Scale, Ruler, Box, ExternalLink, Activity, AlertCircle, CheckCircle2
+  Scale, Ruler, Box, ExternalLink, Activity, AlertCircle, CheckCircle2,
+  Edit2, Save, X, Trash2
 } from 'lucide-react';
 
 interface LogisticsModuleProps {
     shipments: Shipment[];
     onAddShipment: (shipment: Shipment) => void;
+    onUpdateShipment: (shipment: Shipment) => void;
 }
 
-const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipment }) => {
+const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipment, onUpdateShipment }) => {
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(shipments.length > 0 ? shipments[0].id : null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isAdding, setIsAdding] = useState(false);
-  const [newTracking, setNewTracking] = useState('');
+  
+  // Modal States
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'ADD' | 'EDIT'>('ADD');
+  const [form, setForm] = useState<Partial<Shipment>>({});
 
-  // Handle Add Logic
-  const handleAdd = () => {
-      if(!newTracking) return;
-      const newShip: Shipment = {
-          id: crypto.randomUUID(),
-          trackingNo: newTracking,
-          carrier: 'Unknown',
+  // Initialize Modal for Adding
+  const openAddModal = () => {
+      setModalMode('ADD');
+      setForm({
           method: 'Sea',
           origin: 'Shenzhen, CN',
           destination: 'Los Angeles, USA',
           etd: new Date().toISOString().split('T')[0],
-          eta: 'Pending',
           status: 'Pending',
           progress: 0,
           weight: 0,
-          cartons: 0,
-          skuIds: [],
-          riskReason: 'Awaiting Update'
-      };
-      onAddShipment(newShip);
-      setIsAdding(false);
-      setNewTracking('');
-      setSelectedShipmentId(newShip.id);
+          cartons: 0
+      });
+      setIsModalOpen(true);
+  };
+
+  // Initialize Modal for Editing
+  const openEditModal = (shipment: Shipment) => {
+      setModalMode('EDIT');
+      setForm({ ...shipment });
+      setIsModalOpen(true);
+  };
+
+  const handleSave = () => {
+      if(!form.trackingNo) return; // Simple validation
+
+      const now = new Date().toISOString();
+      
+      if (modalMode === 'ADD') {
+          const newShip: Shipment = {
+              id: crypto.randomUUID(),
+              trackingNo: form.trackingNo,
+              carrier: form.carrier || 'Unknown',
+              method: form.method || 'Sea',
+              origin: form.origin || '',
+              destination: form.destination || '',
+              etd: form.etd || now,
+              eta: form.eta || '',
+              status: form.status || 'Pending',
+              progress: form.progress || 0,
+              weight: form.weight || 0,
+              cartons: form.cartons || 0,
+              skuIds: [],
+              riskReason: ''
+          } as Shipment;
+          onAddShipment(newShip);
+          setSelectedShipmentId(newShip.id);
+      } else {
+          onUpdateShipment(form as Shipment);
+      }
+      setIsModalOpen(false);
   };
 
   const getMethodIcon = (method: string, size=16) => {
@@ -81,7 +114,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
   };
 
   return (
-    <div className="h-full w-full flex flex-col pb-6 animate-fade-in overflow-hidden">
+    <div className="h-full w-full flex flex-col pb-6 animate-fade-in overflow-hidden relative">
       
       {/* 1. Control Tower Header */}
       <div className="flex justify-between items-end border-b border-white/10 pb-6 mb-6 px-2">
@@ -97,7 +130,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
         </div>
         <div className="flex gap-3">
              <button 
-                onClick={() => setIsAdding(!isAdding)}
+                onClick={openAddModal}
                 className="h-10 px-4 bg-white/5 border border-white/10 hover:bg-neon-purple hover:border-neon-purple hover:text-white text-gray-400 rounded-xl font-bold text-xs transition-all flex items-center gap-2"
              >
                  <Plus size={16} /> 录入运单
@@ -105,18 +138,161 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
         </div>
       </div>
 
-      {/* Add Modal Overlay */}
-      {isAdding && (
-          <div className="mb-6 p-4 glass-card border-neon-purple/50 flex items-center gap-4 animate-scale-in">
-              <span className="text-sm font-bold text-white">快速录入:</span>
-              <input 
-                value={newTracking}
-                onChange={(e) => setNewTracking(e.target.value)}
-                placeholder="输入运单号 (Tracking No)"
-                className="flex-1 h-10 px-4 bg-black/40 border border-white/20 rounded-lg text-white text-sm outline-none focus:border-neon-purple font-mono"
-              />
-              <button onClick={handleAdd} className="px-6 h-10 bg-neon-purple text-white rounded-lg font-bold text-sm shadow-glow-purple">确定追踪</button>
-              <button onClick={() => setIsAdding(false)} className="px-4 h-10 hover:bg-white/10 text-gray-400 rounded-lg text-sm">取消</button>
+      {/* Add/Edit Modal */}
+      {isModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
+              <div className="w-full max-w-2xl glass-card border border-white/20 shadow-2xl overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
+                  
+                  {/* Modal Header */}
+                  <div className="px-8 py-5 border-b border-white/10 bg-white/5 flex justify-between items-center">
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                          {modalMode === 'ADD' ? <Plus size={20}/> : <Edit2 size={20}/>}
+                          {modalMode === 'ADD' ? '录入新运单' : '编辑运单详情'}
+                      </h3>
+                      <button onClick={() => setIsModalOpen(false)} className="hover:text-neon-pink text-white transition-colors">
+                          <X size={20} />
+                      </button>
+                  </div>
+
+                  {/* Modal Body */}
+                  <div className="p-8 overflow-y-auto custom-scrollbar space-y-6">
+                      
+                      {/* Section 1: Core Info */}
+                      <div className="grid grid-cols-2 gap-6">
+                           <div className="space-y-1">
+                               <label className="text-[10px] text-gray-500 font-bold uppercase">运单号 (Tracking No)</label>
+                               <input 
+                                   value={form.trackingNo || ''}
+                                   onChange={(e) => setForm(p => ({...p, trackingNo: e.target.value}))}
+                                   className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none font-mono"
+                                   placeholder="例如: MSN..."
+                               />
+                           </div>
+                           <div className="space-y-1">
+                               <label className="text-[10px] text-gray-500 font-bold uppercase">承运商 (Carrier)</label>
+                               <input 
+                                   value={form.carrier || ''}
+                                   onChange={(e) => setForm(p => ({...p, carrier: e.target.value}))}
+                                   className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                   placeholder="例如: Matson, DHL..."
+                               />
+                           </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                          <div className="space-y-1">
+                               <label className="text-[10px] text-gray-500 font-bold uppercase">运输方式</label>
+                               <select 
+                                  value={form.method}
+                                  onChange={(e) => setForm(p => ({...p, method: e.target.value as any}))}
+                                  className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                               >
+                                   <option value="Sea">海运 (Sea)</option>
+                                   <option value="Air">空运 (Air)</option>
+                                   <option value="Rail">铁路 (Rail)</option>
+                               </select>
+                           </div>
+                           <div className="space-y-1">
+                               <label className="text-[10px] text-gray-500 font-bold uppercase">当前状态</label>
+                               <select 
+                                  value={form.status}
+                                  onChange={(e) => setForm(p => ({...p, status: e.target.value as any}))}
+                                  className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                               >
+                                   <option value="Pending">待处理 (Pending)</option>
+                                   <option value="In Production">生产中 (Production)</option>
+                                   <option value="In Transit">运输中 (In Transit)</option>
+                                   <option value="Customs">清关中 (Customs)</option>
+                                   <option value="Delivered">已送达 (Delivered)</option>
+                                   <option value="Exception">异常 (Exception)</option>
+                               </select>
+                           </div>
+                           <div className="space-y-1">
+                               <label className="text-[10px] text-gray-500 font-bold uppercase">进度 (%)</label>
+                               <input 
+                                   type="number"
+                                   min="0" max="100"
+                                   value={form.progress || 0}
+                                   onChange={(e) => setForm(p => ({...p, progress: parseInt(e.target.value)}))}
+                                   className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                               />
+                           </div>
+                      </div>
+
+                      {/* Section 2: Route */}
+                      <div className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-4">
+                           <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase">出发地 (Origin)</label>
+                                    <input 
+                                        value={form.origin || ''}
+                                        onChange={(e) => setForm(p => ({...p, origin: e.target.value}))}
+                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase">目的地 (Destination)</label>
+                                    <input 
+                                        value={form.destination || ''}
+                                        onChange={(e) => setForm(p => ({...p, destination: e.target.value}))}
+                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                    />
+                                </div>
+                           </div>
+                           <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase">ETD (预计发货)</label>
+                                    <input 
+                                        type="date"
+                                        value={form.etd || ''}
+                                        onChange={(e) => setForm(p => ({...p, etd: e.target.value}))}
+                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase">ETA (预计到达)</label>
+                                    <input 
+                                        type="date"
+                                        value={form.eta || ''}
+                                        onChange={(e) => setForm(p => ({...p, eta: e.target.value}))}
+                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                    />
+                                </div>
+                           </div>
+                      </div>
+
+                      {/* Section 3: Cargo */}
+                      <div className="grid grid-cols-2 gap-4">
+                           <div className="space-y-1">
+                               <label className="text-[10px] text-gray-500 font-bold uppercase">总重量 (kg)</label>
+                               <input 
+                                   type="number"
+                                   value={form.weight || 0}
+                                   onChange={(e) => setForm(p => ({...p, weight: parseFloat(e.target.value)}))}
+                                   className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                               />
+                           </div>
+                           <div className="space-y-1">
+                               <label className="text-[10px] text-gray-500 font-bold uppercase">箱数 (Cartons)</label>
+                               <input 
+                                   type="number"
+                                   value={form.cartons || 0}
+                                   onChange={(e) => setForm(p => ({...p, cartons: parseInt(e.target.value)}))}
+                                   className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                               />
+                           </div>
+                      </div>
+
+                  </div>
+                  
+                  {/* Footer */}
+                  <div className="p-6 border-t border-white/10 bg-white/5 flex justify-end gap-3">
+                      <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-lg border border-white/10 text-gray-400 hover:text-white font-bold text-sm">取消</button>
+                      <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-neon-purple text-white font-bold text-sm shadow-glow-purple hover:scale-105 transition-transform flex items-center gap-2">
+                          <Save size={16}/> 保存
+                      </button>
+                  </div>
+              </div>
           </div>
       )}
 
@@ -195,6 +371,13 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
                             <div className="flex items-center gap-3 mb-2">
                                 <h2 className="text-4xl font-display font-bold text-white tracking-tight">{selectedShipment.trackingNo}</h2>
                                 <button className="p-2 hover:bg-white/10 rounded-lg text-neon-blue transition-colors"><ExternalLink size={18} /></button>
+                                {/* Edit Button */}
+                                <button 
+                                    onClick={() => openEditModal(selectedShipment)}
+                                    className="px-3 py-1.5 ml-2 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold text-gray-400 hover:text-white hover:bg-white/10 flex items-center gap-1 transition-all"
+                                >
+                                    <Edit2 size={12} /> 编辑详情
+                                </button>
                             </div>
                             <div className="flex items-center gap-4 text-sm text-gray-400">
                                 <span className="flex items-center gap-1.5"><Anchor size={14} className="text-neon-blue"/> Carrier: <span className="text-white font-bold">{selectedShipment.carrier}</span></span>

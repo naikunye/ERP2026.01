@@ -2,16 +2,25 @@ import React, { useState } from 'react';
 import { Influencer } from '../types';
 import { 
   Search, Filter, Instagram, Youtube, Video, MessageCircle, 
-  Send, PackageCheck, DollarSign, TrendingUp, Users, ExternalLink, Star
+  Send, PackageCheck, DollarSign, TrendingUp, Users, ExternalLink, Star,
+  Plus, Edit2, X, Check, Trash2, Camera, MapPin, Tag
 } from 'lucide-react';
 
 interface InfluencerModuleProps {
   influencers: Influencer[];
+  onAddInfluencer?: (inf: Influencer) => void;
+  onUpdateInfluencer?: (inf: Influencer) => void;
+  onDeleteInfluencer?: (id: string) => void;
 }
 
-const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers }) => {
+const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddInfluencer, onUpdateInfluencer, onDeleteInfluencer }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPlatform, setFilterPlatform] = useState<string>('All');
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [form, setForm] = useState<Partial<Influencer>>({});
 
   const filteredList = influencers.filter(inf => 
       (filterPlatform === 'All' || inf.platform === filterPlatform) &&
@@ -20,7 +29,7 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers }) => {
 
   const getPlatformIcon = (platform: string) => {
       switch(platform) {
-          case 'TikTok': return <Video size={16} className="text-black fill-current" />; // TikTok usually rep by Music note or Video
+          case 'TikTok': return <Video size={16} className="text-black fill-current" />;
           case 'Instagram': return <Instagram size={16} />;
           case 'YouTube': return <Youtube size={16} />;
           default: return <Users size={16} />;
@@ -47,8 +56,58 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers }) => {
       return styles[status] || 'bg-gray-800 text-gray-500';
   };
 
+  // --- Actions ---
+
+  const handleOpenAdd = () => {
+      setEditMode(false);
+      setForm({
+          platform: 'TikTok',
+          status: 'Contacted',
+          region: 'North America',
+          category: 'General',
+          avatarUrl: `https://ui-avatars.com/api/?name=New+User&background=random`,
+          followers: 0,
+          engagementRate: 0,
+          cost: 0,
+          gmv: 0,
+          roi: 0,
+          sampleSku: 'N/A'
+      });
+      setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (inf: Influencer) => {
+      setEditMode(true);
+      setForm({ ...inf });
+      setIsModalOpen(true);
+  };
+
+  const handleSave = () => {
+      if(!form.name || !form.handle) return;
+
+      if(editMode && onUpdateInfluencer) {
+          onUpdateInfluencer(form as Influencer);
+      } else if (!editMode && onAddInfluencer) {
+          const newInf = {
+              ...form,
+              id: `INF-${Date.now()}`,
+              // default values if missing
+              roi: form.cost && form.cost > 0 ? (form.gmv || 0) / form.cost : 0
+          } as Influencer;
+          onAddInfluencer(newInf);
+      }
+      setIsModalOpen(false);
+  };
+
+  const handleDelete = () => {
+      if (form.id && onDeleteInfluencer) {
+          onDeleteInfluencer(form.id);
+          setIsModalOpen(false);
+      }
+  };
+
   return (
-    <div className="space-y-6 animate-fade-in w-full pb-20">
+    <div className="space-y-6 animate-fade-in w-full pb-20 relative">
       
       {/* Header */}
       <div className="flex justify-between items-end border-b border-white/10 pb-6">
@@ -96,10 +155,191 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers }) => {
                   ))}
               </div>
            </div>
-           <button className="px-5 py-2 bg-neon-pink hover:bg-neon-pink/80 text-white rounded-lg font-bold text-xs shadow-glow-pink transition-all flex items-center gap-2">
-               <Video size={16} /> 录入新达人
+           <button 
+              onClick={handleOpenAdd}
+              className="px-5 py-2 bg-neon-pink hover:bg-neon-pink/80 text-white rounded-lg font-bold text-xs shadow-glow-pink transition-all flex items-center gap-2"
+           >
+               <Plus size={16} /> 录入新达人
            </button>
       </div>
+
+      {/* Add/Edit Modal */}
+      {isModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
+              <div className="w-full max-w-2xl glass-card border border-white/20 shadow-2xl overflow-hidden animate-scale-in">
+                  
+                  {/* Modal Header */}
+                  <div className="px-8 py-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                          {editMode ? <Edit2 size={18} /> : <Plus size={18} />}
+                          {editMode ? '编辑达人档案' : '录入新达人'}
+                      </h3>
+                      <button onClick={() => setIsModalOpen(false)} className="hover:text-neon-pink text-white transition-colors">
+                          <X size={20} />
+                      </button>
+                  </div>
+
+                  {/* Modal Body */}
+                  <div className="p-8 overflow-y-auto max-h-[70vh] custom-scrollbar space-y-6">
+                      
+                      <div className="flex gap-6">
+                          {/* Avatar */}
+                          <div className="flex flex-col items-center gap-3">
+                              <div className="w-24 h-24 rounded-full bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden relative group">
+                                  {form.avatarUrl ? <img src={form.avatarUrl} className="w-full h-full object-cover" alt="" /> : <Users size={30} className="text-gray-600"/>}
+                                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                                      <Camera size={20} className="text-white" />
+                                  </div>
+                              </div>
+                              <div className="text-[10px] text-gray-500 uppercase font-bold">Profile Pic</div>
+                          </div>
+
+                          {/* Basic Info */}
+                          <div className="flex-1 space-y-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-1">
+                                      <label className="text-[10px] text-gray-500 font-bold uppercase">姓名 / 昵称</label>
+                                      <input 
+                                          value={form.name || ''}
+                                          onChange={(e) => setForm(p => ({...p, name: e.target.value}))}
+                                          className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                          placeholder="例如: Jessica Tech"
+                                      />
+                                  </div>
+                                  <div className="space-y-1">
+                                      <label className="text-[10px] text-gray-500 font-bold uppercase">Handle (ID)</label>
+                                      <input 
+                                          value={form.handle || ''}
+                                          onChange={(e) => setForm(p => ({...p, handle: e.target.value}))}
+                                          className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none font-mono"
+                                          placeholder="@username"
+                                      />
+                                  </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-1">
+                                      <label className="text-[10px] text-gray-500 font-bold uppercase">平台</label>
+                                      <select 
+                                          value={form.platform}
+                                          onChange={(e) => setForm(p => ({...p, platform: e.target.value as any}))}
+                                          className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                      >
+                                          <option value="TikTok">TikTok</option>
+                                          <option value="Instagram">Instagram</option>
+                                          <option value="YouTube">YouTube</option>
+                                      </select>
+                                  </div>
+                                  <div className="space-y-1">
+                                      <label className="text-[10px] text-gray-500 font-bold uppercase">粉丝数</label>
+                                      <input 
+                                          type="number"
+                                          value={form.followers || 0}
+                                          onChange={(e) => setForm(p => ({...p, followers: parseInt(e.target.value)}))}
+                                          className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                      />
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                           <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-bold uppercase flex items-center gap-1"><MapPin size={10}/> 地区</label>
+                                <input 
+                                    value={form.region || ''}
+                                    onChange={(e) => setForm(p => ({...p, region: e.target.value}))}
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                />
+                           </div>
+                           <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-bold uppercase flex items-center gap-1"><Tag size={10}/> 垂直领域</label>
+                                <input 
+                                    value={form.category || ''}
+                                    onChange={(e) => setForm(p => ({...p, category: e.target.value}))}
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                />
+                           </div>
+                           <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-bold uppercase">当前状态</label>
+                                <select 
+                                    value={form.status}
+                                    onChange={(e) => setForm(p => ({...p, status: e.target.value as any}))}
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                >
+                                    <option value="Contacted">已联系</option>
+                                    <option value="Negotiating">谈判中</option>
+                                    <option value="Sample Sent">已寄样</option>
+                                    <option value="Content Live">内容已发布</option>
+                                    <option value="Paid">已付款</option>
+                                </select>
+                           </div>
+                      </div>
+
+                      {/* Performance & Cost */}
+                      <div className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-4">
+                          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-white/5 pb-2">合作与绩效数据</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                               <div className="space-y-1">
+                                   <label className="text-[10px] text-gray-500 font-bold uppercase">合作费用 ($)</label>
+                                   <input 
+                                      type="number"
+                                      value={form.cost || 0}
+                                      onChange={(e) => setForm(p => ({...p, cost: parseFloat(e.target.value)}))}
+                                      className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                   />
+                               </div>
+                               <div className="space-y-1">
+                                   <label className="text-[10px] text-gray-500 font-bold uppercase">产出 GMV ($)</label>
+                                   <input 
+                                      type="number"
+                                      value={form.gmv || 0}
+                                      onChange={(e) => setForm(p => ({...p, gmv: parseFloat(e.target.value)}))}
+                                      className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-neon-green font-bold focus:border-neon-green outline-none"
+                                   />
+                               </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                               <div className="space-y-1">
+                                   <label className="text-[10px] text-gray-500 font-bold uppercase">互动率 (%)</label>
+                                   <input 
+                                      type="number"
+                                      value={form.engagementRate || 0}
+                                      onChange={(e) => setForm(p => ({...p, engagementRate: parseFloat(e.target.value)}))}
+                                      className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                   />
+                               </div>
+                               <div className="space-y-1">
+                                   <label className="text-[10px] text-gray-500 font-bold uppercase">寄送样品 SKU</label>
+                                   <input 
+                                      value={form.sampleSku || ''}
+                                      onChange={(e) => setForm(p => ({...p, sampleSku: e.target.value}))}
+                                      className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none font-mono"
+                                   />
+                               </div>
+                          </div>
+                      </div>
+
+                  </div>
+
+                  {/* Footer */}
+                  <div className="p-6 border-t border-white/10 bg-white/5 flex justify-between items-center">
+                      <div>
+                          {editMode && (
+                              <button onClick={handleDelete} className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-500 transition-colors" title="删除">
+                                  <Trash2 size={18} />
+                              </button>
+                          )}
+                      </div>
+                      <div className="flex gap-3">
+                        <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-lg border border-white/10 text-gray-400 hover:text-white font-bold text-sm">取消</button>
+                        <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-neon-pink text-white font-bold text-sm shadow-glow-pink hover:scale-105 transition-transform flex items-center gap-2">
+                            <Check size={16}/> 保存档案
+                        </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Grid View */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -131,8 +371,11 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers }) => {
                               </div>
                           </div>
                       </div>
-                      <button className="text-gray-500 hover:text-white transition-colors">
-                          <ExternalLink size={16} />
+                      <button 
+                        onClick={() => handleOpenEdit(inf)}
+                        className="text-gray-500 hover:text-white hover:bg-white/10 p-2 rounded-full transition-all"
+                      >
+                          <Edit2 size={16} />
                       </button>
                   </div>
 
@@ -148,7 +391,7 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers }) => {
                       </div>
                       <div className="bg-white/5 rounded-lg p-2 text-center border border-white/5">
                           <div className="text-[10px] text-gray-500 uppercase">ROI</div>
-                          <div className={`text-sm font-bold ${inf.roi >= 3 ? 'text-neon-green' : 'text-gray-300'}`}>{inf.roi}x</div>
+                          <div className={`text-sm font-bold ${inf.roi >= 3 ? 'text-neon-green' : 'text-gray-300'}`}>{inf.roi.toFixed(1)}x</div>
                       </div>
                   </div>
 
