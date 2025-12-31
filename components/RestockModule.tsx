@@ -3,7 +3,8 @@ import { Product, ProductStatus } from '../types';
 import { 
   Search, Plus, Filter, Factory, Truck, Plane, Ship, 
   DollarSign, AlertTriangle, Calendar, Package, MoreHorizontal, 
-  TrendingUp, Wallet, Edit3, Copy, Trash2, StickyNote, FileText
+  TrendingUp, Wallet, Edit3, Copy, Trash2, StickyNote, FileText,
+  Coins
 } from 'lucide-react';
 
 interface RestockModuleProps {
@@ -176,12 +177,13 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
 
       {/* 3. The List (Card Table) */}
       <div className="space-y-3">
-          {/* Header Row */}
+          {/* Header Row - ADJUSTED GRID for new column */}
           <div className="grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest">
               <div className="col-span-2">标识</div>
-              <div className="col-span-3">产品详情</div>
+              <div className="col-span-2">产品详情</div> {/* Reduced from 3 */}
               <div className="col-span-2">物流信息</div>
-              <div className="col-span-2">库存与风险</div>
+              <div className="col-span-1">库存</div> {/* Reduced from 2 */}
+              <div className="col-span-2">投入资金</div> {/* NEW COLUMN */}
               <div className="col-span-1">利润数据</div>
               <div className="col-span-2 text-center">操作</div>
           </div>
@@ -193,7 +195,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                   {/* Left Accent Bar based on risk */}
                   <div className={`absolute left-0 top-0 bottom-0 w-1 ${item.inventoryAnalysis.riskLevel === 'Critical' ? 'bg-neon-pink shadow-[0_0_10px_#FF2975]' : 'bg-neon-green'}`}></div>
 
-                  {/* 1. Identity */}
+                  {/* 1. Identity (Col 2) */}
                   <div className="col-span-2 p-4 pl-6 border-r border-white/5 h-full flex flex-col justify-center relative">
                       <div className="font-mono text-neon-blue font-bold text-sm mb-1 flex items-center gap-2">
                           {item.sku}
@@ -216,49 +218,65 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                       </span>
                   </div>
 
-                  {/* 2. Product Detail */}
-                  <div className="col-span-3 p-4 border-r border-white/5 h-full flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-lg bg-black/50 border border-white/10 overflow-hidden shrink-0">
+                  {/* 2. Product Detail (Col 2 - Compacted) */}
+                  <div className="col-span-2 p-4 border-r border-white/5 h-full flex items-center gap-3 overflow-hidden">
+                      <div className="w-10 h-10 rounded-lg bg-black/50 border border-white/10 overflow-hidden shrink-0">
                           <img src={item.imageUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
                       </div>
-                      <div className="min-w-0">
-                          <div className="font-bold text-white text-sm truncate mb-1">{item.name}</div>
-                          <div className="flex items-center gap-3 text-[10px] text-gray-500">
-                              <span className="flex items-center gap-1"><Factory size={10} /> {item.supplier}</span>
+                      <div className="min-w-0 flex-1">
+                          <div className="font-bold text-white text-sm truncate mb-0.5">{item.name}</div>
+                          <div className="flex items-center gap-2 text-[10px] text-gray-500 truncate">
+                              <Factory size={10} className="shrink-0"/> <span className="truncate">{item.supplier}</span>
                           </div>
-                          <div className="text-[10px] text-gray-500 font-mono mt-0.5">批次: {item.batchNo}</div>
                       </div>
                   </div>
 
-                  {/* 3. Logistics */}
+                  {/* 3. Logistics (Col 2) */}
                   <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center">
                       <div className="flex items-center gap-2 text-white font-bold text-xs mb-1">
                           {getLogisticsIcon(item.logistics.method)}
                           {getStatusCN(item.logistics.status)}
                       </div>
-                      <div className="text-[10px] text-gray-500 font-mono mb-2">{item.logistics.trackingNo}</div>
+                      <div className="text-[10px] text-gray-500 font-mono mb-2 truncate">{item.logistics.trackingNo}</div>
                       <div className="flex items-center gap-1 text-[10px] text-neon-blue bg-neon-blue/5 w-fit px-1.5 py-0.5 rounded border border-neon-blue/10">
                           <Calendar size={10} /> 预计: {item.logistics.eta}
                       </div>
                   </div>
 
-                  {/* 4. Inventory & Risk (Left Aligned) */}
-                  <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center">
-                       <div className="text-xl font-display font-bold text-white">{item.stock} <span className="text-xs text-gray-500 font-sans">件</span></div>
+                  {/* 4. Inventory & Risk (Col 1 - Compacted) */}
+                  <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center">
+                       <div className="text-lg font-display font-bold text-white">{item.stock}</div>
                        
                        {item.inventoryAnalysis.riskLevel === 'Critical' ? (
-                           <div className="flex items-center gap-1 text-neon-pink text-[10px] font-bold mt-1 animate-pulse">
-                               <AlertTriangle size={10} />
-                               剩余 {item.inventoryAnalysis.daysRemaining} 天
+                           <div className="text-neon-pink text-[10px] font-bold mt-1 leading-tight">
+                               剩 {item.inventoryAnalysis.daysRemaining} 天
                            </div>
                        ) : (
-                           <div className="text-neon-green text-[10px] font-bold mt-1">
-                               安全 {item.inventoryAnalysis.daysRemaining} 天
+                           <div className="text-neon-green text-[10px] font-bold mt-1 leading-tight">
+                               安 {item.inventoryAnalysis.daysRemaining} 天
                            </div>
                        )}
                   </div>
 
-                  {/* 5. Financials (Profit Focused - Left Aligned) */}
+                  {/* 5. Invested Capital (Col 2 - NEW) */}
+                  <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-1">
+                      <div className="flex items-center gap-1 text-sm font-bold text-white">
+                          <span className="text-xs text-gray-500">¥</span>
+                          {((item.financials.costOfGoods + item.financials.shippingCost) * item.stock).toLocaleString()}
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                               <span className="w-12 text-gray-600">货值应占:</span>
+                               <span className="font-mono">¥ {(item.financials.costOfGoods * item.stock).toLocaleString()}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                               <span className="w-12 text-gray-600">物流费用:</span>
+                               <span className="font-mono">¥ {(item.financials.shippingCost * item.stock).toLocaleString()}</span>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* 6. Financials (Col 1 - Profit Only) */}
                   <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-1.5">
                       <div className="flex flex-col">
                           <span className="text-[10px] text-gray-500 leading-tight">单品利</span>
@@ -274,7 +292,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                       </div>
                   </div>
 
-                  {/* 6. Action - Expanded */}
+                  {/* 7. Action (Col 2) */}
                   <div className="col-span-2 p-4 h-full flex items-center justify-center gap-2">
                       <button 
                         onClick={(e) => {
