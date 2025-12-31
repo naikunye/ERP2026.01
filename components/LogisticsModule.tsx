@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
-import { Shipment } from '../types';
+import { Shipment, Product } from '../types';
 import { 
   Truck, Plane, Ship, Navigation, Search, Plus, MapPin, 
   Anchor, Package, Calendar, Clock, ArrowRight, Container, 
   Scale, Ruler, Box, ExternalLink, Activity, AlertCircle, CheckCircle2,
-  Edit2, Save, X, Trash2
+  Edit2, Save, X, Trash2, CheckSquare, Square
 } from 'lucide-react';
 
 interface LogisticsModuleProps {
     shipments: Shipment[];
+    products: Product[];
     onAddShipment: (shipment: Shipment) => void;
     onUpdateShipment: (shipment: Shipment) => void;
 }
 
-const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipment, onUpdateShipment }) => {
+const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, onAddShipment, onUpdateShipment }) => {
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(shipments.length > 0 ? shipments[0].id : null);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -33,7 +34,8 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
           status: 'Pending',
           progress: 0,
           weight: 0,
-          cartons: 0
+          cartons: 0,
+          skuIds: []
       });
       setIsModalOpen(true);
   };
@@ -41,8 +43,19 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
   // Initialize Modal for Editing
   const openEditModal = (shipment: Shipment) => {
       setModalMode('EDIT');
-      setForm({ ...shipment });
+      setForm({ ...shipment, skuIds: shipment.skuIds || [] });
       setIsModalOpen(true);
+  };
+
+  const handleToggleSku = (sku: string) => {
+      setForm(prev => {
+          const currentSkus = prev.skuIds || [];
+          if (currentSkus.includes(sku)) {
+              return { ...prev, skuIds: currentSkus.filter(id => id !== sku) };
+          } else {
+              return { ...prev, skuIds: [...currentSkus, sku] };
+          }
+      });
   };
 
   const handleSave = () => {
@@ -64,7 +77,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
               progress: form.progress || 0,
               weight: form.weight || 0,
               cartons: form.cartons || 0,
-              skuIds: [],
+              skuIds: form.skuIds || [],
               riskReason: ''
           } as Shipment;
           onAddShipment(newShip);
@@ -141,7 +154,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
       {/* Add/Edit Modal */}
       {isModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
-              <div className="w-full max-w-2xl glass-card border border-white/20 shadow-2xl overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
+              <div className="w-full max-w-4xl glass-card border border-white/20 shadow-2xl overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
                   
                   {/* Modal Header */}
                   <div className="px-8 py-5 border-b border-white/10 bg-white/5 flex justify-between items-center">
@@ -155,134 +168,169 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
                   </div>
 
                   {/* Modal Body */}
-                  <div className="p-8 overflow-y-auto custom-scrollbar space-y-6">
+                  <div className="flex-1 overflow-y-auto custom-scrollbar flex">
                       
-                      {/* Section 1: Core Info */}
-                      <div className="grid grid-cols-2 gap-6">
-                           <div className="space-y-1">
-                               <label className="text-[10px] text-gray-500 font-bold uppercase">运单号 (Tracking No)</label>
-                               <input 
-                                   value={form.trackingNo || ''}
-                                   onChange={(e) => setForm(p => ({...p, trackingNo: e.target.value}))}
-                                   className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none font-mono"
-                                   placeholder="例如: MSN..."
-                               />
-                           </div>
-                           <div className="space-y-1">
-                               <label className="text-[10px] text-gray-500 font-bold uppercase">承运商 (Carrier)</label>
-                               <input 
-                                   value={form.carrier || ''}
-                                   onChange={(e) => setForm(p => ({...p, carrier: e.target.value}))}
-                                   className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                                   placeholder="例如: Matson, DHL..."
-                               />
-                           </div>
+                      {/* Left: Form Fields */}
+                      <div className="w-1/2 p-8 space-y-6 border-r border-white/10">
+                          
+                          {/* Section 1: Core Info */}
+                          <div className="grid grid-cols-2 gap-6">
+                              <div className="space-y-1">
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">运单号 (Tracking No)</label>
+                                  <input 
+                                      value={form.trackingNo || ''}
+                                      onChange={(e) => setForm(p => ({...p, trackingNo: e.target.value}))}
+                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none font-mono"
+                                      placeholder="例如: MSN..."
+                                  />
+                              </div>
+                              <div className="space-y-1">
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">承运商 (Carrier)</label>
+                                  <input 
+                                      value={form.carrier || ''}
+                                      onChange={(e) => setForm(p => ({...p, carrier: e.target.value}))}
+                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                      placeholder="例如: Matson, DHL..."
+                                  />
+                              </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-4">
+                              <div className="space-y-1">
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">运输方式</label>
+                                  <select 
+                                      value={form.method}
+                                      onChange={(e) => setForm(p => ({...p, method: e.target.value as any}))}
+                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                  >
+                                      <option value="Sea">海运 (Sea)</option>
+                                      <option value="Air">空运 (Air)</option>
+                                      <option value="Rail">铁路 (Rail)</option>
+                                  </select>
+                              </div>
+                              <div className="space-y-1">
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">当前状态</label>
+                                  <select 
+                                      value={form.status}
+                                      onChange={(e) => setForm(p => ({...p, status: e.target.value as any}))}
+                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                  >
+                                      <option value="Pending">待处理 (Pending)</option>
+                                      <option value="In Production">生产中 (Production)</option>
+                                      <option value="In Transit">运输中 (In Transit)</option>
+                                      <option value="Customs">清关中 (Customs)</option>
+                                      <option value="Delivered">已送达 (Delivered)</option>
+                                      <option value="Exception">异常 (Exception)</option>
+                                  </select>
+                              </div>
+                              <div className="space-y-1">
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">进度 (%)</label>
+                                  <input 
+                                      type="number"
+                                      min="0" max="100"
+                                      value={form.progress || 0}
+                                      onChange={(e) => setForm(p => ({...p, progress: parseInt(e.target.value)}))}
+                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                  />
+                              </div>
+                          </div>
+
+                          {/* Section 2: Route */}
+                          <div className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase">出发地 (Origin)</label>
+                                        <input 
+                                            value={form.origin || ''}
+                                            onChange={(e) => setForm(p => ({...p, origin: e.target.value}))}
+                                            className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase">目的地 (Destination)</label>
+                                        <input 
+                                            value={form.destination || ''}
+                                            onChange={(e) => setForm(p => ({...p, destination: e.target.value}))}
+                                            className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                        />
+                                    </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase">ETD (预计发货)</label>
+                                        <input 
+                                            type="date"
+                                            value={form.etd || ''}
+                                            onChange={(e) => setForm(p => ({...p, etd: e.target.value}))}
+                                            className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase">ETA (预计到达)</label>
+                                        <input 
+                                            type="date"
+                                            value={form.eta || ''}
+                                            onChange={(e) => setForm(p => ({...p, eta: e.target.value}))}
+                                            className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                        />
+                                    </div>
+                              </div>
+                          </div>
+
+                          {/* Section 3: Cargo */}
+                          <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">总重量 (kg)</label>
+                                  <input 
+                                      type="number"
+                                      value={form.weight || 0}
+                                      onChange={(e) => setForm(p => ({...p, weight: parseFloat(e.target.value)}))}
+                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                  />
+                              </div>
+                              <div className="space-y-1">
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">箱数 (Cartons)</label>
+                                  <input 
+                                      type="number"
+                                      value={form.cartons || 0}
+                                      onChange={(e) => setForm(p => ({...p, cartons: parseInt(e.target.value)}))}
+                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                  />
+                              </div>
+                          </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-4">
-                          <div className="space-y-1">
-                               <label className="text-[10px] text-gray-500 font-bold uppercase">运输方式</label>
-                               <select 
-                                  value={form.method}
-                                  onChange={(e) => setForm(p => ({...p, method: e.target.value as any}))}
-                                  className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                               >
-                                   <option value="Sea">海运 (Sea)</option>
-                                   <option value="Air">空运 (Air)</option>
-                                   <option value="Rail">铁路 (Rail)</option>
-                               </select>
-                           </div>
-                           <div className="space-y-1">
-                               <label className="text-[10px] text-gray-500 font-bold uppercase">当前状态</label>
-                               <select 
-                                  value={form.status}
-                                  onChange={(e) => setForm(p => ({...p, status: e.target.value as any}))}
-                                  className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                               >
-                                   <option value="Pending">待处理 (Pending)</option>
-                                   <option value="In Production">生产中 (Production)</option>
-                                   <option value="In Transit">运输中 (In Transit)</option>
-                                   <option value="Customs">清关中 (Customs)</option>
-                                   <option value="Delivered">已送达 (Delivered)</option>
-                                   <option value="Exception">异常 (Exception)</option>
-                               </select>
-                           </div>
-                           <div className="space-y-1">
-                               <label className="text-[10px] text-gray-500 font-bold uppercase">进度 (%)</label>
-                               <input 
-                                   type="number"
-                                   min="0" max="100"
-                                   value={form.progress || 0}
-                                   onChange={(e) => setForm(p => ({...p, progress: parseInt(e.target.value)}))}
-                                   className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                               />
+                      {/* Right: SKU Selection */}
+                      <div className="w-1/2 p-8 bg-black/10">
+                           <label className="text-[12px] text-neon-blue font-bold uppercase mb-4 block flex items-center gap-2">
+                               <Container size={14}/> 关联装载商品 (Cargo Content)
+                           </label>
+                           <div className="space-y-2 overflow-y-auto max-h-[400px] custom-scrollbar pr-2">
+                               {products.map(product => {
+                                   const isSelected = form.skuIds?.includes(product.id);
+                                   return (
+                                       <div 
+                                          key={product.id}
+                                          onClick={() => handleToggleSku(product.id)}
+                                          className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                                              isSelected 
+                                              ? 'bg-neon-blue/10 border-neon-blue text-white' 
+                                              : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-400'
+                                          }`}
+                                       >
+                                           <div className={`shrink-0 ${isSelected ? 'text-neon-blue' : 'text-gray-600'}`}>
+                                               {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                                           </div>
+                                           <img src={product.imageUrl} className="w-10 h-10 rounded-md object-cover bg-black/50" />
+                                           <div className="flex-1 min-w-0">
+                                               <div className="text-xs font-bold truncate">{product.sku}</div>
+                                               <div className="text-[10px] opacity-70 truncate">{product.name}</div>
+                                           </div>
+                                       </div>
+                                   )
+                               })}
                            </div>
                       </div>
-
-                      {/* Section 2: Route */}
-                      <div className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-4">
-                           <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">出发地 (Origin)</label>
-                                    <input 
-                                        value={form.origin || ''}
-                                        onChange={(e) => setForm(p => ({...p, origin: e.target.value}))}
-                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">目的地 (Destination)</label>
-                                    <input 
-                                        value={form.destination || ''}
-                                        onChange={(e) => setForm(p => ({...p, destination: e.target.value}))}
-                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                                    />
-                                </div>
-                           </div>
-                           <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">ETD (预计发货)</label>
-                                    <input 
-                                        type="date"
-                                        value={form.etd || ''}
-                                        onChange={(e) => setForm(p => ({...p, etd: e.target.value}))}
-                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">ETA (预计到达)</label>
-                                    <input 
-                                        type="date"
-                                        value={form.eta || ''}
-                                        onChange={(e) => setForm(p => ({...p, eta: e.target.value}))}
-                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                                    />
-                                </div>
-                           </div>
-                      </div>
-
-                      {/* Section 3: Cargo */}
-                      <div className="grid grid-cols-2 gap-4">
-                           <div className="space-y-1">
-                               <label className="text-[10px] text-gray-500 font-bold uppercase">总重量 (kg)</label>
-                               <input 
-                                   type="number"
-                                   value={form.weight || 0}
-                                   onChange={(e) => setForm(p => ({...p, weight: parseFloat(e.target.value)}))}
-                                   className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                               />
-                           </div>
-                           <div className="space-y-1">
-                               <label className="text-[10px] text-gray-500 font-bold uppercase">箱数 (Cartons)</label>
-                               <input 
-                                   type="number"
-                                   value={form.cartons || 0}
-                                   onChange={(e) => setForm(p => ({...p, cartons: parseInt(e.target.value)}))}
-                                   className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                               />
-                           </div>
-                      </div>
-
                   </div>
                   
                   {/* Footer */}
@@ -411,7 +459,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
                     <div className="flex-1 flex border-t border-white/10 relative z-10 bg-black/20 backdrop-blur-md">
                         
                         {/* Data Grid */}
-                        <div className="w-1/2 p-8 border-r border-white/10 space-y-8">
+                        <div className="w-1/2 p-8 border-r border-white/10 space-y-8 overflow-y-auto custom-scrollbar">
                              <div>
                                  <h3 className="text-[12px] font-bold text-neon-blue uppercase tracking-widest mb-4 flex items-center gap-2">
                                      <Container size={14} /> 货柜详情 (Container Manifest)
@@ -421,6 +469,31 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, onAddShipm
                                      <DataPoint label="Total Volume" value={`${(selectedShipment.weight / 167).toFixed(2)} CBM`} icon={<Ruler size={14}/>} />
                                      <DataPoint label="Carton Count" value={`${selectedShipment.cartons} ctns`} icon={<Box size={14}/>} />
                                      <DataPoint label="Service Type" value="FCL (Port to Port)" />
+                                 </div>
+                             </div>
+                             
+                             {/* ADDED: Connected SKU Display */}
+                             <div>
+                                 <h3 className="text-[12px] font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
+                                     <Package size={14} /> 包含商品 ({selectedShipment.skuIds?.length || 0})
+                                 </h3>
+                                 <div className="space-y-2">
+                                     {selectedShipment.skuIds && selectedShipment.skuIds.length > 0 ? (
+                                         selectedShipment.skuIds.map(skuId => {
+                                             const p = products.find(prod => prod.id === skuId);
+                                             return p ? (
+                                                 <div key={p.id} className="flex items-center gap-3 bg-white/5 p-2 rounded-lg border border-white/5">
+                                                     <img src={p.imageUrl} className="w-8 h-8 rounded object-cover" />
+                                                     <div className="min-w-0">
+                                                         <div className="text-xs font-bold text-white truncate">{p.sku}</div>
+                                                         <div className="text-[10px] text-gray-500 truncate">{p.name}</div>
+                                                     </div>
+                                                 </div>
+                                             ) : null;
+                                         })
+                                     ) : (
+                                         <div className="text-[10px] text-gray-500 italic">未关联 SKU</div>
+                                     )}
                                  </div>
                              </div>
 

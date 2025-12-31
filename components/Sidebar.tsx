@@ -62,12 +62,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentThem
           </button>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto custom-scrollbar pr-2">
+      <div className="flex-1 space-y-4 overflow-y-auto custom-scrollbar px-6 py-4 -mx-6">
         {menuItems.map((item) => (
           <button
             key={item.id}
             onClick={() => onChangeView(item.id)}
-            className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-[15px] font-medium transition-all duration-300 relative group overflow-hidden ${
+            className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-[15px] font-medium transition-all duration-300 relative group overflow-visible ${
               activeView === item.id
                 ? 'bg-gradient-neon-blue shadow-glow-blue text-white scale-105' 
                 : 'text-gray-400 hover:text-white hover:bg-white/10'

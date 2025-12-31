@@ -230,7 +230,10 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : DEMO_INFLUENCERS;
   });
 
-  const [transactions, setTransactions] = useState<Transaction[]>(DEMO_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+      const saved = localStorage.getItem('aero_erp_transactions');
+      return saved ? JSON.parse(saved) : DEMO_TRANSACTIONS;
+  });
 
   const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined);
   const [editingSKU, setEditingSKU] = useState<Product | null>(null);
@@ -359,7 +362,15 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
-        return <Dashboard />;
+        return (
+            <Dashboard 
+                products={products}
+                shipments={shipments}
+                transactions={transactions}
+                influencers={influencers}
+                onChangeView={setActiveView}
+            />
+        );
       case 'restock':
         return (
           <RestockModule 
@@ -374,6 +385,7 @@ const App: React.FC = () => {
         return (
             <LogisticsModule 
                 shipments={shipments} 
+                products={products} // Pass products to enable SKU selection
                 onAddShipment={handleAddShipment} 
                 onUpdateShipment={handleUpdateShipment}
             />
