@@ -153,7 +153,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       </div>
 
       {/* 2. Controls */}
-      <div className="flex justify-between items-center sticky top-0 bg-[#000]/80 backdrop-blur-xl py-4 z-30 -mx-2 px-2 border-b border-white/5">
+      <div className="flex justify-between items-center sticky top-0 z-30 py-4 backdrop-blur-xl bg-black/10 border-b border-white/5 transition-all">
           <div className="relative w-[400px] group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon-blue transition-colors" size={18} />
               <input 
