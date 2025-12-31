@@ -15,7 +15,7 @@ const data: ChartDataPoint[] = [
 
 const StatWidget: React.FC<{ title: string; value: string; icon: React.ReactNode; trend?: string; gradient: string; delay: number }> = ({ title, value, icon, trend, gradient, delay }) => (
   <div 
-    className="glass-card p-6 flex flex-col justify-between h-[180px] hover:-translate-y-2 transition-transform duration-300"
+    className="glass-card p-6 flex flex-col justify-between h-[180px] hover:-translate-y-2 transition-transform duration-300 w-full"
     style={{ animationDelay: `${delay}ms` }}
   >
      {/* Gradient Blob Background */}
@@ -45,9 +45,9 @@ const StatWidget: React.FC<{ title: string; value: string; icon: React.ReactNode
 
 const Dashboard: React.FC = () => {
   return (
-    <div className="space-y-8 animate-fade-in pb-12">
+    <div className="space-y-8 animate-fade-in pb-12 w-full">
       {/* Header Section */}
-      <div className="flex justify-between items-end pb-4 border-b border-white/5">
+      <div className="flex justify-between items-end pb-6 border-b border-white/5">
         <div>
           <div className="flex items-center gap-3 mb-2">
               <span className="px-3 py-1 rounded-full bg-neon-green/10 border border-neon-green/20 text-neon-green text-[11px] font-bold flex items-center gap-2">
@@ -71,8 +71,8 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Colorful Widgets Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Colorful Widgets Grid - Updated breakpoints for wide screens */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-4 gap-6 w-full">
         <StatWidget delay={0} title="Total Revenue" value="$124,592" icon={<DollarSign size={24} />} trend="12.5" gradient="from-cyan-400 to-blue-500" />
         <StatWidget delay={100} title="Active Assets" value="1,432" icon={<Package size={24} />} trend="3.2" gradient="from-purple-400 to-pink-500" />
         <StatWidget delay={200} title="Global Nodes" value="24" icon={<Globe size={24} />} trend="5.8" gradient="from-pink-500 to-rose-500" />
@@ -80,7 +80,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Glass Chart Area */}
-      <div className="glass-card p-8 h-[540px]">
+      <div className="glass-card p-8 h-[540px] w-full">
         {/* Decorative Grid Line */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-neon-blue via-neon-purple to-neon-pink"></div>
         

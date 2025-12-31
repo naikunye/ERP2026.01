@@ -10,7 +10,7 @@ interface ProductListProps {
 
 const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew }) => {
   return (
-    <div className="space-y-8 animate-fade-in flex flex-col h-full pb-10">
+    <div className="space-y-8 animate-fade-in flex flex-col h-full pb-10 w-full">
       {/* Header */}
       <div className="flex items-end justify-between border-b border-white/5 pb-8">
         <div>
@@ -31,7 +31,7 @@ const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew })
 
       {/* Toolbar */}
       <div className="flex gap-4 items-center">
-         <div className="relative flex-1 max-w-[600px] group">
+         <div className="relative flex-1 group">
             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-neon-blue transition-colors" size={20} />
             <input 
                 type="text" 
@@ -40,20 +40,20 @@ const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew })
             />
          </div>
          <div className="flex gap-3">
-            <button className="h-[54px] px-6 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-2 text-gray-300 hover:text-white hover:bg-white/10 transition-colors font-bold text-xs backdrop-blur-md">
+            <button className="h-[54px] px-6 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-2 text-gray-300 hover:text-white hover:bg-white/10 transition-colors font-bold text-xs backdrop-blur-md whitespace-nowrap">
                 <ListFilter size={18} /> FILTER
             </button>
          </div>
       </div>
 
       {/* Glass Table */}
-      <div className="flex-1 overflow-hidden glass-card flex flex-col relative">
+      <div className="flex-1 overflow-hidden glass-card flex flex-col relative w-full">
         {/* Table Header */}
         <div className="flex items-center px-8 py-6 border-b border-white/10 bg-black/10 backdrop-blur-xl sticky top-0 z-20">
-             <div className="w-[45%] text-[11px] font-bold text-gray-400 tracking-widest uppercase pl-2">Entity Description</div>
+             <div className="w-[40%] text-[11px] font-bold text-gray-400 tracking-widest uppercase pl-2">Entity Description</div>
              <div className="w-[15%] text-[11px] font-bold text-gray-400 tracking-widest uppercase">Status</div>
              <div className="w-[15%] text-[11px] font-bold text-gray-400 tracking-widest uppercase">Price</div>
-             <div className="w-[15%] text-[11px] font-bold text-gray-400 tracking-widest uppercase">Stock</div>
+             <div className="w-[20%] text-[11px] font-bold text-gray-400 tracking-widest uppercase">Stock</div>
              <div className="w-[10%] text-right text-[11px] font-bold text-gray-400 tracking-widest uppercase pr-4">Action</div>
         </div>
         
@@ -69,7 +69,7 @@ const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew })
                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-neon-blue opacity-0 group-hover:opacity-100 transition-opacity rounded-l-full shadow-glow-blue"></div>
 
                 {/* Product Info */}
-                <div className="w-[45%] flex items-center gap-6">
+                <div className="w-[40%] flex items-center gap-6">
                     <div className="w-16 h-16 rounded-xl bg-black/40 border border-white/10 overflow-hidden flex-shrink-0 relative group-hover:border-neon-blue/50 transition-colors shadow-lg">
                         {product.imageUrl ? (
                              <img src={product.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
@@ -106,10 +106,11 @@ const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew })
                 </div>
                 
                 {/* Stock */}
-                <div className="w-[15%]">
-                     <div className="w-24">
+                <div className="w-[20%]">
+                     <div className="w-full max-w-[200px]">
                          <div className="flex justify-between text-[11px] font-medium text-gray-400 mb-1.5">
                              <span>{product.stock} units</span>
+                             <span className="text-white/30">{Math.min(product.stock, 100)}% Cap</span>
                          </div>
                          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                              <div 

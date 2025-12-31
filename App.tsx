@@ -95,9 +95,10 @@ const App: React.FC = () => {
     <div className="min-h-screen font-sans selection:bg-neon-pink selection:text-white overflow-hidden text-gray-900">
       <Sidebar activeView={activeView} onChangeView={setActiveView} />
       
-      {/* Main Content Area */}
-      <main className="ml-[300px] h-screen overflow-y-auto no-scrollbar">
-        <div className="max-w-[1600px] mx-auto p-12 pb-32">
+      {/* Main Content Area - Full Width Optimization */}
+      <main className="ml-[320px] h-screen overflow-y-auto no-scrollbar pr-6">
+        {/* Removed max-w, adjusted padding for edge-to-edge feel */}
+        <div className="w-full h-full pt-6 pb-32 pl-0 pr-0">
           {renderContent()}
         </div>
       </main>
