@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, Box, Settings, ShoppingBag, BarChart2, Globe, Sparkles, Cpu, Aperture, RefreshCw } from 'lucide-react';
+import { LayoutGrid, Box, Settings, ShoppingBag, BarChart2, Globe, Sparkles, Cpu, Aperture, RefreshCw, Server } from 'lucide-react';
 
 interface SidebarProps {
   activeView: string;
@@ -13,7 +13,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView }) => {
     { id: 'restock', label: '智能备货', icon: <RefreshCw size={20} /> },
     { id: 'orders', label: '物流追踪', icon: <ShoppingBag size={20} /> },
     { id: 'analytics', label: '数据深潜', icon: <BarChart2 size={20} /> },
-    { id: 'market', label: '星际网络', icon: <Globe size={20} /> },
+    { id: 'datasync', label: '云端中枢', icon: <Server size={20} /> }, // New Item
   ];
 
   return (

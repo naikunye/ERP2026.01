@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import ProductList from './components/ProductList';
@@ -6,74 +6,34 @@ import ProductEditor from './components/ProductEditor';
 import RestockModule from './components/RestockModule';
 import SKUDetailEditor from './components/SKUDetailEditor';
 import LogisticsModule from './components/LogisticsModule';
-import { Product, ProductStatus, Currency } from './types';
-
-// Mock Initial Data
-const INITIAL_PRODUCTS: Product[] = [
-  {
-    id: '1',
-    sku: 'AERO-WL-001',
-    name: 'Aero Noise-Cancel Pro',
-    description: 'High-fidelity audio with active noise cancellation and transparency mode.',
-    price: 249.00,
-    currency: Currency.USD,
-    stock: 142,
-    category: 'Electronics',
-    status: ProductStatus.Active,
-    imageUrl: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&q=80&w=200&h=200',
-    marketplaces: ['US', 'EU'],
-    lastUpdated: '2023-10-24',
-    note: '重点关注 Q4 备货'
-  },
-  {
-    id: '2',
-    sku: 'AERO-CH-002',
-    name: 'ErgoWorkspace Chair',
-    description: 'Designed for comfort and productivity with breathable mesh back.',
-    price: 499.00,
-    currency: Currency.USD,
-    stock: 45,
-    category: 'Furniture',
-    status: ProductStatus.Active,
-    imageUrl: 'https://images.unsplash.com/photo-1505843490538-5133c6c7d0e1?auto=format&fit=crop&q=80&w=200&h=200',
-    marketplaces: ['US'],
-    lastUpdated: '2023-10-23'
-  },
-  {
-    id: '3',
-    sku: 'AERO-LT-003',
-    name: 'Lumina Smart Ambient',
-    description: '16 million colors, voice controlled, syncs with music.',
-    price: 89.99,
-    currency: Currency.USD,
-    stock: 12,
-    category: 'Home',
-    status: ProductStatus.Archived,
-    imageUrl: 'https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=200&h=200',
-    marketplaces: ['US', 'JP'],
-    lastUpdated: '2023-09-15'
-  },
-  {
-    id: '4',
-    sku: 'AERO-KB-004',
-    name: 'Mechanic Pro Keyboard',
-    description: 'RGB Backlit mechanical keyboard with blue switches.',
-    price: 129.99,
-    currency: Currency.USD,
-    stock: 8,
-    category: 'Electronics',
-    status: ProductStatus.Active,
-    imageUrl: 'https://images.unsplash.com/photo-1587829741301-dc798b91add1?auto=format&fit=crop&q=80&w=200&h=200',
-    marketplaces: ['US'],
-    lastUpdated: '2023-11-01'
-  }
-];
+import DataSyncModule from './components/DataSyncModule';
+import { Product, ProductStatus, Currency, Shipment } from './types';
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  
+  // REAL DATA: Initialize from LocalStorage or empty array. No more hardcoded mocks if user has data.
+  const [products, setProducts] = useState<Product[]>(() => {
+    const saved = localStorage.getItem('aero_erp_products');
+    return saved ? JSON.parse(saved) : []; 
+  });
+
+  const [shipments, setShipments] = useState<Shipment[]>(() => {
+    const saved = localStorage.getItem('aero_erp_shipments');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined);
   const [editingSKU, setEditingSKU] = useState<Product | null>(null);
+
+  // Persistence Effects
+  useEffect(() => {
+    localStorage.setItem('aero_erp_products', JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem('aero_erp_shipments', JSON.stringify(shipments));
+  }, [shipments]);
 
   const handleSaveProduct = (savedProduct: Product) => {
     setProducts(prev => {
@@ -86,23 +46,49 @@ const App: React.FC = () => {
   };
 
   const handleSaveSKU = (updatedData: any) => {
-    // In a real app, this would merge the extended data with the product
-    // We also need to update the note if it was changed in the SKU editor
-    if (editingSKU && updatedData.note !== undefined) {
-       setProducts(prev => prev.map(p => p.id === editingSKU.id ? { ...p, note: updatedData.note } : p));
+    // Merge the complex data from SKU Detail Editor into the main product object
+    // In a real backend, this would be a PATCH request
+    if (editingSKU) {
+       setProducts(prev => prev.map(p => {
+           if (p.id !== editingSKU.id) return p;
+           
+           // Construct the real data structure from the form flat data
+           return {
+               ...p,
+               note: updatedData.note,
+               supplier: updatedData.supplierName,
+               // Map flat form data to structured types
+               financials: {
+                   costOfGoods: updatedData.unitCost,
+                   shippingCost: updatedData.shippingRate * updatedData.unitWeight, // Simplified calc
+                   otherCost: updatedData.fulfillmentFee + updatedData.adCostPerUnit,
+                   sellingPrice: updatedData.sellingPrice,
+                   platformFee: (updatedData.sellingPrice * updatedData.tiktokCommission) / 100,
+                   adCost: updatedData.adCostPerUnit
+               },
+               logistics: {
+                   method: updatedData.transportMethod,
+                   carrier: updatedData.carrier,
+                   trackingNo: updatedData.trackingNo,
+                   status: 'Pending', // Default status for new update
+                   origin: 'China', // Default
+                   destination: updatedData.destinationWarehouse,
+                   etd: updatedData.restockDate
+               }
+           };
+       }));
     }
-    console.log("Saving extended SKU data:", updatedData);
     setEditingSKU(null);
   };
 
   const handleCloneSKU = (product: Product) => {
     const newProduct: Product = {
       ...product,
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(), // Use real UUID
       sku: `${product.sku}-COPY`,
       name: `${product.name} (副本)`,
       status: ProductStatus.Draft,
-      stock: 0, // Reset stock for clone
+      stock: 0,
       lastUpdated: new Date().toISOString(),
       note: product.note ? `[Clone] ${product.note}` : undefined
     };
@@ -117,6 +103,20 @@ const App: React.FC = () => {
       }
     }
   };
+
+  const handleImportData = (importedData: Product[]) => {
+      setProducts(prev => {
+          // Intelligent Merge: Update existing IDs, Append new ones
+          const prevMap = new Map(prev.map(p => [p.id, p]));
+          importedData.forEach(p => prevMap.set(p.id, p));
+          return Array.from(prevMap.values());
+      });
+  };
+  
+  // Real Logic: Add a new shipment
+  const handleAddShipment = (newShipment: Shipment) => {
+      setShipments(prev => [newShipment, ...prev]);
+  }
 
   const renderContent = () => {
     switch (activeView) {
@@ -140,17 +140,16 @@ const App: React.FC = () => {
           />
         );
       case 'orders':
-        return <LogisticsModule />;
-      default:
+        return <LogisticsModule shipments={shipments} onAddShipment={handleAddShipment} />;
+      case 'datasync':
         return (
-          <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-white/50">
-            <div className="w-24 h-24 rounded-[32px] bg-white/5 border border-white/10 shadow-lg backdrop-blur-md flex items-center justify-center mb-6">
-               <span className="text-4xl opacity-80">🚧</span>
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2 tracking-tight">Module Offline</h2>
-            <p className="text-sm font-medium text-gray-500 uppercase tracking-widest opacity-70">Construction in progress</p>
-          </div>
+            <DataSyncModule 
+                currentData={products} 
+                onImportData={handleImportData} 
+            />
         );
+      default:
+        return null;
     }
   };
 
@@ -158,7 +157,7 @@ const App: React.FC = () => {
     <div className="min-h-screen font-sans selection:bg-neon-pink selection:text-white overflow-hidden text-gray-900">
       <Sidebar activeView={activeView} onChangeView={setActiveView} />
       
-      {/* Main Content Area - Full Width Optimization */}
+      {/* Main Content Area */}
       <main className="ml-[320px] h-screen overflow-y-auto no-scrollbar pr-6">
         <div className="w-full h-full pt-6 pb-32 pl-0 pr-0">
           {renderContent()}
