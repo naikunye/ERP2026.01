@@ -3,11 +3,12 @@ import { Product, ProductStatus } from '../types';
 import { 
   Search, Plus, Filter, Factory, Truck, Plane, Ship, 
   DollarSign, AlertTriangle, Calendar, Package, MoreHorizontal, 
-  TrendingUp, Wallet
+  TrendingUp, Wallet, Edit3
 } from 'lucide-react';
 
 interface RestockModuleProps {
   products: Product[];
+  onEditSKU?: (product: Product) => void;
 }
 
 // Extended interface for ERP specific fields (Mocking backend data)
@@ -69,7 +70,7 @@ const enrichProductData = (products: Product[]): ERPProduct[] => {
   });
 };
 
-const RestockModule: React.FC<RestockModuleProps> = ({ products }) => {
+const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   const erpData = useMemo(() => enrichProductData(products), [products]);
@@ -167,7 +168,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products }) => {
 
           {/* Data Rows */}
           {filteredData.map((item) => (
-              <div key={item.id} className="glass-card grid grid-cols-12 items-center p-0 min-h-[100px] hover:border-white/20 transition-all group relative overflow-visible">
+              <div key={item.id} onClick={() => onEditSKU && onEditSKU(item)} className="glass-card grid grid-cols-12 items-center p-0 min-h-[100px] hover:border-white/20 transition-all group relative overflow-visible cursor-pointer">
                   
                   {/* Left Accent Bar based on risk */}
                   <div className={`absolute left-0 top-0 bottom-0 w-1 ${item.inventoryAnalysis.riskLevel === 'Critical' ? 'bg-neon-pink shadow-[0_0_10px_#FF2975]' : 'bg-neon-green'}`}></div>
@@ -242,8 +243,14 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products }) => {
 
                   {/* 6. Action */}
                   <div className="col-span-1 p-4 h-full flex items-center justify-center">
-                      <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-                          <MoreHorizontal size={18} />
+                      <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onEditSKU && onEditSKU(item);
+                        }}
+                        className="w-8 h-8 rounded-full bg-white/5 hover:bg-neon-blue hover:text-black flex items-center justify-center text-gray-400 transition-colors"
+                      >
+                          <Edit3 size={16} />
                       </button>
                   </div>
 

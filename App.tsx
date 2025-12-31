@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard';
 import ProductList from './components/ProductList';
 import ProductEditor from './components/ProductEditor';
 import RestockModule from './components/RestockModule';
+import SKUDetailEditor from './components/SKUDetailEditor';
 import { Product, ProductStatus, Currency } from './types';
 
 // Mock Initial Data
@@ -69,7 +70,8 @@ const INITIAL_PRODUCTS: Product[] = [
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined); 
+  const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined);
+  const [editingSKU, setEditingSKU] = useState<Product | null>(null);
 
   const handleSaveProduct = (savedProduct: Product) => {
     setProducts(prev => {
@@ -79,6 +81,13 @@ const App: React.FC = () => {
       }
       return [savedProduct, ...prev];
     });
+  };
+
+  const handleSaveSKU = (updatedData: any) => {
+    // In a real app, this would merge the extended data with the product
+    // For now, we just close the modal as the data is local to the editor
+    console.log("Saving extended SKU data:", updatedData);
+    setEditingSKU(null);
   };
 
   const renderContent = () => {
@@ -94,7 +103,12 @@ const App: React.FC = () => {
           />
         );
       case 'restock':
-        return <RestockModule products={products} />;
+        return (
+          <RestockModule 
+            products={products} 
+            onEditSKU={(p) => setEditingSKU(p)}
+          />
+        );
       default:
         return (
           <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-white/50">
@@ -114,18 +128,26 @@ const App: React.FC = () => {
       
       {/* Main Content Area - Full Width Optimization */}
       <main className="ml-[320px] h-screen overflow-y-auto no-scrollbar pr-6">
-        {/* Removed max-w, adjusted padding for edge-to-edge feel */}
         <div className="w-full h-full pt-6 pb-32 pl-0 pr-0">
           {renderContent()}
         </div>
       </main>
 
-      {/* Product Editor Modal */}
+      {/* Basic Product Editor Modal */}
       {editingProduct !== undefined && (
         <ProductEditor 
           onClose={() => setEditingProduct(undefined)}
           onSave={handleSaveProduct}
           initialProduct={editingProduct}
+        />
+      )}
+
+      {/* Advanced SKU Detail Editor Modal */}
+      {editingSKU && (
+        <SKUDetailEditor 
+          product={editingSKU}
+          onClose={() => setEditingSKU(null)}
+          onSave={handleSaveSKU}
         />
       )}
     </div>
