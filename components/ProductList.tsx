@@ -8,16 +8,22 @@ interface ProductListProps {
   onAddNew: () => void;
 }
 
+const statusMap: Record<string, string> = {
+  [ProductStatus.Draft]: '草稿',
+  [ProductStatus.Active]: '在售',
+  [ProductStatus.Archived]: '归档'
+};
+
 const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew }) => {
   return (
     <div className="space-y-8 animate-fade-in flex flex-col h-full pb-10 w-full">
       {/* Header */}
       <div className="flex items-end justify-between border-b border-white/5 pb-8">
         <div>
-            <h1 className="text-[40px] font-bold text-white tracking-tight leading-none drop-shadow-lg">Inventory <span className="text-neon-purple font-display font-light">Matrix</span></h1>
+            <h1 className="text-[40px] font-bold text-white tracking-tight leading-none drop-shadow-lg">库存 <span className="text-neon-purple font-display font-light">矩阵</span></h1>
             <p className="text-gray-400 text-sm mt-3 font-medium flex items-center gap-3">
-                <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 text-white font-mono text-xs">{products.length} ENTITIES</span>
-                <span className="text-neon-green flex items-center gap-1 text-xs"><div className="w-1.5 h-1.5 rounded-full bg-neon-green animate-pulse"></div> SYNCED</span>
+                <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 text-white font-mono text-xs">{products.length} 个资产</span>
+                <span className="text-neon-green flex items-center gap-1 text-xs"><div className="w-1.5 h-1.5 rounded-full bg-neon-green animate-pulse"></div> 云端已同步</span>
             </p>
         </div>
         <button 
@@ -25,7 +31,7 @@ const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew })
             className="px-8 py-3.5 bg-gradient-neon-purple text-white rounded-xl font-bold text-sm shadow-glow-purple hover:scale-105 transition-all flex items-center gap-2"
         >
             <Plus size={18} strokeWidth={3} /> 
-            <span>Add New Asset</span>
+            <span>新建资产</span>
         </button>
       </div>
 
@@ -35,13 +41,13 @@ const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew })
             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-neon-blue transition-colors" size={20} />
             <input 
                 type="text" 
-                placeholder="Search asset ID, name or tag..." 
+                placeholder="搜索资产 ID、名称或标签..." 
                 className="w-full pl-14 pr-6 py-4 input-glass rounded-2xl font-sans text-sm tracking-wide"
             />
          </div>
          <div className="flex gap-3">
             <button className="h-[54px] px-6 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-2 text-gray-300 hover:text-white hover:bg-white/10 transition-colors font-bold text-xs backdrop-blur-md whitespace-nowrap">
-                <ListFilter size={18} /> FILTER
+                <ListFilter size={18} /> 筛选
             </button>
          </div>
       </div>
@@ -50,11 +56,11 @@ const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew })
       <div className="flex-1 overflow-hidden glass-card flex flex-col relative w-full">
         {/* Table Header */}
         <div className="flex items-center px-8 py-6 border-b border-white/10 bg-black/10 backdrop-blur-xl sticky top-0 z-20">
-             <div className="w-[40%] text-[11px] font-bold text-gray-400 tracking-widest uppercase pl-2">Entity Description</div>
-             <div className="w-[15%] text-[11px] font-bold text-gray-400 tracking-widest uppercase">Status</div>
-             <div className="w-[15%] text-[11px] font-bold text-gray-400 tracking-widest uppercase">Price</div>
-             <div className="w-[20%] text-[11px] font-bold text-gray-400 tracking-widest uppercase">Stock</div>
-             <div className="w-[10%] text-right text-[11px] font-bold text-gray-400 tracking-widest uppercase pr-4">Action</div>
+             <div className="w-[40%] text-[11px] font-bold text-gray-400 tracking-widest uppercase pl-2">资产详情</div>
+             <div className="w-[15%] text-[11px] font-bold text-gray-400 tracking-widest uppercase">状态</div>
+             <div className="w-[15%] text-[11px] font-bold text-gray-400 tracking-widest uppercase">价格</div>
+             <div className="w-[20%] text-[11px] font-bold text-gray-400 tracking-widest uppercase">库存</div>
+             <div className="w-[10%] text-right text-[11px] font-bold text-gray-400 tracking-widest uppercase pr-4">操作</div>
         </div>
         
         {/* Table Body */}
@@ -96,7 +102,7 @@ const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew })
                             : 'bg-white/5 text-gray-400 border-white/10'
                      }`}>
                         <span className={`w-1.5 h-1.5 rounded-full mr-2 ${product.status === ProductStatus.Active ? 'bg-neon-green animate-pulse' : 'bg-gray-500'}`}></span>
-                        {product.status}
+                        {statusMap[product.status] || product.status}
                      </span>
                 </div>
                 
@@ -109,8 +115,8 @@ const ProductList: React.FC<ProductListProps> = ({ products, onEdit, onAddNew })
                 <div className="w-[20%]">
                      <div className="w-full max-w-[200px]">
                          <div className="flex justify-between text-[11px] font-medium text-gray-400 mb-1.5">
-                             <span>{product.stock} units</span>
-                             <span className="text-white/30">{Math.min(product.stock, 100)}% Cap</span>
+                             <span>{product.stock} 件</span>
+                             <span className="text-white/30">{Math.min(product.stock, 100)}% 容量</span>
                          </div>
                          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                              <div 

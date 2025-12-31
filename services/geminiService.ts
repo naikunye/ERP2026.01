@@ -11,8 +11,8 @@ export const generateProductDescription = async (productName: string, features: 
 
   try {
     const prompt = `
-      You are an expert e-commerce copywriter.
-      Write a compelling, SEO-optimized product description for a product named "${productName}".
+      You are an expert e-commerce copywriter for the Chinese market.
+      Write a compelling, SEO-optimized product description in Chinese (Simplified) for a product named "${productName}".
       Key features to highlight: ${features}.
       Tone: ${tone}.
       Format: Plain text, max 2 paragraphs.
@@ -23,10 +23,10 @@ export const generateProductDescription = async (productName: string, features: 
       contents: prompt,
     });
 
-    return response.text || "Could not generate description.";
+    return response.text || "无法生成描述。";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Error generating content. Please check API key.";
+    return "生成内容出错，请检查 API Key。";
   }
 };
 
@@ -54,7 +54,7 @@ export const analyzeMarketFit = async (productName: string, price: number): Prom
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: `Analyze the market fit for a product named "${productName}" priced at ${price}. Return a JSON with a score (1-100) and a short reasoning sentence.`,
+            contents: `Analyze the market fit for a product named "${productName}" priced at ${price}. Return a JSON with a score (1-100) and a short reasoning sentence in Chinese (Simplified).`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -69,12 +69,12 @@ export const analyzeMarketFit = async (productName: string, price: number): Prom
         });
         
         const jsonText = response.text;
-        if (!jsonText) return { score: 0, reasoning: "No data returned" };
+        if (!jsonText) return { score: 0, reasoning: "无数据返回" };
         
         return JSON.parse(jsonText);
     } catch (error) {
         console.error("Analysis Error", error);
-        return { score: 50, reasoning: "AI Analysis unavailable." };
+        return { score: 50, reasoning: "AI 分析暂不可用。" };
     }
 }
 
@@ -89,7 +89,7 @@ export const generateRestockInsight = async (productName: string, currentStock: 
             
             Act as an inventory management AI. Calculate a suggested restock amount to cover 30 days, considering a 10% safety buffer.
             Determine the risk level (Critical, High, Moderate, Low).
-            Provide a very short, strategic reason (max 15 words).
+            Provide a very short, strategic reason in Chinese (Simplified) (max 15 words).
         `;
 
         const response = await ai.models.generateContent({
@@ -110,11 +110,11 @@ export const generateRestockInsight = async (productName: string, currentStock: 
         });
         
         const jsonText = response.text;
-        if (!jsonText) return { suggestedAmount: 0, reason: "Analysis failed", riskLevel: "Unknown" };
+        if (!jsonText) return { suggestedAmount: 0, reason: "分析失败", riskLevel: "Unknown" };
         
         return JSON.parse(jsonText);
     } catch (error) {
         console.error("Restock Analysis Error", error);
-        return { suggestedAmount: 0, reason: "AI Unavailable", riskLevel: "Unknown" };
+        return { suggestedAmount: 0, reason: "AI 不可用", riskLevel: "Unknown" };
     }
 }

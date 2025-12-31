@@ -39,7 +39,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
   const handleAiGenerate = async () => {
     if (!formData.name) return;
     setIsLoadingAi(true);
-    const desc = await generateProductDescription(formData.name!, formData.category || 'General', 'Futuristic and Compelling');
+    // Request Chinese content
+    const desc = await generateProductDescription(formData.name!, formData.category || 'General', 'Futuristic and Compelling, in Chinese');
     setFormData(prev => ({ ...prev, description: desc }));
     setIsLoadingAi(false);
   };
@@ -87,8 +88,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                  </button>
                  <div>
                     <h2 className="text-[22px] font-bold text-white leading-none tracking-wide flex items-center gap-3">
-                        {initialProduct ? 'Edit Asset' : 'Initialize Asset'}
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-neon-blue/20 text-neon-blue border border-neon-blue/30">SECURE</span>
+                        {initialProduct ? '编辑资产' : '初始化资产'}
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-neon-blue/20 text-neon-blue border border-neon-blue/30">安全</span>
                     </h2>
                     <p className="text-[11px] text-gray-400 font-mono mt-1">
                         ID: {Math.random().toString(36).substr(2, 8).toUpperCase()}
@@ -101,7 +102,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                 className="px-8 py-3 bg-gradient-neon-blue text-white rounded-xl font-bold text-[14px] shadow-glow-blue hover:scale-105 transition-all flex items-center gap-2"
             >
                 <Check size={18} strokeWidth={3} />
-                Save Changes
+                保存变更
             </button>
         </div>
 
@@ -109,11 +110,11 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
             
             {/* Navigation Rail */}
             <div className="w-[260px] border-r border-white/10 pt-8 px-4 space-y-2 bg-black/10">
-                 <div className="px-4 mb-4 text-[11px] font-bold text-gray-500 uppercase tracking-widest">Modules</div>
+                 <div className="px-4 mb-4 text-[11px] font-bold text-gray-500 uppercase tracking-widest">功能模块</div>
                  {[
-                    { id: 'details', label: 'Core Data', icon: <Layers size={18} /> },
-                    { id: 'media', label: 'Visuals', icon: <ImageIcon size={18} /> },
-                    { id: 'intelligence', label: 'AI Matrix', icon: <Cpu size={18} /> }
+                    { id: 'details', label: '核心数据', icon: <Layers size={18} /> },
+                    { id: 'media', label: '视觉素材', icon: <ImageIcon size={18} /> },
+                    { id: 'intelligence', label: 'AI 矩阵', icon: <Cpu size={18} /> }
                  ].map(tab => (
                      <button
                         key={tab.id}
@@ -139,17 +140,17 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                         {/* Section 1 */}
                         <div className="space-y-6">
                             <h3 className="text-[18px] font-bold text-white flex items-center gap-3">
-                                <span className="w-2 h-8 bg-neon-blue rounded-full shadow-glow-blue"></span> Identification
+                                <span className="w-2 h-8 bg-neon-blue rounded-full shadow-glow-blue"></span> 身份标识
                             </h3>
                             <div className="grid grid-cols-1 gap-6">
                                 <div className="space-y-2">
-                                    <label className="text-[12px] font-bold text-gray-400 ml-1">Asset Name</label>
+                                    <label className="text-[12px] font-bold text-gray-400 ml-1">资产名称</label>
                                     <input
                                         name="name"
                                         value={formData.name}
                                         onChange={handleInputChange}
                                         className="w-full h-14 px-5 input-glass rounded-xl text-[18px] font-bold tracking-wide placeholder-gray-500"
-                                        placeholder="Enter product name..."
+                                        placeholder="输入产品名称..."
                                     />
                                 </div>
                                 <div className="grid grid-cols-2 gap-6">
@@ -164,7 +165,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[12px] font-bold text-gray-400 ml-1">Category</label>
+                                        <label className="text-[12px] font-bold text-gray-400 ml-1">类目</label>
                                         <div className="relative">
                                             <Tag size={18} className="absolute left-4 top-3 text-neon-blue" />
                                             <input
@@ -172,7 +173,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                                 value={formData.category}
                                                 onChange={handleInputChange}
                                                 className="w-full h-12 pl-12 pr-4 input-glass rounded-xl font-bold text-[14px]"
-                                                placeholder="Enter category..."
+                                                placeholder="输入类目..."
                                             />
                                         </div>
                                     </div>
@@ -183,11 +184,11 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                          {/* Section 2 */}
                          <div className="space-y-6">
                             <h3 className="text-[18px] font-bold text-white flex items-center gap-3">
-                                <span className="w-2 h-8 bg-neon-purple rounded-full shadow-glow-purple"></span> Valuation
+                                <span className="w-2 h-8 bg-neon-purple rounded-full shadow-glow-purple"></span> 估值
                             </h3>
                             <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <label className="text-[12px] font-bold text-gray-400 ml-1">Unit Price (USD)</label>
+                                    <label className="text-[12px] font-bold text-gray-400 ml-1">单价 (USD)</label>
                                     <div className="relative group">
                                         <span className="absolute left-5 top-3.5 text-gray-400 font-mono text-lg">$</span>
                                         <input
@@ -200,7 +201,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[12px] font-bold text-gray-400 ml-1">Inventory</label>
+                                    <label className="text-[12px] font-bold text-gray-400 ml-1">库存量</label>
                                     <input
                                         name="stock"
                                         type="number"
@@ -216,7 +217,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                         <div className="space-y-4">
                              <div className="flex justify-between items-center">
                                 <h3 className="text-[18px] font-bold text-white flex items-center gap-3">
-                                    <span className="w-2 h-8 bg-neon-pink rounded-full shadow-glow-pink"></span> Description
+                                    <span className="w-2 h-8 bg-neon-pink rounded-full shadow-glow-pink"></span> 描述
                                 </h3>
                                 <button 
                                     type="button"
@@ -225,7 +226,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                     className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[12px] font-bold transition-all flex items-center gap-2 border border-white/10"
                                 >
                                     {isLoadingAi ? <Loader2 className="animate-spin w-3 h-3"/> : <Sparkles className="w-3 h-3 text-neon-yellow" />}
-                                    <span>AI Generate</span>
+                                    <span>AI 生成</span>
                                 </button>
                             </div>
                             <div className="relative group">
@@ -234,7 +235,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                     value={formData.description}
                                     onChange={handleInputChange}
                                     className="relative w-full min-h-[200px] p-6 input-glass border border-white/10 text-[15px] leading-relaxed resize-none rounded-2xl focus:bg-black/40"
-                                    placeholder="Enter product description..."
+                                    placeholder="输入产品描述..."
                                 />
                             </div>
                         </div>
@@ -248,8 +249,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                              <div className="w-24 h-24 bg-gradient-neon-blue rounded-full shadow-glow-blue flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500">
                                 <ImageIcon className="text-white" size={40} />
                              </div>
-                             <h4 className="text-white font-bold text-3xl tracking-tight">Upload Visuals</h4>
-                             <p className="text-gray-400 text-sm mt-3">Drag & Drop files or click to browse</p>
+                             <h4 className="text-white font-bold text-3xl tracking-tight">上传视觉素材</h4>
+                             <p className="text-gray-400 text-sm mt-3">拖拽文件到此处或点击浏览</p>
                         </div>
                     </div>
                 )}
@@ -265,9 +266,9 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                 <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center mb-6 shadow-glow-purple border border-white/20 backdrop-blur-md">
                                     <Cpu size={40} className="text-neon-purple animate-pulse" />
                                 </div>
-                                <h3 className="text-5xl font-display font-bold mb-4 tracking-tight">Gemini<span className="text-neon-purple">.AI</span></h3>
+                                <h3 className="text-5xl font-display font-bold mb-4 tracking-tight">Gemini<span className="text-neon-purple"> 智能</span></h3>
                                 <p className="text-gray-300 text-lg max-w-lg leading-relaxed">
-                                    Advanced neural processing unit ready for market analysis and linguistic translation.
+                                    先进的神经处理单元，随时准备进行市场分析和语言翻译。
                                 </p>
                              </div>
                         </div>
@@ -284,8 +285,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                     </div>
                                     <Scan size={20} className="text-gray-500 group-hover:text-neon-blue" />
                                 </div>
-                                <h4 className="font-bold text-white text-2xl mb-2">Translation Matrix</h4>
-                                <p className="text-sm text-gray-400">Target: Spanish (ES)</p>
+                                <h4 className="font-bold text-white text-2xl mb-2">翻译矩阵</h4>
+                                <p className="text-sm text-gray-400">目标语言: 西班牙语 (ES)</p>
                             </button>
 
                              <button 
@@ -298,8 +299,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                     </div>
                                     <Scan size={20} className="text-gray-500 group-hover:text-neon-green" />
                                 </div>
-                                <h4 className="font-bold text-white text-2xl mb-2">Market Prediction</h4>
-                                <p className="text-sm text-gray-400">Run Viability Algorithm</p>
+                                <h4 className="font-bold text-white text-2xl mb-2">市场预测</h4>
+                                <p className="text-sm text-gray-400">运行可行性算法</p>
                             </button>
                         </div>
 
@@ -309,11 +310,11 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                  <div className="flex items-start gap-10 relative z-10">
                                     <div className="flex flex-col items-center justify-center p-6 bg-neon-green/10 rounded-3xl border border-neon-green/20 min-w-[140px]">
                                         <span className="text-6xl font-display font-bold text-neon-green drop-shadow-lg">{aiAnalysis.score}</span>
-                                        <span className="text-[12px] font-bold text-neon-green mt-2 uppercase tracking-widest">Score</span>
+                                        <span className="text-[12px] font-bold text-neon-green mt-2 uppercase tracking-widest">评分</span>
                                     </div>
                                     <div className="flex-1 pt-2">
                                         <h5 className="text-neon-green font-bold mb-4 flex items-center gap-3 text-xl">
-                                            <Terminal size={24} /> Analysis Complete
+                                            <Terminal size={24} /> 分析完成
                                         </h5>
                                         <p className="text-lg text-gray-200 leading-relaxed typing-effect">
                                             {aiAnalysis.reasoning}

@@ -49,7 +49,7 @@ const enrichProductData = (products: Product[]): ERPProduct[] => {
 
     return {
       ...p,
-      supplier: index % 2 === 0 ? 'Shenzhen Tech Co.' : 'Guangzhou Electronics Ltd.',
+      supplier: index % 2 === 0 ? '深圳科技实业有限公司' : '广州电子元件厂',
       batchNo: `B-${new Date().getFullYear()}-${String(index + 1).padStart(3, '0')}`,
       logistics: {
         status: index === 0 ? 'In Transit' : index === 1 ? 'Delivered' : 'In Production',
@@ -92,6 +92,24 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
     }
   };
 
+  const getStatusCN = (status: string) => {
+      switch(status) {
+          case 'In Transit': return '运输中';
+          case 'Delivered': return '已送达';
+          case 'In Production': return '生产中';
+          case 'Customs': return '清关中';
+          case 'Pending': return '待处理';
+          default: return status;
+      }
+  }
+
+  const getStatusLabelCN = (status: string) => {
+      if(status === 'Active') return '在售';
+      if(status === 'Draft') return '草稿';
+      if(status === 'Archived') return '归档';
+      return status;
+  }
+
   return (
     <div className="space-y-6 animate-fade-in w-full pb-20">
       
@@ -111,7 +129,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
                     <Package size={20} />
                 </div>
                 <div>
-                    <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Total SKU</div>
+                    <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">SKU 总数</div>
                     <div className="text-xl font-display font-bold text-white">{erpData.length}</div>
                 </div>
              </div>
@@ -122,7 +140,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
                     <DollarSign size={20} />
                 </div>
                 <div className="relative z-10">
-                    <div className="text-[10px] text-neon-green font-bold uppercase tracking-widest">Capital Occupied</div>
+                    <div className="text-[10px] text-neon-green font-bold uppercase tracking-widest">资金占用总额</div>
                     <div className="text-xl font-display font-bold text-white tracking-wide">
                         <span className="text-neon-green text-sm mr-1">$</span>
                         {totalCapital.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}
@@ -140,16 +158,16 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full h-12 pl-12 pr-4 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:border-neon-blue focus:bg-white/10 outline-none transition-all placeholder-gray-600"
-                  placeholder="Search SKU, Product Name or Batch No..."
+                  placeholder="搜索 SKU, 产品名称或批次号..."
               />
           </div>
           
           <div className="flex gap-3">
               <button className="h-12 px-5 rounded-xl border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white transition-colors flex items-center gap-2 text-xs font-bold">
-                  <Filter size={16} /> FILTER
+                  <Filter size={16} /> 筛选
               </button>
               <button className="h-12 px-8 bg-gradient-neon-purple text-white rounded-xl font-bold text-xs shadow-glow-purple hover:scale-105 transition-transform flex items-center gap-2">
-                  <Plus size={16} strokeWidth={3} /> ADD SKU
+                  <Plus size={16} strokeWidth={3} /> 添加 SKU
               </button>
           </div>
       </div>
@@ -158,12 +176,12 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
       <div className="space-y-3">
           {/* Header Row */}
           <div className="grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-              <div className="col-span-2">Identity</div>
-              <div className="col-span-3">Product Detail</div>
-              <div className="col-span-2">Logistics</div>
-              <div className="col-span-2 text-right pr-4">Inventory & Risk</div>
-              <div className="col-span-2 text-right pr-4">Financials</div>
-              <div className="col-span-1 text-center">Action</div>
+              <div className="col-span-2">标识</div>
+              <div className="col-span-3">产品详情</div>
+              <div className="col-span-2">物流信息</div>
+              <div className="col-span-2 text-right pr-4">库存与风险</div>
+              <div className="col-span-2 text-right pr-4">财务数据</div>
+              <div className="col-span-1 text-center">操作</div>
           </div>
 
           {/* Data Rows */}
@@ -181,7 +199,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
                           ? 'bg-neon-green/10 text-neon-green border-neon-green/20' 
                           : 'bg-gray-800 text-gray-400 border-gray-700'
                       }`}>
-                          {item.status.toUpperCase()}
+                          {getStatusLabelCN(item.status)}
                       </span>
                   </div>
 
@@ -195,7 +213,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
                           <div className="flex items-center gap-3 text-[10px] text-gray-500">
                               <span className="flex items-center gap-1"><Factory size={10} /> {item.supplier}</span>
                           </div>
-                          <div className="text-[10px] text-gray-500 font-mono mt-0.5">Batch: {item.batchNo}</div>
+                          <div className="text-[10px] text-gray-500 font-mono mt-0.5">批次: {item.batchNo}</div>
                       </div>
                   </div>
 
@@ -203,26 +221,26 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
                   <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center">
                       <div className="flex items-center gap-2 text-white font-bold text-xs mb-1">
                           {getLogisticsIcon(item.logistics.method)}
-                          {item.logistics.status}
+                          {getStatusCN(item.logistics.status)}
                       </div>
                       <div className="text-[10px] text-gray-500 font-mono mb-2">{item.logistics.trackingNo}</div>
                       <div className="flex items-center gap-1 text-[10px] text-neon-blue bg-neon-blue/5 w-fit px-1.5 py-0.5 rounded border border-neon-blue/10">
-                          <Calendar size={10} /> ETA: {item.logistics.eta}
+                          <Calendar size={10} /> 预计: {item.logistics.eta}
                       </div>
                   </div>
 
                   {/* 4. Inventory & Risk */}
                   <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center items-end text-right">
-                       <div className="text-xl font-display font-bold text-white">{item.stock} <span className="text-xs text-gray-500 font-sans">pcs</span></div>
+                       <div className="text-xl font-display font-bold text-white">{item.stock} <span className="text-xs text-gray-500 font-sans">件</span></div>
                        
                        {item.inventoryAnalysis.riskLevel === 'Critical' ? (
                            <div className="flex items-center gap-1 text-neon-pink text-[10px] font-bold mt-1 animate-pulse">
                                <AlertTriangle size={10} />
-                               {item.inventoryAnalysis.daysRemaining} Days Left
+                               剩余 {item.inventoryAnalysis.daysRemaining} 天
                            </div>
                        ) : (
                            <div className="text-neon-green text-[10px] font-bold mt-1">
-                               {item.inventoryAnalysis.daysRemaining} Days Safe
+                               安全 {item.inventoryAnalysis.daysRemaining} 天
                            </div>
                        )}
                   </div>
@@ -233,11 +251,11 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
                       <div className="text-sm font-bold text-neon-green mb-0.5">
                          ${((item.financials.costOfGoods + item.financials.shippingCost) * item.stock).toLocaleString()}
                       </div>
-                      <div className="text-[10px] text-gray-500">Total Invest</div>
+                      <div className="text-[10px] text-gray-500">总投入</div>
                       
                       {/* Profit Detail */}
                       <div className="mt-2 text-[10px] text-gray-400 flex items-center gap-1">
-                          Profit: <span className="text-white font-mono">+${item.financials.unitProfit.toFixed(1)}/u</span>
+                          利润: <span className="text-white font-mono">+${item.financials.unitProfit.toFixed(1)}/件</span>
                       </div>
                   </div>
 

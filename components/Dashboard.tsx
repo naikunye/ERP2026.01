@@ -52,31 +52,31 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center gap-3 mb-2">
               <span className="px-3 py-1 rounded-full bg-neon-green/10 border border-neon-green/20 text-neon-green text-[11px] font-bold flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-neon-green animate-pulse"></span>
-                  SYSTEM ONLINE
+                  系统在线
               </span>
               <span className="text-[11px] text-gray-500 font-mono">TOKYO_NODE_01</span>
           </div>
           <h1 className="text-[48px] font-display font-bold text-white tracking-tight leading-none text-shadow-lg">
-            Command Center
+            中央指挥中心
           </h1>
         </div>
         
         <div className="flex gap-4">
             <button className="h-[50px] px-6 rounded-xl border border-white/10 bg-white/5 text-neon-blue text-sm font-bold hover:bg-white/10 hover:border-neon-blue/50 transition-all flex items-center gap-2 backdrop-blur-md">
-                <Activity size={18} /> Live Feed
+                <Activity size={18} /> 实时监控
             </button>
             <button className="h-[50px] bg-gradient-neon-blue text-white px-8 rounded-xl text-sm font-bold shadow-glow-blue hover:scale-105 transition-all flex items-center gap-2">
-                <Zap size={18} fill="currentColor" /> Quick Action
+                <Zap size={18} fill="currentColor" /> 快捷指令
             </button>
         </div>
       </div>
 
       {/* Colorful Widgets Grid - Updated breakpoints for wide screens */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-4 gap-6 w-full">
-        <StatWidget delay={0} title="Total Revenue" value="$124,592" icon={<DollarSign size={24} />} trend="12.5" gradient="from-cyan-400 to-blue-500" />
-        <StatWidget delay={100} title="Active Assets" value="1,432" icon={<Package size={24} />} trend="3.2" gradient="from-purple-400 to-pink-500" />
-        <StatWidget delay={200} title="Global Nodes" value="24" icon={<Globe size={24} />} trend="5.8" gradient="from-pink-500 to-rose-500" />
-        <StatWidget delay={300} title="User Base" value="8.9k" icon={<Users size={24} />} gradient="from-emerald-400 to-teal-500" />
+        <StatWidget delay={0} title="总营收" value="$124,592" icon={<DollarSign size={24} />} trend="12.5" gradient="from-cyan-400 to-blue-500" />
+        <StatWidget delay={100} title="活跃资产" value="1,432" icon={<Package size={24} />} trend="3.2" gradient="from-purple-400 to-pink-500" />
+        <StatWidget delay={200} title="全球节点" value="24" icon={<Globe size={24} />} trend="5.8" gradient="from-pink-500 to-rose-500" />
+        <StatWidget delay={300} title="用户基数" value="8.9k" icon={<Users size={24} />} gradient="from-emerald-400 to-teal-500" />
       </div>
 
       {/* Glass Chart Area */}
@@ -90,11 +90,11 @@ const Dashboard: React.FC = () => {
                   <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-neon-blue border border-white/10">
                      <Radio size={20} />
                   </div>
-                  Revenue Visualization
+                  营收可视化
               </h2>
           </div>
           <div className="flex bg-black/20 p-1 rounded-xl border border-white/10 backdrop-blur-sm">
-             {['1H', '1D', '1W', '1M', '1Y'].map((t, i) => (
+             {['1小时', '1天', '1周', '1月', '1年'].map((t, i) => (
                  <button key={t} className={`px-5 py-2 text-[12px] font-bold rounded-lg transition-all ${i===2 ? 'bg-white/10 text-white shadow-inner-light' : 'text-gray-500 hover:text-white'}`}>
                      {t}
                  </button>

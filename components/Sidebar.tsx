@@ -62,10 +62,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView }) => {
                     <Sparkles size={20} className="animate-pulse" />
                  </div>
                  <div className="flex-1">
-                     <div className="text-[14px] font-bold text-white font-display tracking-wide">Gemini Core</div>
+                     <div className="text-[14px] font-bold text-white font-display tracking-wide">Gemini 核心</div>
                      <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1.5 mt-0.5">
                         <span className="w-1.5 h-1.5 bg-neon-green rounded-full animate-pulse"></span>
-                        Neural Link Active
+                        神经链接已激活
                      </div>
                  </div>
              </div>
@@ -79,8 +79,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView }) => {
              <img src="https://ui-avatars.com/api/?name=Admin&background=000&color=fff" className="relative w-10 h-10 rounded-full object-cover border-2 border-black" alt="User" />
          </div>
          <div className="flex-1">
-            <div className="text-[14px] font-bold text-white group-hover:text-neon-pink transition-colors font-display tracking-wide">ADMINISTRATOR</div>
-            <div className="text-[10px] text-gray-500 font-mono">Level 9 Access</div>
+            <div className="text-[14px] font-bold text-white group-hover:text-neon-pink transition-colors font-display tracking-wide">超级管理员</div>
+            <div className="text-[10px] text-gray-500 font-mono">L9 最高权限</div>
          </div>
          <Settings size={18} className="text-gray-500 group-hover:text-white transition-colors group-hover:rotate-90 duration-500" />
       </div>
