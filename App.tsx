@@ -5,6 +5,7 @@ import ProductList from './components/ProductList';
 import ProductEditor from './components/ProductEditor';
 import RestockModule from './components/RestockModule';
 import SKUDetailEditor from './components/SKUDetailEditor';
+import LogisticsModule from './components/LogisticsModule';
 import { Product, ProductStatus, Currency } from './types';
 
 // Mock Initial Data
@@ -138,6 +139,8 @@ const App: React.FC = () => {
             onDeleteSKU={handleDeleteSKU}
           />
         );
+      case 'orders':
+        return <LogisticsModule />;
       default:
         return (
           <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-white/50">
