@@ -264,7 +264,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                       </div>
 
                   </div>
-             )})}
+                 );
+             })
+          )}
       </div>
     </div>
   );

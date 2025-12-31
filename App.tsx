@@ -9,18 +9,157 @@ import LogisticsModule from './components/LogisticsModule';
 import DataSyncModule from './components/DataSyncModule';
 import { Product, ProductStatus, Currency, Shipment } from './types';
 
+// --- HIGH FIDELITY DEMO DATA ---
+
+const DEMO_PRODUCTS: Product[] = [
+  {
+    id: 'DEMO-001',
+    sku: 'AERO-ANC-PRO',
+    name: 'Aero 降噪耳机 Pro (2024)',
+    description: '旗舰级主动降噪，40小时续航，透明模式。',
+    price: 89.99,
+    currency: Currency.USD,
+    stock: 1200,
+    category: 'Electronics',
+    status: ProductStatus.Active,
+    imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=300&h=300',
+    marketplaces: ['US', 'DE'],
+    lastUpdated: new Date().toISOString(),
+    supplier: '深圳声学科技有限公司',
+    note: 'Q4 旺季主推款，注意备货节奏',
+    financials: {
+        costOfGoods: 22.5,
+        shippingCost: 3.2,
+        otherCost: 0.5,
+        sellingPrice: 89.99,
+        platformFee: 13.5, // 15%
+        adCost: 12.0
+    },
+    logistics: {
+        method: 'Air',
+        carrier: 'DHL',
+        trackingNo: 'DHL99283711HK',
+        status: 'In Transit',
+        origin: 'Shenzhen',
+        destination: 'US-LAX',
+        eta: '2023-11-20'
+    }
+  },
+  {
+    id: 'DEMO-002',
+    sku: 'ERGO-CHAIR-X1',
+    name: '人体工学办公椅 X1',
+    description: '全网布透气，3D扶手调节，腰部支撑。',
+    price: 199.00,
+    currency: Currency.USD,
+    stock: 45,
+    category: 'Furniture',
+    status: ProductStatus.Active,
+    imageUrl: 'https://images.unsplash.com/photo-1505843490538-5133c6c7d0e1?auto=format&fit=crop&q=80&w=300&h=300',
+    marketplaces: ['US'],
+    lastUpdated: new Date().toISOString(),
+    supplier: '安吉椅业集团',
+    note: '体积大，海运费上涨影响利润',
+    financials: {
+        costOfGoods: 65.0,
+        shippingCost: 45.0, // Heavy item
+        otherCost: 2.0,
+        sellingPrice: 199.00,
+        platformFee: 29.85,
+        adCost: 25.0
+    },
+    logistics: {
+        method: 'Sea',
+        carrier: 'Matson',
+        trackingNo: 'MSN78291029US',
+        status: 'Customs',
+        origin: 'Ningbo',
+        destination: 'US-LGB',
+        eta: '2023-11-25'
+    }
+  },
+  {
+    id: 'DEMO-003',
+    sku: 'LUMI-SMART-BULB',
+    name: 'Lumina 智能灯泡 (4件装)',
+    description: 'WiFi直连，1600万色，支持Alexa/Google Home。',
+    price: 39.99,
+    currency: Currency.USD,
+    stock: 0,
+    category: 'Home',
+    status: ProductStatus.Draft,
+    imageUrl: 'https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=300&h=300',
+    marketplaces: ['US', 'JP'],
+    lastUpdated: new Date().toISOString(),
+    supplier: '中山照明厂',
+    note: '缺货！需紧急补货',
+    financials: {
+        costOfGoods: 8.0,
+        shippingCost: 1.5,
+        otherCost: 0.2,
+        sellingPrice: 39.99,
+        platformFee: 6.0,
+        adCost: 8.0
+    },
+    logistics: {
+        method: 'Air',
+        carrier: 'UPS',
+        trackingNo: '',
+        status: 'Pending',
+        origin: 'Zhongshan',
+        destination: 'US-DAL',
+        eta: ''
+    }
+  }
+];
+
+const DEMO_SHIPMENTS: Shipment[] = [
+  {
+    id: 'SH-001',
+    trackingNo: 'MSN78291029US',
+    carrier: 'Matson (CLX)',
+    method: 'Sea',
+    origin: 'Ningbo, CN',
+    destination: 'Long Beach, US',
+    etd: '2023-11-01',
+    eta: '2023-11-14',
+    status: 'In Transit',
+    progress: 65,
+    weight: 3500,
+    cartons: 120,
+    riskReason: '正常航行',
+    skuIds: ['DEMO-002']
+  },
+  {
+    id: 'SH-002',
+    trackingNo: 'DHL99283711HK',
+    carrier: 'DHL Express',
+    method: 'Air',
+    origin: 'Hong Kong, CN',
+    destination: 'Los Angeles, US',
+    etd: '2023-11-10',
+    eta: '2023-11-12',
+    status: 'Customs',
+    progress: 85,
+    weight: 240,
+    cartons: 20,
+    riskReason: '清关查验排队中',
+    skuIds: ['DEMO-001']
+  }
+];
+
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
   
-  // REAL DATA: Initialize from LocalStorage or empty array. No more hardcoded mocks if user has data.
+  // Initialize from LocalStorage OR fall back to DEMO DATA for first-time experience
   const [products, setProducts] = useState<Product[]>(() => {
     const saved = localStorage.getItem('aero_erp_products');
-    return saved ? JSON.parse(saved) : []; 
+    return saved ? JSON.parse(saved) : DEMO_PRODUCTS; 
   });
 
   const [shipments, setShipments] = useState<Shipment[]>(() => {
     const saved = localStorage.getItem('aero_erp_shipments');
-    return saved ? JSON.parse(saved) : [];
+    return saved ? JSON.parse(saved) : DEMO_SHIPMENTS;
   });
 
   const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined);
@@ -46,21 +185,17 @@ const App: React.FC = () => {
   };
 
   const handleSaveSKU = (updatedData: any) => {
-    // Merge the complex data from SKU Detail Editor into the main product object
-    // In a real backend, this would be a PATCH request
     if (editingSKU) {
        setProducts(prev => prev.map(p => {
            if (p.id !== editingSKU.id) return p;
            
-           // Construct the real data structure from the form flat data
            return {
                ...p,
                note: updatedData.note,
                supplier: updatedData.supplierName,
-               // Map flat form data to structured types
                financials: {
                    costOfGoods: updatedData.unitCost,
-                   shippingCost: updatedData.shippingRate * updatedData.unitWeight, // Simplified calc
+                   shippingCost: updatedData.shippingRate * updatedData.unitWeight,
                    otherCost: updatedData.fulfillmentFee + updatedData.adCostPerUnit,
                    sellingPrice: updatedData.sellingPrice,
                    platformFee: (updatedData.sellingPrice * updatedData.tiktokCommission) / 100,
@@ -70,8 +205,8 @@ const App: React.FC = () => {
                    method: updatedData.transportMethod,
                    carrier: updatedData.carrier,
                    trackingNo: updatedData.trackingNo,
-                   status: 'Pending', // Default status for new update
-                   origin: 'China', // Default
+                   status: 'Pending',
+                   origin: 'China',
                    destination: updatedData.destinationWarehouse,
                    etd: updatedData.restockDate
                }
@@ -84,7 +219,7 @@ const App: React.FC = () => {
   const handleCloneSKU = (product: Product) => {
     const newProduct: Product = {
       ...product,
-      id: crypto.randomUUID(), // Use real UUID
+      id: crypto.randomUUID(), 
       sku: `${product.sku}-COPY`,
       name: `${product.name} (副本)`,
       status: ProductStatus.Draft,
@@ -106,14 +241,12 @@ const App: React.FC = () => {
 
   const handleImportData = (importedData: Product[]) => {
       setProducts(prev => {
-          // Intelligent Merge: Update existing IDs, Append new ones
           const prevMap = new Map(prev.map(p => [p.id, p]));
           importedData.forEach(p => prevMap.set(p.id, p));
           return Array.from(prevMap.values());
       });
   };
   
-  // Real Logic: Add a new shipment
   const handleAddShipment = (newShipment: Shipment) => {
       setShipments(prev => [newShipment, ...prev]);
   }
