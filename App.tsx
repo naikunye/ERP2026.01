@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
-import ProductList from './components/ProductList';
 import ProductEditor from './components/ProductEditor';
 import RestockModule from './components/RestockModule';
 import SKUDetailEditor from './components/SKUDetailEditor';
 import LogisticsModule from './components/LogisticsModule';
 import DataSyncModule from './components/DataSyncModule';
-import { Product, ProductStatus, Currency, Shipment } from './types';
+import InfluencerModule from './components/InfluencerModule';
+import FinanceModule from './components/FinanceModule';
+import { Product, ProductStatus, Currency, Shipment, Influencer, Transaction, Theme } from './types';
 
 // --- HIGH FIDELITY DEMO DATA ---
 
@@ -148,8 +149,70 @@ const DEMO_SHIPMENTS: Shipment[] = [
   }
 ];
 
+// Mock Influencer Data
+const DEMO_INFLUENCERS: Influencer[] = [
+    {
+        id: 'INF-001',
+        name: 'Jessica Tech',
+        handle: '@jessicamania',
+        platform: 'TikTok',
+        followers: 1200000,
+        engagementRate: 5.8,
+        region: 'North America',
+        category: 'Tech Review',
+        status: 'Content Live',
+        avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150',
+        cost: 1500,
+        gmv: 12400,
+        roi: 8.2,
+        sampleSku: 'AERO-ANC-PRO'
+    },
+    {
+        id: 'INF-002',
+        name: 'David Home',
+        handle: '@david.living',
+        platform: 'Instagram',
+        followers: 450000,
+        engagementRate: 3.2,
+        region: 'Europe',
+        category: 'Home Decor',
+        status: 'Sample Sent',
+        avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150',
+        cost: 500,
+        gmv: 0,
+        roi: 0,
+        sampleSku: 'LUMI-SMART-BULB'
+    },
+    {
+        id: 'INF-003',
+        name: 'TechUnboxed',
+        handle: 'tech_unboxed_official',
+        platform: 'YouTube',
+        followers: 890000,
+        engagementRate: 8.5,
+        region: 'Global',
+        category: 'Tech Review',
+        status: 'Negotiating',
+        avatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=150&h=150',
+        cost: 3000,
+        gmv: 0,
+        roi: 0,
+        sampleSku: 'N/A'
+    }
+];
+
+// Mock Transaction Data
+const DEMO_TRANSACTIONS: Transaction[] = [
+    { id: 'TX-1001', date: '2023-11-15', type: 'Revenue', category: 'Sales', amount: 4500.00, description: 'Amazon US Settlement', status: 'Cleared' },
+    { id: 'TX-1002', date: '2023-11-14', type: 'Expense', category: 'Shipping', amount: 1200.00, description: 'DHL Express Payment', status: 'Cleared' },
+    { id: 'TX-1003', date: '2023-11-14', type: 'Expense', category: 'Marketing', amount: 500.00, description: 'Influencer Fee @david.living', status: 'Pending' },
+    { id: 'TX-1004', date: '2023-11-13', type: 'Revenue', category: 'Sales', amount: 2100.00, description: 'Shopify Store Payout', status: 'Cleared' },
+    { id: 'TX-1005', date: '2023-11-12', type: 'Expense', category: 'COGS', amount: 3000.00, description: 'Supplier Payment Batch #4', status: 'Cleared' },
+];
+
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
+  const [currentTheme, setCurrentTheme] = useState<Theme>('neon');
   
   // Initialize from LocalStorage OR fall back to DEMO DATA for first-time experience
   const [products, setProducts] = useState<Product[]>(() => {
@@ -162,6 +225,9 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : DEMO_SHIPMENTS;
   });
 
+  const [influencers, setInfluencers] = useState<Influencer[]>(DEMO_INFLUENCERS);
+  const [transactions, setTransactions] = useState<Transaction[]>(DEMO_TRANSACTIONS);
+
   const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined);
   const [editingSKU, setEditingSKU] = useState<Product | null>(null);
 
@@ -173,6 +239,16 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('aero_erp_shipments', JSON.stringify(shipments));
   }, [shipments]);
+
+  useEffect(() => {
+    localStorage.setItem('aero_erp_transactions', JSON.stringify(transactions));
+  }, [transactions]);
+
+  // Theme Side Effect
+  useEffect(() => {
+    // Apply theme to document body
+    document.documentElement.setAttribute('data-theme', currentTheme);
+  }, [currentTheme]);
 
   const handleSaveProduct = (savedProduct: Product) => {
     setProducts(prev => {
@@ -251,18 +327,14 @@ const App: React.FC = () => {
       setShipments(prev => [newShipment, ...prev]);
   }
 
+  const handleAddTransaction = (newTx: Transaction) => {
+      setTransactions(prev => [newTx, ...prev]);
+  };
+
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
         return <Dashboard />;
-      case 'products':
-        return (
-          <ProductList 
-            products={products} 
-            onEdit={(p) => setEditingProduct(p)} 
-            onAddNew={() => setEditingProduct(null)} 
-          />
-        );
       case 'restock':
         return (
           <RestockModule 
@@ -270,10 +342,15 @@ const App: React.FC = () => {
             onEditSKU={(p) => setEditingSKU(p)}
             onCloneSKU={handleCloneSKU}
             onDeleteSKU={handleDeleteSKU}
+            onAddNew={() => setEditingProduct(null)} // Enable Creating New Products via Restock Module
           />
         );
       case 'orders':
         return <LogisticsModule shipments={shipments} onAddShipment={handleAddShipment} />;
+      case 'influencers': // New Route
+        return <InfluencerModule influencers={influencers} />;
+      case 'finance': // New Route
+        return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
       case 'datasync':
         return (
             <DataSyncModule 
@@ -287,8 +364,13 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen font-sans selection:bg-neon-pink selection:text-white overflow-hidden text-gray-900">
-      <Sidebar activeView={activeView} onChangeView={setActiveView} />
+    <div className="min-h-screen font-sans selection:bg-neon-pink selection:text-white overflow-hidden text-gray-900 bg-transparent">
+      <Sidebar 
+        activeView={activeView} 
+        onChangeView={setActiveView} 
+        currentTheme={currentTheme}
+        onThemeChange={setCurrentTheme}
+      />
       
       {/* Main Content Area */}
       <main className="ml-[320px] h-screen overflow-y-auto no-scrollbar pr-6">

@@ -10,9 +10,10 @@ interface RestockModuleProps {
   onEditSKU?: (product: Product) => void;
   onCloneSKU?: (product: Product) => void;
   onDeleteSKU?: (productId: string) => void;
+  onAddNew?: () => void;
 }
 
-const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCloneSKU, onDeleteSKU }) => {
+const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCloneSKU, onDeleteSKU, onAddNew }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   const filteredData = products.filter(p => 
@@ -129,6 +130,14 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               <button className="h-12 px-5 rounded-xl border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white transition-colors flex items-center gap-2 text-xs font-bold">
                   <Filter size={16} /> 筛选
               </button>
+              {onAddNew && (
+                  <button 
+                    onClick={onAddNew}
+                    className="h-12 px-5 rounded-xl bg-gradient-neon-blue text-white shadow-glow-blue hover:scale-105 transition-all flex items-center gap-2 text-xs font-bold"
+                  >
+                      <Plus size={16} strokeWidth={3} /> 新建 SKU
+                  </button>
+              )}
           </div>
       </div>
 
@@ -147,7 +156,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
 
           {/* Data Rows */}
           {filteredData.length === 0 ? (
-              <div className="text-center py-20 text-gray-500">暂无数据，请添加 SKU 详情</div>
+              <div className="text-center py-20 text-gray-500">
+                  暂无数据，请点击右上角新建 SKU
+              </div>
           ) : (
              filteredData.map((item) => {
                  const unitProfit = calculateProfit(item);
@@ -301,7 +312,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
 
                   </div>
                  );
-             })}
+             }))}
       </div>
     </div>
   );

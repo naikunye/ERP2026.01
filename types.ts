@@ -12,6 +12,8 @@ export enum Currency {
   JPY = 'JPY'
 }
 
+export type Theme = 'neon' | 'ivory' | 'midnight';
+
 // 核心物流数据结构
 export interface LogisticsInfo {
   method: 'Air' | 'Sea' | 'Rail';
@@ -71,6 +73,33 @@ export interface Shipment {
   riskReason?: string;
   // 关联的 SKU IDs
   skuIds: string[]; 
+}
+
+export interface Influencer {
+    id: string;
+    name: string;
+    handle: string; // e.g., @username
+    platform: 'TikTok' | 'Instagram' | 'YouTube';
+    followers: number;
+    engagementRate: number; // %
+    region: string;
+    category: string;
+    status: 'Contacted' | 'Sample Sent' | 'Content Live' | 'Paid' | 'Negotiating';
+    avatarUrl: string;
+    cost: number; // Collaboration fee
+    gmv: number; // Generated Sales
+    roi: number;
+    sampleSku: string; // SKU sent
+}
+
+export interface Transaction {
+    id: string;
+    date: string;
+    type: 'Revenue' | 'Expense';
+    category: string; // Changed from strict union to string for flexibility
+    amount: number;
+    description: string;
+    status: 'Cleared' | 'Pending';
 }
 
 export interface DashboardStats {

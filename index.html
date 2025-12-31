@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Aero ERP - Neon Glass</title>
+    <title>Aero ERP - Intelligent Suite</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
@@ -17,30 +17,43 @@
             },
             colors: {
               neon: {
-                blue: '#29D9FF',
-                purple: '#B829FF',
-                pink: '#FF2975',
-                green: '#00FF9D',
-                yellow: '#FFD600',
+                blue: 'var(--color-neon-blue)',
+                purple: 'var(--color-neon-purple)',
+                pink: 'var(--color-neon-pink)',
+                green: 'var(--color-neon-green)',
+                yellow: 'var(--color-neon-yellow)',
+              },
+              gray: {
+                900: 'var(--color-gray-900)', // Used for text-gray-900 override in light mode
+                800: 'var(--color-gray-800)',
+                500: 'var(--color-gray-500)',
+                400: 'var(--color-gray-400)',
+                300: 'var(--color-gray-300)',
               }
             },
             boxShadow: {
-              'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
-              'glow-blue': '0 0 20px rgba(41, 217, 255, 0.5), 0 0 40px rgba(41, 217, 255, 0.2)',
-              'glow-purple': '0 0 20px rgba(184, 41, 255, 0.5), 0 0 40px rgba(184, 41, 255, 0.2)',
-              'glow-pink': '0 0 20px rgba(255, 41, 117, 0.5), 0 0 40px rgba(255, 41, 117, 0.2)',
+              'glass': '0 8px 32px 0 var(--shadow-color)',
+              'glow-blue': '0 0 20px var(--glow-blue), 0 0 40px var(--glow-blue-sub)',
+              'glow-purple': '0 0 20px var(--glow-purple), 0 0 40px var(--glow-purple-sub)',
+              'glow-pink': '0 0 20px var(--glow-pink), 0 0 40px var(--glow-pink-sub)',
+              'glow-green': '0 0 20px var(--glow-green), 0 0 40px var(--glow-green-sub)',
+              'glow-white': '0 0 20px rgba(255,255,255,0.3), 0 0 40px rgba(255,255,255,0.1)',
               'inner-light': 'inset 0 0 20px rgba(255, 255, 255, 0.05)',
             },
             backgroundImage: {
               'gradient-glass': 'linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.01))',
-              'gradient-neon-blue': 'linear-gradient(135deg, #29D9FF, #0080FF)',
-              'gradient-neon-purple': 'linear-gradient(135deg, #B829FF, #7000FF)',
-              'gradient-neon-pink': 'linear-gradient(135deg, #FF2975, #FF0055)',
+              'gradient-neon-blue': 'var(--gradient-blue)',
+              'gradient-neon-purple': 'var(--gradient-purple)',
+              'gradient-neon-pink': 'var(--gradient-pink)',
+              'gradient-neon-green': 'var(--gradient-green)',
             },
             animation: {
               'aurora': 'aurora 10s infinite alternate',
               'float': 'float 6s ease-in-out infinite',
               'pulse-glow': 'pulseGlow 3s infinite',
+              'fade-in': 'fadeIn 0.5s ease-out forwards',
+              'scale-in': 'scaleIn 0.3s ease-out forwards',
+              'shimmer': 'shimmer 2s infinite',
             },
             keyframes: {
               aurora: {
@@ -54,6 +67,18 @@
               pulseGlow: {
                 '0%, 100%': { opacity: 1 },
                 '50%': { opacity: 0.6 },
+              },
+              fadeIn: {
+                '0%': { opacity: 0, transform: 'translateY(10px)' },
+                '100%': { opacity: 1, transform: 'translateY(0)' },
+              },
+              scaleIn: {
+                  '0%': { opacity: 0, transform: 'scale(0.95)' },
+                  '100%': { opacity: 1, transform: 'scale(1)' },
+              },
+              shimmer: {
+                  '0%': { transform: 'translateX(-100%) skewX(12deg)' },
+                  '100%': { transform: 'translateX(200%) skewX(12deg)' }
               }
             }
           }
@@ -61,13 +86,143 @@
       }
     </script>
     <style>
+      :root {
+        /* Default: Neon Glass (Dark) */
+        --bg-color: #000;
+        --text-color: #fff;
+        --text-secondary: #9ca3af;
+        
+        --color-neon-blue: #29D9FF;
+        --color-neon-purple: #B829FF;
+        --color-neon-pink: #FF2975;
+        --color-neon-green: #00FF9D;
+        --color-neon-yellow: #FFD600;
+
+        --glass-bg: rgba(20, 20, 30, 0.4);
+        --glass-border: rgba(255, 255, 255, 0.12);
+        --glass-hover-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.4);
+        --glass-hover-border: rgba(255, 255, 255, 0.25);
+        
+        --input-bg: rgba(0, 0, 0, 0.2);
+        --input-border: rgba(255, 255, 255, 0.1);
+
+        --shadow-color: rgba(0, 0, 0, 0.3);
+        
+        --glow-blue: rgba(41, 217, 255, 0.5);
+        --glow-blue-sub: rgba(41, 217, 255, 0.2);
+        --glow-purple: rgba(184, 41, 255, 0.5);
+        --glow-purple-sub: rgba(184, 41, 255, 0.2);
+        --glow-pink: rgba(255, 41, 117, 0.5);
+        --glow-pink-sub: rgba(255, 41, 117, 0.2);
+        --glow-green: rgba(0, 255, 157, 0.5);
+        --glow-green-sub: rgba(0, 255, 157, 0.2);
+
+        --gradient-blue: linear-gradient(135deg, #29D9FF, #0080FF);
+        --gradient-purple: linear-gradient(135deg, #B829FF, #7000FF);
+        --gradient-pink: linear-gradient(135deg, #FF2975, #FF0055);
+        --gradient-green: linear-gradient(135deg, #00FF9D, #00CC7A);
+
+        --aurora-1: #7000FF;
+        --aurora-2: #29D9FF;
+        --aurora-3: #FF2975;
+        
+        --color-gray-900: #111827;
+        --color-gray-500: #6b7280;
+        --color-gray-400: #9ca3af;
+        --color-gray-300: #d1d5db;
+      }
+
+      [data-theme="ivory"] {
+        /* Ivory Air (Light) */
+        --bg-color: #F5F5F7;
+        --text-color: #1D1D1F;
+        --text-secondary: #515154;
+        
+        --color-neon-blue: #007AFF;
+        --color-neon-purple: #5856D6;
+        --color-neon-pink: #FF2D55;
+        --color-neon-green: #34C759;
+        --color-neon-yellow: #FF9500;
+
+        --glass-bg: rgba(255, 255, 255, 0.65);
+        --glass-border: rgba(0, 0, 0, 0.08);
+        --glass-hover-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.1);
+        --glass-hover-border: rgba(0, 0, 0, 0.15);
+        
+        --input-bg: rgba(0, 0, 0, 0.03);
+        --input-border: rgba(0, 0, 0, 0.1);
+
+        --shadow-color: rgba(0, 0, 0, 0.05);
+
+        --glow-blue: rgba(0, 122, 255, 0.3);
+        --glow-blue-sub: rgba(0, 122, 255, 0.1);
+        --glow-purple: rgba(88, 86, 214, 0.3);
+        --glow-purple-sub: rgba(88, 86, 214, 0.1);
+        --glow-pink: rgba(255, 45, 85, 0.3);
+        --glow-pink-sub: rgba(255, 45, 85, 0.1);
+        --glow-green: rgba(52, 199, 89, 0.3);
+        --glow-green-sub: rgba(52, 199, 89, 0.1);
+
+        --gradient-blue: linear-gradient(135deg, #007AFF, #0056B3);
+        --gradient-purple: linear-gradient(135deg, #5856D6, #3634A3);
+        --gradient-pink: linear-gradient(135deg, #FF2D55, #D31034);
+        --gradient-green: linear-gradient(135deg, #34C759, #248A3D);
+
+        --aurora-1: rgba(0, 122, 255, 0.2);
+        --aurora-2: rgba(52, 199, 89, 0.2);
+        --aurora-3: rgba(255, 149, 0, 0.2);
+
+        --color-gray-900: #000000;
+        --color-gray-500: #6e6e73;
+        --color-gray-400: #86868b;
+        --color-gray-300: #1D1D1F; /* In light mode, light gray text becomes dark */
+      }
+
+      [data-theme="midnight"] {
+        /* Midnight Pro (Deep Blue/Gold) */
+        --bg-color: #020617;
+        --text-color: #F8FAFC;
+        --text-secondary: #94A3B8;
+        
+        --color-neon-blue: #38BDF8;
+        --color-neon-purple: #818CF8;
+        --color-neon-pink: #FB7185;
+        --color-neon-green: #4ADE80;
+        --color-neon-yellow: #FACC15;
+
+        --glass-bg: rgba(15, 23, 42, 0.6);
+        --glass-border: rgba(56, 189, 248, 0.2);
+        --glass-hover-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.6);
+        --glass-hover-border: rgba(56, 189, 248, 0.4);
+        
+        --input-bg: rgba(15, 23, 42, 0.4);
+        --input-border: rgba(56, 189, 248, 0.1);
+
+        --shadow-color: rgba(0, 0, 0, 0.5);
+
+        --glow-blue: rgba(56, 189, 248, 0.4);
+        --glow-blue-sub: rgba(56, 189, 248, 0.1);
+        --glow-purple: rgba(129, 140, 248, 0.4);
+        --glow-purple-sub: rgba(129, 140, 248, 0.1);
+        
+        --gradient-blue: linear-gradient(135deg, #38BDF8, #0284C7);
+        --gradient-purple: linear-gradient(135deg, #818CF8, #4F46E5);
+        --gradient-pink: linear-gradient(135deg, #FB7185, #E11D48);
+        --gradient-green: linear-gradient(135deg, #4ADE80, #16A34A);
+
+        --aurora-1: #1E3A8A;
+        --aurora-2: #0F172A;
+        --aurora-3: #172554;
+      }
+
       body {
         margin: 0;
         padding: 0;
         overflow: hidden;
-        background-color: #000;
-        color: #fff;
+        background-color: var(--bg-color);
+        color: var(--text-color);
         font-family: 'Noto Sans SC', sans-serif;
+        transition: background-color 0.5s ease, color 0.5s ease;
       }
 
       /* --- Vibrant Aurora Background --- */
@@ -75,8 +230,9 @@
         position: fixed;
         top: 0; left: 0; width: 100vw; height: 100vh;
         z-index: -2;
-        background: #050510;
+        background: var(--bg-color);
         overflow: hidden;
+        transition: background 0.5s ease;
       }
       
       .orb {
@@ -85,25 +241,26 @@
         filter: blur(80px);
         opacity: 0.6;
         animation: aurora 15s infinite alternate;
+        transition: background 0.5s ease;
       }
-      .orb-1 { top: -10%; left: -10%; width: 50vw; height: 50vw; background: radial-gradient(circle, #7000FF, transparent 70%); }
-      .orb-2 { bottom: -20%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, #29D9FF, transparent 70%); animation-delay: -5s; }
-      .orb-3 { top: 30%; left: 30%; width: 40vw; height: 40vw; background: radial-gradient(circle, #FF2975, transparent 70%); animation-delay: -10s; opacity: 0.4; }
+      .orb-1 { top: -10%; left: -10%; width: 50vw; height: 50vw; background: radial-gradient(circle, var(--aurora-1), transparent 70%); }
+      .orb-2 { bottom: -20%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, var(--aurora-2), transparent 70%); animation-delay: -5s; }
+      .orb-3 { top: 30%; left: 30%; width: 40vw; height: 40vw; background: radial-gradient(circle, var(--aurora-3), transparent 70%); animation-delay: -10s; opacity: 0.4; }
 
       /* --- iOS Glassmorphism Card --- */
       .glass-card {
-        background: rgba(20, 20, 30, 0.4);
+        background: var(--glass-bg);
         backdrop-filter: blur(24px) saturate(180%);
         -webkit-backdrop-filter: blur(24px) saturate(180%);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--glass-border);
+        box-shadow: 0 8px 32px 0 var(--shadow-color);
         border-radius: 24px;
         position: relative;
         overflow: hidden;
         transition: all 0.3s ease;
       }
       
-      /* Subtle white gradient overlay for reflection */
+      /* Subtle gradient overlay for reflection */
       .glass-card::before {
         content: '';
         position: absolute;
@@ -114,34 +271,61 @@
       }
 
       .glass-card:hover {
-        border-color: rgba(255, 255, 255, 0.25);
-        box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.4);
+        border-color: var(--glass-hover-border);
+        box-shadow: var(--glass-hover-shadow);
       }
 
       /* --- Neon Text & Elements --- */
-      .text-neon-blue { color: #29D9FF; text-shadow: 0 0 10px rgba(41, 217, 255, 0.6); }
-      .text-neon-purple { color: #B829FF; text-shadow: 0 0 10px rgba(184, 41, 255, 0.6); }
-      .text-neon-pink { color: #FF2975; text-shadow: 0 0 10px rgba(255, 41, 117, 0.6); }
+      /* Note: We use Tailwind utilities mapped to vars, but these helper classes are good for non-tailwind contexts */
+      .text-neon-blue { color: var(--color-neon-blue); text-shadow: 0 0 10px var(--glow-blue); }
+      .text-neon-purple { color: var(--color-neon-purple); text-shadow: 0 0 10px var(--glow-purple); }
+      .text-neon-pink { color: var(--color-neon-pink); text-shadow: 0 0 10px var(--glow-pink); }
 
       /* --- Inputs --- */
       .input-glass {
-        background: rgba(0, 0, 0, 0.2);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: white;
+        background: var(--input-bg);
+        border: 1px solid var(--input-border);
+        color: var(--text-color);
         transition: all 0.3s ease;
       }
       .input-glass:focus {
         background: rgba(255, 255, 255, 0.05);
-        border-color: #29D9FF;
-        box-shadow: 0 0 15px rgba(41, 217, 255, 0.3);
+        border-color: var(--color-neon-blue);
+        box-shadow: 0 0 15px var(--glow-blue-sub);
         outline: none;
+      }
+      
+      /* --- Text overrides for Light Mode Compatibility --- */
+      [data-theme="ivory"] .text-white {
+          color: #1D1D1F !important;
+      }
+      [data-theme="ivory"] .text-gray-400 {
+          color: #6e6e73 !important;
+      }
+      [data-theme="ivory"] .text-gray-300 {
+          color: #1d1d1f !important;
+      }
+       [data-theme="ivory"] .text-gray-500 {
+          color: #86868b !important;
+      }
+      [data-theme="ivory"] .bg-white\/5 {
+          background-color: rgba(0,0,0,0.05) !important;
+      }
+      [data-theme="ivory"] .bg-white\/10 {
+          background-color: rgba(0,0,0,0.08) !important;
+      }
+      [data-theme="ivory"] .border-white\/10 {
+          border-color: rgba(0,0,0,0.1) !important;
+      }
+      [data-theme="ivory"] .border-white\/20 {
+          border-color: rgba(0,0,0,0.2) !important;
       }
 
       /* --- Scrollbar --- */
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
-      ::-webkit-scrollbar-thumb:hover { background: rgba(41, 217, 255, 0.5); }
+      ::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.2); border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--color-neon-blue); }
     </style>
   <script type="importmap">
 {

@@ -1,26 +1,30 @@
 import React from 'react';
-import { LayoutGrid, Box, Settings, ShoppingBag, BarChart2, Globe, Sparkles, Cpu, Aperture, RefreshCw, Server } from 'lucide-react';
+import { LayoutGrid, ShoppingBag, BarChart2, Sparkles, Aperture, RefreshCw, Server, Users, Wallet, Sun, Moon, Zap } from 'lucide-react';
+import { Theme } from '../types';
 
 interface SidebarProps {
   activeView: string;
   onChangeView: (view: string) => void;
+  currentTheme: Theme;
+  onThemeChange: (theme: Theme) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentTheme, onThemeChange }) => {
   const menuItems = [
     { id: 'dashboard', label: '总览面板', icon: <LayoutGrid size={20} /> },
-    { id: 'products', label: '资产矩阵', icon: <Box size={20} /> },
     { id: 'restock', label: '智能备货', icon: <RefreshCw size={20} /> },
     { id: 'orders', label: '物流追踪', icon: <ShoppingBag size={20} /> },
+    { id: 'influencers', label: '达人矩阵', icon: <Users size={20} /> },
+    { id: 'finance', label: '财务中枢', icon: <Wallet size={20} /> },
     { id: 'analytics', label: '数据深潜', icon: <BarChart2 size={20} /> },
-    { id: 'datasync', label: '云端中枢', icon: <Server size={20} /> }, // New Item
+    { id: 'datasync', label: '云端中枢', icon: <Server size={20} /> }, 
   ];
 
   return (
     <div className="w-[280px] h-[calc(100vh-48px)] fixed left-6 top-6 glass-card flex flex-col z-50 py-8 px-6 select-none shadow-glow-purple/20">
       
       {/* Brand Header */}
-      <div className="flex items-center gap-4 mb-12 px-2">
+      <div className="flex items-center gap-4 mb-8 px-2">
          <div className="w-12 h-12 rounded-2xl bg-gradient-neon-blue flex items-center justify-center shadow-glow-blue relative overflow-hidden group">
             <div className="absolute inset-0 bg-white/30 skew-x-12 -translate-x-full group-hover:animate-shimmer"></div>
             <Aperture size={28} className="text-white animate-spin-slow" />
@@ -28,12 +32,37 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView }) => {
          <div>
              <h1 className="font-display font-bold text-[24px] text-white tracking-wide drop-shadow-lg">AERO<span className="text-neon-blue">.OS</span></h1>
              <p className="font-sans text-[10px] text-gray-300 font-medium tracking-widest bg-white/10 px-2 py-0.5 rounded-full inline-block mt-1 backdrop-blur-sm border border-white/5">
-                V.5.0 HYPER
+                V.5.2 LITE
              </p>
          </div>
       </div>
 
-      <div className="flex-1 space-y-4">
+      {/* Theme Switcher - Compact Row */}
+      <div className="bg-white/5 p-1 rounded-xl flex mb-8 border border-white/10">
+          <button 
+             onClick={() => onThemeChange('neon')}
+             title="Neon Glass"
+             className={`flex-1 py-1.5 rounded-lg flex items-center justify-center transition-all ${currentTheme === 'neon' ? 'bg-black text-neon-blue shadow-glow-blue' : 'text-gray-500 hover:text-white'}`}
+          >
+             <Zap size={14} />
+          </button>
+          <button 
+             onClick={() => onThemeChange('ivory')}
+             title="Ivory Air"
+             className={`flex-1 py-1.5 rounded-lg flex items-center justify-center transition-all ${currentTheme === 'ivory' ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
+          >
+             <Sun size={14} />
+          </button>
+          <button 
+             onClick={() => onThemeChange('midnight')}
+             title="Midnight Pro"
+             className={`flex-1 py-1.5 rounded-lg flex items-center justify-center transition-all ${currentTheme === 'midnight' ? 'bg-[#0F172A] text-neon-purple border border-neon-purple/30' : 'text-gray-500 hover:text-white'}`}
+          >
+             <Moon size={14} />
+          </button>
+      </div>
+
+      <div className="flex-1 space-y-4 overflow-y-auto custom-scrollbar pr-2">
         {menuItems.map((item) => (
           <button
             key={item.id}
@@ -53,7 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView }) => {
       </div>
 
       {/* AI Status Card - Floating Neon */}
-      <div className="mt-auto mb-6">
+      <div className="mt-4 mb-6">
           <div className="relative rounded-2xl bg-gradient-to-br from-[#1a1a2e] to-black border border-white/10 p-5 group cursor-pointer overflow-hidden shadow-lg hover:shadow-glow-purple transition-all">
              <div className="absolute inset-0 bg-gradient-neon-purple opacity-10 group-hover:opacity-20 transition-opacity"></div>
              
@@ -82,7 +111,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView }) => {
             <div className="text-[14px] font-bold text-white group-hover:text-neon-pink transition-colors font-display tracking-wide">超级管理员</div>
             <div className="text-[10px] text-gray-500 font-mono">L9 最高权限</div>
          </div>
-         <Settings size={18} className="text-gray-500 group-hover:text-white transition-colors group-hover:rotate-90 duration-500" />
       </div>
     </div>
   );
