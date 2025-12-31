@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Product } from '../types';
 import { 
   Search, Plus, Filter, Factory, Truck, Plane, Ship, 
-  DollarSign, Calendar, Package, Edit3, Copy, Trash2, StickyNote, Wallet
+  DollarSign, Calendar, Package, Edit3, Copy, Trash2, StickyNote, Wallet, ExternalLink
 } from 'lucide-react';
 
 interface RestockModuleProps {
@@ -46,6 +46,25 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           default: return status;
       }
   }
+
+  // Helper to generate tracking URL
+  const getTrackingUrl = (carrier: string = '', trackingNo: string = '') => {
+      if (!trackingNo) return '#';
+      
+      const c = carrier.toLowerCase();
+      if (c.includes('ups')) {
+          return `https://www.ups.com/track?tracknum=${trackingNo}&loc=zh_CN`;
+      } else if (c.includes('dhl')) {
+          return `https://www.dhl.com/cn-zh/home/tracking/tracking-express.html?submit=1&tracking-id=${trackingNo}`;
+      } else if (c.includes('fedex')) {
+          return `https://www.fedex.com/fedextrack/?trknbr=${trackingNo}`;
+      } else if (c.includes('matson') || c.includes('美森')) {
+          return `https://www.matson.com/tracking.html?container_number=${trackingNo}`;
+      } else {
+          // Fallback to 17track for general queries
+          return `https://www.17track.net/zh-cn/track?nums=${trackingNo}`;
+      }
+  };
 
   // Calculate profit on the fly
   const calculateProfit = (item: Product) => {
@@ -133,6 +152,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
              filteredData.map((item) => {
                  const unitProfit = calculateProfit(item);
                  const hasData = !!item.financials;
+                 const trackingUrl = getTrackingUrl(item.logistics?.carrier, item.logistics?.trackingNo);
 
                  return (
                   <div key={item.id} onClick={() => onEditSKU && onEditSKU(item)} className="glass-card grid grid-cols-12 items-center p-0 min-h-[100px] hover:border-white/20 transition-all group relative overflow-visible cursor-pointer">
@@ -168,7 +188,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           </div>
                       </div>
 
-                      {/* 3. Logistics */}
+                      {/* 3. Logistics (UPDATED) */}
                       <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center">
                           {item.logistics ? (
                               <>
@@ -176,9 +196,25 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                                     {getLogisticsIcon(item.logistics.method)}
                                     {getStatusCN(item.logistics.status)}
                                 </div>
-                                <div className="text-[10px] text-gray-500 font-mono mb-2 truncate">{item.logistics.trackingNo || '无单号'}</div>
+                                <div className="flex items-center gap-2">
+                                    <div className="text-[10px] text-gray-500 font-mono truncate max-w-[100px]">
+                                        {item.logistics.trackingNo || '无单号'}
+                                    </div>
+                                    {item.logistics.trackingNo && (
+                                        <a 
+                                            href={trackingUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()} 
+                                            className="text-neon-blue hover:text-white transition-colors"
+                                            title="前往承运商官网查询"
+                                        >
+                                            <ExternalLink size={12} />
+                                        </a>
+                                    )}
+                                </div>
                                 {item.logistics.eta && (
-                                    <div className="flex items-center gap-1 text-[10px] text-neon-blue bg-neon-blue/5 w-fit px-1.5 py-0.5 rounded border border-neon-blue/10">
+                                    <div className="mt-1 flex items-center gap-1 text-[10px] text-neon-blue bg-neon-blue/5 w-fit px-1.5 py-0.5 rounded border border-neon-blue/10">
                                         <Calendar size={10} /> ETA: {item.logistics.eta}
                                     </div>
                                 )}
@@ -265,8 +301,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
 
                   </div>
                  );
-             })
-          )}
+             })}
       </div>
     </div>
   );
