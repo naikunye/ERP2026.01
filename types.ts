@@ -1,3 +1,4 @@
+
 export enum ProductStatus {
   Draft = 'Draft',
   Active = 'Active',
@@ -24,6 +25,7 @@ export interface Product {
   imageUrl: string;
   marketplaces: string[];
   lastUpdated: string;
+  note?: string; // Remark field
 }
 
 export interface DashboardStats {

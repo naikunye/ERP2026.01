@@ -21,7 +21,8 @@ const INITIAL_PRODUCTS: Product[] = [
     status: ProductStatus.Active,
     imageUrl: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&q=80&w=200&h=200',
     marketplaces: ['US', 'EU'],
-    lastUpdated: '2023-10-24'
+    lastUpdated: '2023-10-24',
+    note: '重点关注 Q4 备货'
   },
   {
     id: '2',
@@ -85,9 +86,35 @@ const App: React.FC = () => {
 
   const handleSaveSKU = (updatedData: any) => {
     // In a real app, this would merge the extended data with the product
-    // For now, we just close the modal as the data is local to the editor
+    // We also need to update the note if it was changed in the SKU editor
+    if (editingSKU && updatedData.note !== undefined) {
+       setProducts(prev => prev.map(p => p.id === editingSKU.id ? { ...p, note: updatedData.note } : p));
+    }
     console.log("Saving extended SKU data:", updatedData);
     setEditingSKU(null);
+  };
+
+  const handleCloneSKU = (product: Product) => {
+    const newProduct: Product = {
+      ...product,
+      id: Math.random().toString(36).substr(2, 9),
+      sku: `${product.sku}-COPY`,
+      name: `${product.name} (副本)`,
+      status: ProductStatus.Draft,
+      stock: 0, // Reset stock for clone
+      lastUpdated: new Date().toISOString(),
+      note: product.note ? `[Clone] ${product.note}` : undefined
+    };
+    setProducts(prev => [newProduct, ...prev]);
+  };
+
+  const handleDeleteSKU = (productId: string) => {
+    if (window.confirm('警告：确定要永久删除此 SKU 吗？此操作涉及库存资产，不可撤销。')) {
+      setProducts(prev => prev.filter(p => p.id !== productId));
+      if (editingSKU?.id === productId) {
+        setEditingSKU(null);
+      }
+    }
   };
 
   const renderContent = () => {
@@ -107,6 +134,8 @@ const App: React.FC = () => {
           <RestockModule 
             products={products} 
             onEditSKU={(p) => setEditingSKU(p)}
+            onCloneSKU={handleCloneSKU}
+            onDeleteSKU={handleDeleteSKU}
           />
         );
       default:
@@ -148,6 +177,7 @@ const App: React.FC = () => {
           product={editingSKU}
           onClose={() => setEditingSKU(null)}
           onSave={handleSaveSKU}
+          onDelete={() => handleDeleteSKU(editingSKU.id)}
         />
       )}
     </div>

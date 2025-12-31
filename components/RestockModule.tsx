@@ -3,12 +3,14 @@ import { Product, ProductStatus } from '../types';
 import { 
   Search, Plus, Filter, Factory, Truck, Plane, Ship, 
   DollarSign, AlertTriangle, Calendar, Package, MoreHorizontal, 
-  TrendingUp, Wallet, Edit3
+  TrendingUp, Wallet, Edit3, Copy, Trash2, StickyNote, FileText
 } from 'lucide-react';
 
 interface RestockModuleProps {
   products: Product[];
   onEditSKU?: (product: Product) => void;
+  onCloneSKU?: (product: Product) => void;
+  onDeleteSKU?: (productId: string) => void;
 }
 
 // Extended interface for ERP specific fields (Mocking backend data)
@@ -70,7 +72,7 @@ const enrichProductData = (products: Product[]): ERPProduct[] => {
   });
 };
 
-const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) => {
+const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCloneSKU, onDeleteSKU }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   const erpData = useMemo(() => enrichProductData(products), [products]);
@@ -179,9 +181,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
               <div className="col-span-2">标识</div>
               <div className="col-span-3">产品详情</div>
               <div className="col-span-2">物流信息</div>
-              <div className="col-span-2 text-right pr-4">库存与风险</div>
-              <div className="col-span-2 text-right pr-4">财务数据</div>
-              <div className="col-span-1 text-center">操作</div>
+              <div className="col-span-2">库存与风险</div>
+              <div className="col-span-1">利润数据</div>
+              <div className="col-span-2 text-center">操作</div>
           </div>
 
           {/* Data Rows */}
@@ -192,8 +194,19 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
                   <div className={`absolute left-0 top-0 bottom-0 w-1 ${item.inventoryAnalysis.riskLevel === 'Critical' ? 'bg-neon-pink shadow-[0_0_10px_#FF2975]' : 'bg-neon-green'}`}></div>
 
                   {/* 1. Identity */}
-                  <div className="col-span-2 p-4 pl-6 border-r border-white/5 h-full flex flex-col justify-center">
-                      <div className="font-mono text-neon-blue font-bold text-sm mb-1">{item.sku}</div>
+                  <div className="col-span-2 p-4 pl-6 border-r border-white/5 h-full flex flex-col justify-center relative">
+                      <div className="font-mono text-neon-blue font-bold text-sm mb-1 flex items-center gap-2">
+                          {item.sku}
+                          {item.note && (
+                              <div className="group/note relative">
+                                  <StickyNote size={12} className="text-neon-yellow" />
+                                  <div className="absolute left-full top-0 ml-2 w-48 p-2 bg-black/90 border border-white/20 rounded-lg text-[10px] text-white hidden group-hover/note:block z-50 pointer-events-none">
+                                      <span className="text-neon-yellow font-bold block mb-1">备注:</span>
+                                      {item.note}
+                                  </div>
+                              </div>
+                          )}
+                      </div>
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold w-fit border ${
                           item.status === 'Active' 
                           ? 'bg-neon-green/10 text-neon-green border-neon-green/20' 
@@ -229,8 +242,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
                       </div>
                   </div>
 
-                  {/* 4. Inventory & Risk */}
-                  <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center items-end text-right">
+                  {/* 4. Inventory & Risk (Left Aligned) */}
+                  <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center">
                        <div className="text-xl font-display font-bold text-white">{item.stock} <span className="text-xs text-gray-500 font-sans">件</span></div>
                        
                        {item.inventoryAnalysis.riskLevel === 'Critical' ? (
@@ -245,30 +258,53 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU }) =>
                        )}
                   </div>
 
-                  {/* 5. Financials */}
-                  <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center items-end text-right">
-                      {/* Total Investment */}
-                      <div className="text-sm font-bold text-neon-green mb-0.5">
-                         ${((item.financials.costOfGoods + item.financials.shippingCost) * item.stock).toLocaleString()}
+                  {/* 5. Financials (Profit Focused - Left Aligned) */}
+                  <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-1.5">
+                      <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-500 leading-tight">单品利</span>
+                          <span className="text-[12px] font-bold text-white leading-tight">
+                             +${item.financials.unitProfit.toFixed(1)}
+                          </span>
                       </div>
-                      <div className="text-[10px] text-gray-500">总投入</div>
-                      
-                      {/* Profit Detail */}
-                      <div className="mt-2 text-[10px] text-gray-400 flex items-center gap-1">
-                          利润: <span className="text-white font-mono">+${item.financials.unitProfit.toFixed(1)}/件</span>
+                      <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-500 leading-tight">总利润</span>
+                          <span className="text-[12px] font-bold text-neon-green leading-tight">
+                             +${(item.financials.unitProfit * item.stock).toLocaleString()}
+                          </span>
                       </div>
                   </div>
 
-                  {/* 6. Action */}
-                  <div className="col-span-1 p-4 h-full flex items-center justify-center">
+                  {/* 6. Action - Expanded */}
+                  <div className="col-span-2 p-4 h-full flex items-center justify-center gap-2">
                       <button 
                         onClick={(e) => {
                             e.stopPropagation();
                             onEditSKU && onEditSKU(item);
                         }}
-                        className="w-8 h-8 rounded-full bg-white/5 hover:bg-neon-blue hover:text-black flex items-center justify-center text-gray-400 transition-colors"
+                        title="编辑 (Edit)"
+                        className="w-8 h-8 rounded-lg bg-white/5 hover:bg-neon-blue hover:text-black flex items-center justify-center text-gray-400 transition-colors"
                       >
-                          <Edit3 size={16} />
+                          <Edit3 size={14} />
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onCloneSKU && onCloneSKU(item);
+                        }}
+                        title="克隆 (Clone)"
+                        className="w-8 h-8 rounded-lg bg-white/5 hover:bg-neon-purple hover:text-white flex items-center justify-center text-gray-400 transition-colors"
+                      >
+                          <Copy size={14} />
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteSKU && onDeleteSKU(item.id);
+                        }}
+                        title="删除 (Delete)"
+                        className="w-8 h-8 rounded-lg bg-white/5 hover:bg-neon-pink hover:text-white flex items-center justify-center text-gray-400 transition-colors"
+                      >
+                          <Trash2 size={14} />
                       </button>
                   </div>
 

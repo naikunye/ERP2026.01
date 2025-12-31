@@ -3,17 +3,21 @@ import { Product, Currency } from '../types';
 import { 
   X, Save, History, Box, Layers, Truck, 
   DollarSign, TrendingUp, Calculator, Package, 
-  Scale, Anchor, Globe, Share2, AlertCircle
+  Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText
 } from 'lucide-react';
 
 interface SKUDetailEditorProps {
   product: Product;
   onClose: () => void;
   onSave: (updatedProduct: any) => void;
+  onDelete?: () => void;
 }
 
 // Complex Interface for the detailed form state
 interface SKUFormData {
+  // Remark Field
+  note: string;
+
   // M1: Product & Supply Chain
   lifecycle: 'Growing' | 'Stable' | 'Declining';
   leadTimeProduction: number;
@@ -51,9 +55,10 @@ interface SKUFormData {
   adCostPerUnit: number; // CPA
 }
 
-const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave }) => {
+const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete }) => {
   // Initialize with product data + mock defaults for the new fields
   const [formData, setFormData] = useState<SKUFormData>({
+    note: product.note || '',
     lifecycle: 'Growing',
     leadTimeProduction: 15,
     leadTimeShipping: 30,
@@ -118,7 +123,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     };
   }, [formData, product.stock]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -175,30 +180,43 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         <div className="w-20 h-20 rounded-xl bg-black/50 border border-white/10 overflow-hidden shrink-0">
                             <img src={product.imageUrl} className="w-full h-full object-cover" alt="" />
                         </div>
-                        <div className="space-y-2 flex-1">
+                        <div className="space-y-4 flex-1">
                              <div className="space-y-1">
-                                <label className="text-[10px] text-gray-500 font-bold">生命周期</label>
-                                <select 
-                                    name="lifecycle"
-                                    value={formData.lifecycle}
-                                    onChange={handleChange}
-                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg text-xs px-2 text-white outline-none focus:border-neon-purple"
-                                >
-                                    <option value="Growing">上升期 🚀</option>
-                                    <option value="Stable">平稳期 ⚓</option>
-                                    <option value="Declining">衰退期 📉</option>
-                                </select>
-                             </div>
-                             <div className="space-y-1">
-                                <label className="text-[10px] text-gray-500 font-bold">备货日期</label>
-                                <input type="date" name="restockDate" value={formData.restockDate} onChange={handleChange} className="w-full h-8 bg-white/5 border border-white/10 rounded-lg text-xs px-2 text-white outline-none" />
+                                <label className="text-[10px] text-gray-500 font-bold flex items-center gap-1">
+                                    <FileText size={10} /> 备注 (Remark)
+                                </label>
+                                <textarea 
+                                    name="note" 
+                                    value={formData.note} 
+                                    onChange={handleChange} 
+                                    className="w-full h-16 bg-white/5 border border-white/10 rounded-lg text-xs p-2 text-neon-yellow outline-none resize-none focus:border-neon-yellow/50 focus:bg-white/10 placeholder-gray-600" 
+                                    placeholder="输入关于此 SKU 的重要备注..."
+                                />
                              </div>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <InputGroup label="生产周期 (天)" name="leadTimeProduction" value={formData.leadTimeProduction} onChange={handleChange} />
-                        <InputGroup label="运输周期 (天)" name="leadTimeShipping" value={formData.leadTimeShipping} onChange={handleChange} />
-                        <InputGroup label="安全库存 (天)" name="safetyStockDays" value={formData.safetyStockDays} onChange={handleChange} />
+                    
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] text-gray-500 font-bold">生命周期</label>
+                            <select 
+                                name="lifecycle"
+                                value={formData.lifecycle}
+                                onChange={handleChange}
+                                className="w-full h-8 bg-white/5 border border-white/10 rounded-lg text-xs px-2 text-white outline-none focus:border-neon-purple"
+                            >
+                                <option value="Growing">上升期 🚀</option>
+                                <option value="Stable">平稳期 ⚓</option>
+                                <option value="Declining">衰退期 📉</option>
+                            </select>
+                        </div>
+                        <InputGroup label="备货日期" name="restockDate" value={formData.restockDate} type="date" onChange={handleChange} />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                        <InputGroup label="生产(天)" name="leadTimeProduction" value={formData.leadTimeProduction} onChange={handleChange} />
+                        <InputGroup label="运输(天)" name="leadTimeShipping" value={formData.leadTimeShipping} onChange={handleChange} />
+                        <InputGroup label="安库(天)" name="safetyStockDays" value={formData.safetyStockDays} onChange={handleChange} />
                     </div>
                 </section>
 
@@ -371,7 +389,14 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                  <span className="text-2xl text-neon-green mt-2">$</span>
                                  {metrics.unitProfit.toFixed(2)}
                              </div>
-                             <div className={`text-sm font-bold inline-flex items-center gap-1 px-3 py-1 rounded-full ${metrics.netMargin > 15 ? 'bg-neon-green/10 text-neon-green' : 'bg-neon-pink/10 text-neon-pink'}`}>
+                             
+                             {/* ADDED: Total Profit */}
+                             <div className="text-sm font-bold text-neon-green/80 flex items-center justify-center gap-2 mt-2">
+                                <span>总利润预测:</span>
+                                <span>+${metrics.totalStockProfit.toLocaleString()}</span>
+                             </div>
+
+                             <div className={`text-sm font-bold inline-flex items-center gap-1 px-3 py-1 mt-3 rounded-full ${metrics.netMargin > 15 ? 'bg-neon-green/10 text-neon-green' : 'bg-neon-pink/10 text-neon-pink'}`}>
                                  <TrendingUp size={12} />
                                  {metrics.netMargin.toFixed(1)}% 净利率
                              </div>
@@ -413,12 +438,21 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     </section>
 
                     {/* Actions */}
-                    <button 
-                        onClick={() => onSave(formData)}
-                        className="w-full py-4 bg-gradient-neon-green text-black rounded-xl font-bold text-sm shadow-glow-green hover:scale-105 transition-all flex items-center justify-center gap-2"
-                    >
-                        <Save size={18} /> 保存配置
-                    </button>
+                    <div className="grid grid-cols-4 gap-3">
+                         <button 
+                             onClick={onDelete}
+                             className="col-span-1 py-4 bg-white/5 border border-white/10 hover:bg-neon-pink/20 hover:border-neon-pink text-gray-400 hover:text-neon-pink rounded-xl flex items-center justify-center transition-all"
+                             title="删除此 SKU"
+                         >
+                             <Trash2 size={20} />
+                         </button>
+                         <button 
+                            onClick={() => onSave(formData)}
+                            className="col-span-3 py-4 bg-gradient-neon-green text-black rounded-xl font-bold text-sm shadow-glow-green hover:scale-105 transition-all flex items-center justify-center gap-2"
+                        >
+                            <Save size={18} /> 保存配置
+                        </button>
+                    </div>
                 </div>
 
             </div>
