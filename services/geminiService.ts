@@ -77,3 +77,44 @@ export const analyzeMarketFit = async (productName: string, price: number): Prom
         return { score: 50, reasoning: "AI Analysis unavailable." };
     }
 }
+
+export const generateRestockInsight = async (productName: string, currentStock: number, dailySales: number): Promise<{ suggestedAmount: number; reason: string; riskLevel: string }> => {
+    if (!apiKey) throw new Error("API Key missing");
+
+    try {
+        const prompt = `
+            Product: "${productName}"
+            Current Stock: ${currentStock} units
+            Avg Daily Sales: ${dailySales} units
+            
+            Act as an inventory management AI. Calculate a suggested restock amount to cover 30 days, considering a 10% safety buffer.
+            Determine the risk level (Critical, High, Moderate, Low).
+            Provide a very short, strategic reason (max 15 words).
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        suggestedAmount: { type: Type.INTEGER },
+                        riskLevel: { type: Type.STRING },
+                        reason: { type: Type.STRING }
+                    },
+                    required: ["suggestedAmount", "riskLevel", "reason"]
+                }
+            }
+        });
+        
+        const jsonText = response.text;
+        if (!jsonText) return { suggestedAmount: 0, reason: "Analysis failed", riskLevel: "Unknown" };
+        
+        return JSON.parse(jsonText);
+    } catch (error) {
+        console.error("Restock Analysis Error", error);
+        return { suggestedAmount: 0, reason: "AI Unavailable", riskLevel: "Unknown" };
+    }
+}

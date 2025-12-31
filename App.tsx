@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import ProductList from './components/ProductList';
 import ProductEditor from './components/ProductEditor';
+import RestockModule from './components/RestockModule';
 import { Product, ProductStatus, Currency } from './types';
 
 // Mock Initial Data
@@ -42,12 +43,26 @@ const INITIAL_PRODUCTS: Product[] = [
     description: '16 million colors, voice controlled, syncs with music.',
     price: 89.99,
     currency: Currency.USD,
-    stock: 0,
+    stock: 12,
     category: 'Home',
     status: ProductStatus.Archived,
     imageUrl: 'https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=200&h=200',
     marketplaces: ['US', 'JP'],
     lastUpdated: '2023-09-15'
+  },
+  {
+    id: '4',
+    sku: 'AERO-KB-004',
+    name: 'Mechanic Pro Keyboard',
+    description: 'RGB Backlit mechanical keyboard with blue switches.',
+    price: 129.99,
+    currency: Currency.USD,
+    stock: 8,
+    category: 'Electronics',
+    status: ProductStatus.Active,
+    imageUrl: 'https://images.unsplash.com/photo-1587829741301-dc798b91add1?auto=format&fit=crop&q=80&w=200&h=200',
+    marketplaces: ['US'],
+    lastUpdated: '2023-11-01'
   }
 ];
 
@@ -78,6 +93,8 @@ const App: React.FC = () => {
             onAddNew={() => setEditingProduct(null)} 
           />
         );
+      case 'restock':
+        return <RestockModule products={products} />;
       default:
         return (
           <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-white/50">
