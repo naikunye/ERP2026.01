@@ -3,7 +3,7 @@ import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
   Wifi, Activity, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw, Zap, ShieldAlert,
-  PlayCircle, HelpCircle, AlertTriangle, ExternalLink
+  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -12,7 +12,6 @@ interface DataSyncModuleProps {
 }
 
 const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportData }) => {
-  // 1. 设置默认值为您的腾讯云 IP
   const [serverUrl, setServerUrl] = useState('ws://119.28.72.106:8090');
   
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error' | 'simulating'>('disconnected');
@@ -75,20 +74,16 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   };
 
   const handleConnect = () => {
-      // Clean up previous
       if (socket) socket.close();
       if (simulationInterval) clearInterval(simulationInterval);
       
       setErrorDetail('');
       setConnectionStatus('connecting');
 
-      // 1. 获取用户输入，不做任何智能修改，完全信任用户
       let targetUrl = serverUrl.trim();
-      
-      // 简单补全协议，如果用户完全没写
       if (!targetUrl.startsWith('ws://') && !targetUrl.startsWith('wss://')) {
           targetUrl = `ws://${targetUrl}`;
-          setServerUrl(targetUrl); // 回填到输入框
+          setServerUrl(targetUrl);
       }
 
       console.log(`[Connecting] Target: ${targetUrl}`);
@@ -117,7 +112,6 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
 
             ws.onerror = (e) => {
                 console.error("WS Error", e);
-                // onclose will handle the state update
             };
 
             ws.onclose = (e) => {
@@ -125,36 +119,41 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                 setSocket(null);
                 setConnectionStatus('error');
 
-                // --- 核心诊断逻辑 ---
                 if (e.code === 1006) {
                     const isPageHttps = window.location.protocol === 'https:';
                     const isTargetUnsecure = targetUrl.startsWith('ws://');
 
+                    // 如果已经在 HTTPS 下使用了 ws:// 且仍然 1006，
+                    // 并且用户已经开启了“不安全内容”（通过之前的步骤），
+                    // 那么最大的可能是服务器防火墙或者服务没启动。
+                    
                     if (isPageHttps && isTargetUnsecure) {
-                        // 这是最常见的 Vercel (HTTPS) -> IP (WS) 阻断
                         setErrorDetail(
                             <div className="space-y-3 mt-2">
-                                <div className="font-bold text-neon-pink flex items-center gap-2 text-sm">
-                                    <ShieldAlert size={16}/> 浏览器安全阻断 (Code 1006)
+                                <div className="font-bold text-neon-pink flex items-center gap-2 text-sm border-b border-white/10 pb-2">
+                                    <ShieldAlert size={16}/> 连接被拒绝 (Code 1006)
                                 </div>
-                                <div className="text-xs text-gray-300 leading-relaxed">
-                                    当前网页是安全链接 (HTTPS)，但您尝试连接的服务器是不安全的 (ws://)。浏览器默认已拦截此请求。
+                                
+                                <div className="text-xs text-white leading-relaxed">
+                                    <span className="text-neon-yellow font-bold">如果您已开启浏览器“允许不安全内容”(地址栏有红色警告标)：</span>
+                                    <br/>
+                                    这说明浏览器已放行请求，但<b>腾讯云服务器拒绝了连接</b>。
                                 </div>
+
                                 <div className="bg-white/10 p-4 rounded-lg border border-white/20 text-xs text-white">
-                                    <strong>如何解决 (即使之前开过，请再次检查):</strong>
+                                    <strong>请检查腾讯云防火墙 (90% 是这个问题):</strong>
                                     <ol className="list-decimal list-inside mt-2 space-y-2 text-gray-300">
-                                        <li>点击浏览器地址栏最左侧的 <Lock size={12} className="inline text-neon-blue"/> <b>锁图标</b> 或 <b>设置图标</b>。</li>
-                                        <li>点击 <b>网站设置 (Site Settings)</b>。</li>
-                                        <li>向下滚动找到 <b>不安全内容 (Insecure Content)</b>。</li>
-                                        <li>强制将其设置为 <span className="text-neon-green font-bold border border-neon-green/30 px-1 rounded">允许 (Allow)</span>。</li>
-                                        <li>回到本页面，刷新后重新连接。</li>
+                                        <li>登录腾讯云控制台，找到您的轻量应用服务器。</li>
+                                        <li>点击 <b>防火墙 (Firewall)</b> 标签页。</li>
+                                        <li>检查是否放行了 <b>TCP 8090</b> 端口。</li>
+                                        <li>如果没有，点击“添加规则” -&gt; 协议:TCP -&gt; 端口:8090 -&gt; 策略:允许。</li>
+                                        <li>如果使用宝塔面板，也需要在宝塔的安全页面放行 8090。</li>
                                     </ol>
                                 </div>
                             </div>
                         );
                     } else {
-                        // 其他网络错误
-                        setErrorDetail(`连接失败 (Code 1006): 无法连接到 ${targetUrl}。请检查服务器防火墙是否放行了 8090 端口，或 IP 是否正确。`);
+                        setErrorDetail(`连接失败 (Code 1006): 无法连接到 ${targetUrl}。请检查 IP 是否正确，或服务器程序是否已启动。`);
                     }
                 } else {
                     setErrorDetail(`连接断开 (Code ${e.code}): ${e.reason || '网络中断'}`);
@@ -164,7 +163,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
             setConnectionStatus('error');
             setErrorDetail(`初始化异常: ${err.message}`);
         }
-      }, 500); // Small delay to show UI state
+      }, 500); 
   };
 
   const handleDisconnect = () => {
@@ -174,7 +173,6 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       setSocket(null);
   };
 
-  // Simulation Logic
   const handleSimulate = () => {
       handleDisconnect();
       setTimeout(() => {
@@ -200,7 +198,6 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       }, 100);
   };
 
-  // File Import Logic
   const handleExport = () => {
     const dataStr = JSON.stringify(currentData, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
