@@ -1,11 +1,16 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Initialize Gemini Client strictly following the provided guidelines.
-// Always use the process.env.API_KEY directly in the constructor.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to safely get the AI client only when needed.
+// This prevents the app from crashing on startup if 'process' is not defined in the browser environment.
+const getAiClient = () => {
+  // Safety check: ensure process is defined before accessing it to avoid ReferenceError
+  const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
+  return new GoogleGenAI({ apiKey });
+};
 
 export const generateProductDescription = async (productName: string, features: string, tone: string = 'Professional'): Promise<string> => {
   try {
+    const ai = getAiClient();
     const prompt = `
       You are an expert e-commerce copywriter for the Chinese market.
       Write a compelling, SEO-optimized product description in Chinese (Simplified) for a product named "${productName}".
@@ -14,13 +19,11 @@ export const generateProductDescription = async (productName: string, features: 
       Format: Plain text, max 2 paragraphs.
     `;
 
-    // Use ai.models.generateContent directly with model name and prompt.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
 
-    // Access .text property directly (not a method).
     return response.text || "无法生成描述。";
   } catch (error) {
     console.error("Gemini Error:", error);
@@ -30,6 +33,7 @@ export const generateProductDescription = async (productName: string, features: 
 
 export const optimizeProductTitle = async (productName: string, keywords: string): Promise<string> => {
     try {
+        const ai = getAiClient();
         const prompt = `
             Act as an Amazon/TikTok Shop SEO expert.
             Optimize this product title for maximum click-through rate and search visibility.
@@ -50,6 +54,7 @@ export const optimizeProductTitle = async (productName: string, keywords: string
 
 export const generateSeoKeywords = async (productName: string, description: string): Promise<string[]> => {
     try {
+        const ai = getAiClient();
         const prompt = `
             Analyze this product and generate 10 high-traffic SEO keywords (tags) for e-commerce.
             Product: "${productName}"
@@ -82,6 +87,7 @@ export const generateSeoKeywords = async (productName: string, description: stri
 
 export const translateProductContent = async (text: string, targetLanguage: string): Promise<string> => {
   try {
+    const ai = getAiClient();
     const prompt = `Translate the following e-commerce product text into ${targetLanguage}. Maintain the marketing tone. Text: "${text}"`;
 
     const response = await ai.models.generateContent({
@@ -98,8 +104,8 @@ export const translateProductContent = async (text: string, targetLanguage: stri
 
 export const analyzeMarketFit = async (productName: string, price: number): Promise<{ score: number; reasoning: string }> => {
     try {
+        const ai = getAiClient();
         const response = await ai.models.generateContent({
-            // Use Pro model for analysis tasks requiring reasoning.
             model: 'gemini-3-pro-preview',
             contents: `Analyze the market fit for a product named "${productName}" priced at ${price}. Return a JSON with a score (1-100) and a short reasoning sentence in Chinese (Simplified).`,
             config: {
@@ -127,6 +133,7 @@ export const analyzeMarketFit = async (productName: string, price: number): Prom
 
 export const generateRestockInsight = async (productName: string, currentStock: number, dailySales: number): Promise<{ suggestedAmount: number; reason: string; riskLevel: string }> => {
     try {
+        const ai = getAiClient();
         const prompt = `
             Product: "${productName}"
             Current Stock: ${currentStock} units
@@ -138,7 +145,6 @@ export const generateRestockInsight = async (productName: string, currentStock: 
         `;
 
         const response = await ai.models.generateContent({
-            // Use Pro model for reasoning tasks.
             model: 'gemini-3-pro-preview',
             contents: prompt,
             config: {

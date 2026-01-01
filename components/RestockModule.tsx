@@ -174,6 +174,10 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  // Total Potential Profit
                  const totalPotentialProfit = unitProfit * item.stock;
 
+                 // Safe financial access
+                 const costOfGoods = item.financials?.costOfGoods || 0;
+                 const shippingCost = item.financials?.shippingCost || 0;
+
                  return (
                   <div key={item.id} onClick={() => onEditSKU && onEditSKU(item)} className="glass-card grid grid-cols-12 items-center p-0 min-h-[110px] hover:border-white/20 transition-all group relative overflow-visible cursor-pointer">
                       
@@ -279,16 +283,16 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                               <>
                                 <div className="flex items-center gap-1 text-xs font-bold text-white">
                                     <span className="text-[10px] text-gray-500">¥</span>
-                                    {((item.financials!.costOfGoods + item.financials!.shippingCost) * item.stock).toLocaleString()}
+                                    {((costOfGoods + shippingCost) * item.stock).toLocaleString()}
                                 </div>
                                 <div className="flex flex-col gap-0.5">
                                     <div className="flex items-center gap-1 text-[10px] text-gray-500">
                                         <span className="text-gray-600">货:</span>
-                                        <span className="font-mono">¥ {(item.financials!.costOfGoods * item.stock).toLocaleString()}</span>
+                                        <span className="font-mono">¥ {(costOfGoods * item.stock).toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center gap-1 text-[10px] text-gray-500">
                                         <span className="text-gray-600">运:</span>
-                                        <span className="font-mono">¥ {(item.financials!.shippingCost * item.stock).toLocaleString()}</span>
+                                        <span className="font-mono">¥ {(shippingCost * item.stock).toLocaleString()}</span>
                                     </div>
                                 </div>
                               </>
