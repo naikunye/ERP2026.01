@@ -12,7 +12,7 @@ export enum Currency {
   JPY = 'JPY'
 }
 
-export type Theme = 'neon' | 'ivory' | 'midnight';
+export type Theme = 'neon' | 'ivory' | 'midnight' | 'sunset' | 'forest' | 'nebula';
 
 // 核心物流数据结构
 export interface LogisticsInfo {

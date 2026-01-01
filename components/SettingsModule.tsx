@@ -3,7 +3,7 @@ import { Theme, Product } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket
 } from 'lucide-react';
 
 interface SettingsModuleProps {
@@ -64,6 +64,15 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
     reader.readAsText(file);
   };
 
+  const themes = [
+      { id: 'neon', name: 'Neon Glass', desc: '赛博朋克深色 (Default)', icon: Zap, color: 'text-neon-blue', bg: 'bg-black' },
+      { id: 'ivory', name: 'Ivory Air', desc: '极简主义浅色 (Light)', icon: Sun, color: 'text-yellow-500', bg: 'bg-gray-100' },
+      { id: 'midnight', name: 'Midnight Pro', desc: '深海午夜护眼 (Deep)', icon: Moon, color: 'text-indigo-400', bg: 'bg-slate-900' },
+      { id: 'sunset', name: 'Sunset Vibe', desc: '紫霞渐变 (Synthwave)', icon: Sunset, color: 'text-pink-500', bg: 'bg-[#2D1B2E]' },
+      { id: 'forest', name: 'Deep Forest', desc: '森系暗绿 (Nature)', icon: Trees, color: 'text-emerald-400', bg: 'bg-[#051C12]' },
+      { id: 'nebula', name: 'Void Nebula', desc: '虚空黑洞 (Void)', icon: Rocket, color: 'text-purple-500', bg: 'bg-[#0B0014]' },
+  ];
+
   return (
     <div className="space-y-8 animate-fade-in w-full pb-20 max-w-5xl mx-auto">
       
@@ -73,74 +82,43 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
               系统偏好设置
               <span className="text-gray-500 font-sans text-sm tracking-widest font-medium border border-gray-700 px-2 py-0.5 rounded">SETTINGS</span>
            </h1>
-           <p className="text-gray-400 text-sm">管理界面外观、数据备份及系统连接。</p>
+           <p className="text-gray-400 text-sm">自定义界面主题与数据管理。</p>
       </div>
 
       {/* 1. Appearance Section */}
-      <section className="space-y-4">
+      <section className="space-y-6">
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-              <Monitor size={16} /> 界面外观 (Appearance)
+              <Monitor size={16} /> 界面主题 (Themes)
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Neon Theme */}
-              <button 
-                  onClick={() => onThemeChange('neon')}
-                  className={`relative p-6 rounded-2xl border transition-all duration-300 text-left group overflow-hidden ${
-                      currentTheme === 'neon' 
-                      ? 'bg-black/40 border-neon-blue shadow-glow-blue' 
-                      : 'bg-white/5 border-white/10 hover:border-white/30'
-                  }`}
-              >
-                  <div className="flex justify-between items-start mb-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${currentTheme === 'neon' ? 'bg-neon-blue text-black' : 'bg-white/10 text-gray-400'}`}>
-                          <Zap size={20} fill="currentColor" />
-                      </div>
-                      {currentTheme === 'neon' && <CheckCircle2 size={20} className="text-neon-blue"/>}
-                  </div>
-                  <h3 className="text-lg font-bold text-white mb-1">Neon Glass</h3>
-                  <p className="text-xs text-gray-500">赛博朋克深色模式，高对比度荧光。</p>
-                  {/* Preview Element */}
-                  <div className="absolute right-[-20px] bottom-[-20px] w-24 h-24 bg-neon-blue/20 rounded-full blur-xl group-hover:bg-neon-blue/30 transition-colors"></div>
-              </button>
+              {themes.map(t => (
+                  <button 
+                      key={t.id}
+                      onClick={() => onThemeChange(t.id as Theme)}
+                      className={`relative p-5 rounded-2xl border transition-all duration-300 text-left group overflow-hidden ${
+                          currentTheme === t.id 
+                          ? 'border-neon-blue shadow-glow-blue bg-white/10' 
+                          : 'bg-white/5 border-white/10 hover:border-white/30'
+                      }`}
+                  >
+                      {/* Theme Preview Dot */}
+                      <div className={`absolute top-4 right-4 w-3 h-3 rounded-full ${t.bg} border border-white/20 shadow-sm`}></div>
 
-              {/* Ivory Theme */}
-              <button 
-                  onClick={() => onThemeChange('ivory')}
-                  className={`relative p-6 rounded-2xl border transition-all duration-300 text-left group overflow-hidden ${
-                      currentTheme === 'ivory' 
-                      ? 'bg-[#F5F5F7] border-gray-300 shadow-xl' 
-                      : 'bg-white/5 border-white/10 hover:border-white/30'
-                  }`}
-              >
-                  <div className="flex justify-between items-start mb-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${currentTheme === 'ivory' ? 'bg-black text-white' : 'bg-white/10 text-gray-400'}`}>
-                          <Sun size={20} />
+                      <div className="flex justify-between items-start mb-4">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center bg-white/10 ${t.color}`}>
+                              <t.icon size={20} />
+                          </div>
+                          {currentTheme === t.id && <CheckCircle2 size={20} className="text-neon-blue absolute top-4 right-4"/>}
                       </div>
-                      {currentTheme === 'ivory' && <CheckCircle2 size={20} className="text-black"/>}
-                  </div>
-                  <h3 className={`text-lg font-bold mb-1 ${currentTheme === 'ivory' ? 'text-black' : 'text-white'}`}>Ivory Air</h3>
-                  <p className={`text-xs ${currentTheme === 'ivory' ? 'text-gray-500' : 'text-gray-500'}`}>极简主义浅色模式，清爽现代。</p>
-              </button>
-
-              {/* Midnight Theme */}
-              <button 
-                  onClick={() => onThemeChange('midnight')}
-                  className={`relative p-6 rounded-2xl border transition-all duration-300 text-left group overflow-hidden ${
-                      currentTheme === 'midnight' 
-                      ? 'bg-[#0F172A] border-neon-purple shadow-glow-purple' 
-                      : 'bg-white/5 border-white/10 hover:border-white/30'
-                  }`}
-              >
-                   <div className="flex justify-between items-start mb-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${currentTheme === 'midnight' ? 'bg-neon-purple text-white' : 'bg-white/10 text-gray-400'}`}>
-                          <Moon size={20} />
-                      </div>
-                      {currentTheme === 'midnight' && <CheckCircle2 size={20} className="text-neon-purple"/>}
-                  </div>
-                  <h3 className="text-lg font-bold text-white mb-1">Midnight Pro</h3>
-                  <p className="text-xs text-gray-500">深海午夜模式，专注护眼。</p>
-                  <div className="absolute right-[-20px] bottom-[-20px] w-24 h-24 bg-neon-purple/20 rounded-full blur-xl group-hover:bg-neon-purple/30 transition-colors"></div>
-              </button>
+                      <h3 className={`text-lg font-bold mb-1 ${currentTheme === 'ivory' && t.id === 'ivory' ? 'text-black' : 'text-white'}`}>{t.name}</h3>
+                      <p className="text-xs text-gray-500">{t.desc}</p>
+                      
+                      {/* Active Glow */}
+                      {currentTheme === t.id && (
+                          <div className="absolute right-[-20px] bottom-[-20px] w-24 h-24 bg-neon-blue/10 rounded-full blur-xl"></div>
+                      )}
+                  </button>
+              ))}
           </div>
       </section>
 
