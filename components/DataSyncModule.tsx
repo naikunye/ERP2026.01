@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Product } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
-  Wifi, Activity, FileJson, CheckCircle2, AlertCircle, Loader2, Globe, Lock
+  Wifi, Activity, FileText, CheckCircle2, AlertCircle, Loader2, Globe, Lock
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -98,12 +98,23 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       }
   };
 
-  const processFile = (file: File) => {
-    // Relaxed check: Check extension mostly, type is unreliable on some OS
-    const isJsonExt = file.name.toLowerCase().endsWith('.json');
-    const isJsonType = file.type === "application/json";
+  // Helper to check if an object looks like a Product
+  const isValidProduct = (item: any): boolean => {
+      return (
+          typeof item === 'object' && 
+          item !== null && 
+          (typeof item.id === 'string' || typeof item.id === 'number') &&
+          typeof item.name === 'string'
+          // We can add more strict checks if needed, but this prevents "complete garbage" or empty objects
+      );
+  };
 
-    if (!isJsonExt && !isJsonType) {
+  const processFile = (file: File) => {
+    // Relaxed check: Check extension mostly
+    const isJsonExt = file.name.toLowerCase().endsWith('.json');
+    // const isJsonType = file.type === "application/json"; 
+
+    if (!isJsonExt) {
       setImportStatus('error');
       setImportMessage(`格式不支持：请上传 .json 后缀的文件`);
       return;
@@ -133,20 +144,28 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
             } else {
                 // Fallback: try to find any array property that looks like products
                 const values = Object.values(json);
-                const potentialArray = values.find(v => Array.isArray(v) && v.length > 0 && 'sku' in v[0]);
+                const potentialArray = values.find(v => Array.isArray(v) && v.length > 0 && isValidProduct(v[0]));
                 if (potentialArray) {
                     productsToImport = potentialArray as Product[];
                 }
             }
         }
 
-        if (productsToImport.length === 0) {
-            throw new Error("JSON 中未找到有效的产品数据 (Empty or Invalid Structure)");
+        // --- CRITICAL SAFETY CHECK ---
+        // Filter out items that don't look like products to prevent App crash
+        const validProducts = productsToImport.filter(isValidProduct);
+
+        if (validProducts.length === 0) {
+            throw new Error("JSON 中未找到有效的产品数据 (No valid products found)");
         }
 
-        onImportData(productsToImport);
+        if (validProducts.length < productsToImport.length) {
+            console.warn(`Filtered out ${productsToImport.length - validProducts.length} invalid items.`);
+        }
+
+        onImportData(validProducts);
         setImportStatus('success');
-        setImportMessage(`成功导入 ${productsToImport.length} 条数据`);
+        setImportMessage(`成功导入 ${validProducts.length} 条数据`);
         
         // Auto reset to idle state so user can import again easily
         setTimeout(() => {
@@ -157,7 +176,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       } catch (err) {
         console.error("Import Error:", err);
         setImportStatus('error');
-        setImportMessage('文件解析失败：JSON 格式不正确或结构不匹配');
+        setImportMessage('文件解析失败：格式不正确或数据为空');
       }
     };
     

@@ -243,26 +243,28 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [currentTheme, setCurrentTheme] = useState<Theme>('neon');
   
-  // Initialize from LocalStorage OR fall back to DEMO DATA for first-time experience
-  const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem('aero_erp_products');
-    return saved ? JSON.parse(saved) : DEMO_PRODUCTS; 
-  });
+  // --- SAFE INITIALIZATION WRAPPER ---
+  // Helper to safely load JSON from localStorage. If corrupted, returns fallback.
+  const loadSafe = <T,>(key: string, fallback: T): T => {
+    try {
+      const saved = localStorage.getItem(key);
+      if (!saved) return fallback;
+      const parsed = JSON.parse(saved);
+      // Basic check: if array required but object returned, or vice versa
+      if (Array.isArray(fallback) && !Array.isArray(parsed)) throw new Error('Type mismatch: Expected array');
+      return parsed;
+    } catch (e) {
+      console.warn(`Data corruption detected for key "${key}". Reverting to demo data.`, e);
+      // Optional: Clear corrupted data to prevent future crashes
+      // localStorage.removeItem(key); 
+      return fallback;
+    }
+  };
 
-  const [shipments, setShipments] = useState<Shipment[]>(() => {
-    const saved = localStorage.getItem('aero_erp_shipments');
-    return saved ? JSON.parse(saved) : DEMO_SHIPMENTS;
-  });
-
-  const [influencers, setInfluencers] = useState<Influencer[]>(() => {
-    const saved = localStorage.getItem('aero_erp_influencers');
-    return saved ? JSON.parse(saved) : DEMO_INFLUENCERS;
-  });
-
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-      const saved = localStorage.getItem('aero_erp_transactions');
-      return saved ? JSON.parse(saved) : DEMO_TRANSACTIONS;
-  });
+  const [products, setProducts] = useState<Product[]>(() => loadSafe('aero_erp_products', DEMO_PRODUCTS));
+  const [shipments, setShipments] = useState<Shipment[]>(() => loadSafe('aero_erp_shipments', DEMO_SHIPMENTS));
+  const [influencers, setInfluencers] = useState<Influencer[]>(() => loadSafe('aero_erp_influencers', DEMO_INFLUENCERS));
+  const [transactions, setTransactions] = useState<Transaction[]>(() => loadSafe('aero_erp_transactions', DEMO_TRANSACTIONS));
 
   const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined);
   const [editingSKU, setEditingSKU] = useState<Product | null>(null);
@@ -356,9 +358,16 @@ const App: React.FC = () => {
   };
 
   const handleImportData = (importedData: Product[]) => {
+      // Final safety check before setting state
+      if (!Array.isArray(importedData)) return;
+
       setProducts(prev => {
           const prevMap = new Map(prev.map(p => [p.id, p]));
-          importedData.forEach(p => prevMap.set(p.id, p));
+          importedData.forEach(p => {
+              if (p && p.id) {
+                 prevMap.set(p.id, p);
+              }
+          });
           return Array.from(prevMap.values());
       });
   };
