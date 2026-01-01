@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
-  Wifi, Activity, FileText, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw
+  Wifi, Activity, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw, Zap, ShieldAlert,
+  PlayCircle
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -13,9 +14,11 @@ interface DataSyncModuleProps {
 const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportData }) => {
   // Real Connection State
   const [serverUrl, setServerUrl] = useState('');
-  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error' | 'simulating'>('disconnected');
+  const [errorDetail, setErrorDetail] = useState('');
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [wsMessageCount, setWsMessageCount] = useState(0);
+  const [simulationInterval, setSimulationInterval] = useState<any>(null);
 
   const [importDragActive, setImportDragActive] = useState(false);
   const [importStatus, setImportStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
@@ -27,33 +30,32 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   useEffect(() => {
       return () => {
           if (socket) socket.close();
+          if (simulationInterval) clearInterval(simulationInterval);
       };
   }, []);
 
-  // --- 1. CRITICAL: DATA SANITIZATION TO PREVENT CRASHES ---
-  // This ensures that even if the JSON is missing fields, the app won't crash (white screen).
+  // --- 1. ROBUST DATA SANITIZATION ---
   const sanitizeProduct = (raw: any): Product => {
+      const id = raw.id || raw._id || `IMPORTED-${Math.random().toString(36).substr(2, 9)}`;
       return {
-          id: raw.id || crypto.randomUUID(),
-          sku: raw.sku || 'UNKNOWN-SKU',
-          name: raw.name || '未命名商品',
+          id: String(id),
+          sku: raw.sku || raw.SKU || 'UNKNOWN',
+          name: raw.name || raw.title || raw.productName || '未命名商品',
           description: raw.description || '',
           price: Number(raw.price) || 0,
           currency: raw.currency || Currency.USD,
-          stock: Number(raw.stock) || 0,
-          category: raw.category || 'Uncategorized',
+          stock: Number(raw.stock) || Number(raw.inventory) || 0,
+          category: raw.category || 'General',
           status: raw.status || ProductStatus.Draft,
-          imageUrl: raw.imageUrl || '',
+          imageUrl: raw.imageUrl || raw.image || raw.img || '',
           marketplaces: Array.isArray(raw.marketplaces) ? raw.marketplaces : [],
           lastUpdated: raw.lastUpdated || new Date().toISOString(),
           supplier: raw.supplier || '',
           note: raw.note || '',
           inboundId: raw.inboundId || '',
           dailySales: Number(raw.dailySales) || 0,
-          
-          // CRITICAL: Ensure nested objects exist to prevent "Cannot read properties of undefined"
           financials: {
-              costOfGoods: Number(raw.financials?.costOfGoods) || 0,
+              costOfGoods: Number(raw.financials?.costOfGoods) || Number(raw.cost) || 0,
               shippingCost: Number(raw.financials?.shippingCost) || 0,
               otherCost: Number(raw.financials?.otherCost) || 0,
               sellingPrice: Number(raw.financials?.sellingPrice) || Number(raw.price) || 0,
@@ -73,161 +75,196 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       };
   };
 
-  // --- 2. WebSocket Logic (Fixed) ---
+  // --- 2. INTELLIGENT WEBSOCKET LOGIC ---
   const handleConnect = () => {
+      // Clear previous states
+      if (socket) socket.close();
+      if (simulationInterval) clearInterval(simulationInterval);
+      setErrorDetail('');
+
       if (!serverUrl) {
-          setImportStatus('error');
-          setImportMessage('请输入有效的服务器地址 (wss://...)');
+          setConnectionStatus('error');
+          setErrorDetail('请输入服务器地址');
           return;
       }
 
+      // 1. Intelligent Protocol Correction
+      let targetUrl = serverUrl.trim();
+      if (targetUrl.endsWith('/')) targetUrl = targetUrl.slice(0, -1);
+
+      // Auto-detect IP vs Domain to guess protocol
+      const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?$/.test(targetUrl.replace('http://', '').replace('https://', '').replace('ws://', '').replace('wss://', '').split('/')[0]);
+      
+      if (targetUrl.startsWith('http://')) targetUrl = targetUrl.replace('http://', 'ws://');
+      else if (targetUrl.startsWith('https://')) targetUrl = targetUrl.replace('https://', 'wss://');
+      else if (!targetUrl.startsWith('ws://') && !targetUrl.startsWith('wss://')) {
+          targetUrl = isIP ? `ws://${targetUrl}` : `wss://${targetUrl}`;
+      }
+
+      setServerUrl(targetUrl); // Update UI to show what we are actually connecting to
+
+      // 2. BLOCKING SECURITY CHECK (The "No Reaction" Fix)
+      const isCurrentPageHttps = window.location.protocol === 'https:';
+      const isTargetInsecure = targetUrl.startsWith('ws://');
+
+      if (isCurrentPageHttps && isTargetInsecure) {
+          setConnectionStatus('error');
+          setErrorDetail('安全阻断：HTTPS 网页无法连接非加密 (ws://) IP。请使用 wss:// 域名，或在本地 localhost 运行此网页。');
+          return; // STOP HERE
+      }
+
       setConnectionStatus('connecting');
+
       try {
-          const ws = new WebSocket(serverUrl);
+          const ws = new WebSocket(targetUrl);
           
+          // Force timeout if browser hangs on connection (common with firewall issues)
+          const timeoutId = setTimeout(() => {
+              if (ws.readyState !== WebSocket.OPEN) {
+                  ws.close();
+                  setConnectionStatus('error');
+                  setErrorDetail('连接超时：服务器无响应，请检查防火墙或端口。');
+              }
+          }, 6000);
+
           ws.onopen = () => {
+              clearTimeout(timeoutId);
               setConnectionStatus('connected');
               setSocket(ws);
+              setErrorDetail('');
               console.log("WebSocket Connected");
-              // Optional: Send auth if needed
-              // ws.send(JSON.stringify({ type: 'AUTH', key: '...' }));
           };
 
           ws.onmessage = (event) => {
               setWsMessageCount(prev => prev + 1);
               try {
                   const payload = JSON.parse(event.data);
-                  // Assuming server sends { type: 'SYNC_PRODUCTS', data: [...] } or just raw array
-                  const rawData = Array.isArray(payload) ? payload : (payload.data || payload.products);
-                  
-                  if (Array.isArray(rawData)) {
+                  const rawData = Array.isArray(payload) ? payload : (payload.data || payload.products || []);
+                  if (Array.isArray(rawData) && rawData.length > 0) {
                       const cleanData = rawData.map(sanitizeProduct);
                       onImportData(cleanData);
-                      console.log(`Synced ${cleanData.length} items from server`);
                   }
-              } catch (e) {
-                  console.warn("Received non-JSON message from server", event.data);
-              }
+              } catch (e) { /* ignore non-json */ }
           };
 
           ws.onerror = (e) => {
-              console.error("WebSocket Error:", e);
+              clearTimeout(timeoutId);
+              console.error("WS Error", e);
               setConnectionStatus('error');
+              // If it failed fast, it's likely a network error or mixed content (if bypass check failed)
+              setErrorDetail('连接断开：请检查服务器地址是否正确，或是否需要 VPN。');
           };
 
           ws.onclose = () => {
-              setConnectionStatus('disconnected');
+              clearTimeout(timeoutId);
+              if (connectionStatus === 'connected') { // Only show disconnected if it was connected
+                  setConnectionStatus('disconnected');
+              }
               setSocket(null);
           };
 
-      } catch (e) {
-          console.error(e);
+      } catch (e: any) {
           setConnectionStatus('error');
+          setErrorDetail('初始化失败：URL 格式错误');
       }
   };
 
   const handleDisconnect = () => {
-      if (socket) {
-          socket.close();
-      }
+      if (socket) socket.close();
+      if (simulationInterval) clearInterval(simulationInterval);
+      setConnectionStatus('disconnected');
+      setSocket(null);
   };
 
-  // --- 3. Local File Import Logic ---
+  // --- 2.5 SIMULATION MODE ---
+  const handleSimulate = () => {
+      if (simulationInterval) clearInterval(simulationInterval);
+      setConnectionStatus('simulating');
+      setErrorDetail('');
+      
+      let counter = 0;
+      const interval = setInterval(() => {
+          setWsMessageCount(prev => prev + 1);
+          counter++;
+          // Simulate receiving a stock update for a random product
+          if (currentData.length > 0) {
+              const randomIdx = Math.floor(Math.random() * currentData.length);
+              const p = currentData[randomIdx];
+              const updatedP = { 
+                  ...p, 
+                  stock: Math.max(0, p.stock + Math.floor(Math.random() * 10) - 5),
+                  lastUpdated: new Date().toISOString()
+              };
+              onImportData([updatedP]); // Reuse import logic to update state
+          }
+      }, 2000); // Update every 2 seconds
+      setSimulationInterval(interval);
+  };
+
+  // --- 3. RECURSIVE DEEP SCAN IMPORT ---
   const handleExport = () => {
     const dataStr = JSON.stringify(currentData, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `AERO_OS_BACKUP_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `AERO_OS_BACKUP.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      processFile(e.target.files[0]);
-    }
-    e.target.value = '';
-  };
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") setImportDragActive(true);
-    else if (e.type === "dragleave") setImportDragActive(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    setImportDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processFile(e.dataTransfer.files[0]);
-    }
-  };
-
   const processFile = (file: File) => {
-    // Basic validation
-    if (!file.name.toLowerCase().endsWith('.json')) {
-      setImportStatus('error');
-      setImportMessage(`格式不支持：必须是 .json 文件`);
-      return;
-    }
-
     setImportStatus('processing');
-    setImportMessage('正在解析并修复数据结构...');
+    setImportMessage('深度扫描中...');
 
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        if (!content) throw new Error("File is empty");
+        if (!content) throw new Error("空文件");
 
         const json = JSON.parse(content);
-        let productsToImport: any[] = [];
         
-        // Flexible parsing strategy
-        if (Array.isArray(json)) {
-            productsToImport = json;
-        } else if (typeof json === 'object' && json !== null) {
-            if ('products' in json && Array.isArray((json as any).products)) {
-                productsToImport = (json as any).products;
-            } else {
-                // Try to find any array
-                const values = Object.values(json);
-                const potentialArray = values.find(v => Array.isArray(v));
-                if (potentialArray) productsToImport = potentialArray as any[];
+        // RECURSIVE SEARCH for the first valid array of objects
+        const findArray = (obj: any, depth = 0): any[] => {
+            if (depth > 5) return []; // Max depth limit
+            if (Array.isArray(obj)) {
+                 // Check if it looks like product data (has id or name or sku)
+                 if (obj.length > 0 && (obj[0].id || obj[0].name || obj[0].sku || obj[0].title)) return obj;
+                 if (obj.length === 0) return obj; // Empty array, might be valid but empty
             }
+            if (typeof obj === 'object' && obj !== null) {
+                for (const key of Object.keys(obj)) {
+                    const result = findArray(obj[key], depth + 1);
+                    if (result.length > 0) return result;
+                }
+            }
+            return [];
+        };
+
+        let productsToImport = findArray(json);
+
+        // Fallback: if single object
+        if (productsToImport.length === 0 && typeof json === 'object' && (json.id || json.name)) {
+            productsToImport = [json];
         }
 
-        if (productsToImport.length === 0) {
-            throw new Error("文件内未找到数组数据");
-        }
+        if (productsToImport.length === 0) throw new Error("未找到有效数据数组");
 
-        // --- APPLY SANITIZATION ---
         const validProducts = productsToImport.map(sanitizeProduct);
-
         onImportData(validProducts);
-        setImportStatus('success');
-        setImportMessage(`成功恢复 ${validProducts.length} 条数据 (已自动修复缺失字段)`);
         
-        setTimeout(() => {
-            setImportStatus('idle');
-            setImportMessage('');
-        }, 3000);
+        setImportStatus('success');
+        setImportMessage(`成功导入 ${validProducts.length} 条数据`);
+        setTimeout(() => { setImportStatus('idle'); setImportMessage(''); }, 3000);
 
-      } catch (err) {
-        console.error("Import Error:", err);
+      } catch (err: any) {
+        console.error(err);
         setImportStatus('error');
-        setImportMessage('文件解析失败：JSON 语法错误');
+        setImportMessage('数据解析失败：格式不兼容');
       }
     };
-    
-    reader.onerror = () => {
-        setImportStatus('error');
-        setImportMessage('读取文件失败');
-    };
-
     reader.readAsText(file);
   };
 
@@ -244,17 +281,17 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
-          {/* Left: Real Server Config */}
+          {/* Left: Smart Server Config */}
           <div className="space-y-6">
               <section className="glass-card p-8 h-full relative overflow-hidden flex flex-col group border-neon-blue/30">
                   <div className="absolute top-0 right-0 p-8 opacity-20"><Cloud size={120} className="text-neon-blue" /></div>
                   
                   <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
                       <Server className="text-neon-blue" size={20} /> 
-                      私有云连接配置 (WebSocket)
+                      私有云连接 (WebSocket)
                   </h2>
                   <p className="text-sm text-gray-400 max-w-sm mb-6">
-                      连接腾讯云或其他 WebSocket 服务器以启用实时数据同步。
+                      连接 WebSocket 服务器以实现实时库存同步。
                   </p>
 
                   <div className="space-y-4 relative z-10">
@@ -265,69 +302,82 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                               <input 
                                 value={serverUrl}
                                 onChange={(e) => setServerUrl(e.target.value)}
-                                placeholder="wss://your-server.com/socket"
-                                disabled={connectionStatus === 'connected'}
-                                className="w-full h-12 pl-12 pr-4 bg-black/40 border border-white/10 rounded-xl text-sm text-white focus:border-neon-blue outline-none font-mono"
+                                placeholder="119.28.72.106:8090"
+                                disabled={connectionStatus === 'connected' || connectionStatus === 'simulating'}
+                                className="w-full h-12 pl-12 pr-4 bg-black/40 border border-white/10 rounded-xl text-sm text-white focus:border-neon-blue outline-none font-mono placeholder-gray-600"
                               />
                           </div>
                       </div>
                       
-                      <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase">API Secret (Optional)</label>
-                          <div className="relative">
-                              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                              <input 
-                                type="password"
-                                placeholder="****************"
-                                className="w-full h-12 pl-12 pr-4 bg-black/40 border border-white/10 rounded-xl text-sm text-white focus:border-neon-blue outline-none"
-                              />
-                          </div>
-                      </div>
-
-                      <div className="pt-4">
-                          {connectionStatus === 'connected' ? (
+                      <div className="pt-4 flex flex-col gap-3">
+                          {connectionStatus === 'connected' || connectionStatus === 'simulating' ? (
                               <button onClick={handleDisconnect} className="w-full py-3 bg-red-500/20 text-red-500 border border-red-500/50 rounded-xl font-bold text-sm hover:bg-red-500 hover:text-white transition-all">
-                                  断开连接
+                                  {connectionStatus === 'simulating' ? '停止模拟' : '断开连接'}
                               </button>
                           ) : (
-                              <button 
-                                onClick={handleConnect}
-                                disabled={connectionStatus === 'connecting' || !serverUrl}
-                                className="w-full py-3 bg-gradient-neon-blue text-white rounded-xl font-bold text-sm shadow-glow-blue hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                              >
-                                  {connectionStatus === 'connecting' ? <Loader2 className="animate-spin"/> : <Wifi size={18} />}
-                                  {connectionStatus === 'connecting' ? '正在握手...' : '建立连接'}
-                              </button>
+                              <div className="grid grid-cols-2 gap-3">
+                                  <button 
+                                    onClick={handleConnect}
+                                    disabled={connectionStatus === 'connecting'}
+                                    className="col-span-1 py-3 bg-gradient-neon-blue text-white rounded-xl font-bold text-sm shadow-glow-blue hover:scale-[1.02] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                  >
+                                      {connectionStatus === 'connecting' ? <Loader2 className="animate-spin" size={18}/> : <Wifi size={18} />}
+                                      {connectionStatus === 'connecting' ? '连接中...' : '建立连接'}
+                                  </button>
+                                  <button 
+                                    onClick={handleSimulate}
+                                    className="col-span-1 py-3 bg-white/10 border border-white/10 text-white rounded-xl font-bold text-sm hover:bg-white/20 transition-all flex items-center justify-center gap-2"
+                                  >
+                                      <PlayCircle size={18} /> 模拟演示
+                                  </button>
+                              </div>
                           )}
                       </div>
 
-                      {/* Real Status Feedback */}
-                      {connectionStatus === 'error' && (
-                          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs flex items-center gap-2">
-                              <AlertCircle size={14} /> 连接失败：请检查 URL (需要 wss://) 或网络。
-                          </div>
-                      )}
-                      {connectionStatus === 'connected' && (
-                          <div className="space-y-2">
-                              <div className="p-3 bg-neon-green/10 border border-neon-green/20 rounded-lg text-neon-green text-xs flex items-center gap-2">
-                                  <Activity size={14} /> 已连接服务器。
+                      {/* Status Feedback Area */}
+                      <div className="min-h-[60px]">
+                          {connectionStatus === 'error' && (
+                              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs flex items-start gap-2 animate-fade-in">
+                                  <AlertCircle size={14} className="mt-0.5 shrink-0" /> 
+                                  <div>
+                                      <div className="font-bold mb-1">连接受阻</div>
+                                      <div className="opacity-80 leading-relaxed">{errorDetail}</div>
+                                  </div>
                               </div>
-                              <div className="flex justify-between text-[10px] text-gray-500 font-mono px-1">
-                                  <span>Status: ACTIVE</span>
-                                  <span>Msgs: {wsMessageCount}</span>
+                          )}
+                          {connectionStatus === 'connected' && (
+                              <div className="space-y-2 animate-fade-in">
+                                  <div className="p-3 bg-neon-green/10 border border-neon-green/20 rounded-lg text-neon-green text-xs flex items-center gap-2">
+                                      <Activity size={14} /> WebSocket 通道已建立
+                                  </div>
+                                  <div className="flex justify-between text-[10px] text-gray-500 font-mono px-1">
+                                      <span>STATUS: ONLINE</span>
+                                      <span>RX: {wsMessageCount} packets</span>
+                                  </div>
                               </div>
-                          </div>
-                      )}
+                          )}
+                          {connectionStatus === 'simulating' && (
+                              <div className="space-y-2 animate-fade-in">
+                                  <div className="p-3 bg-neon-purple/10 border border-neon-purple/20 rounded-lg text-neon-purple text-xs flex items-center gap-2">
+                                      <Zap size={14} className="animate-pulse" /> 正在模拟服务器数据推送...
+                                  </div>
+                                  <div className="flex justify-between text-[10px] text-gray-500 font-mono px-1">
+                                      <span>MODE: SIMULATION</span>
+                                      <span>MOCK RX: {wsMessageCount}</span>
+                                  </div>
+                              </div>
+                          )}
+                      </div>
                   </div>
               </section>
           </div>
 
-          {/* Right: Data Migration (Real) */}
+          {/* Right: Robust Import */}
           <div className="space-y-6">
                <section className="glass-card p-8 h-full flex flex-col">
                    <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
                       <Database className="text-neon-purple" size={20} /> 
-                      本地数据管理 (Local Backup)
+                      本地数据导入 (Smart Import)
                    </h2>
                    
                    {/* Import Zone */}
@@ -335,7 +385,14 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                       className={`flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-8 transition-all duration-300 relative cursor-pointer group ${
                           importDragActive ? 'border-neon-purple bg-neon-purple/10' : 'border-white/20 bg-black/20 hover:border-white/40 hover:bg-white/5'
                       }`}
-                      onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
+                      onDragEnter={(e) => { e.preventDefault(); setImportDragActive(true); }}
+                      onDragLeave={(e) => { e.preventDefault(); setImportDragActive(false); }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                          e.preventDefault();
+                          setImportDragActive(false);
+                          if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+                      }}
                       onClick={() => fileInputRef.current?.click()}
                    >
                         <input 
@@ -343,8 +400,10 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                             type="file" 
                             className="hidden" 
                             accept=".json" 
-                            onChange={handleFileChange}
-                            onClick={(e) => e.stopPropagation()} 
+                            onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) processFile(e.target.files[0]);
+                                e.target.value = ''; // Reset to allow re-selection
+                            }}
                         />
 
                         {importStatus === 'processing' ? (
@@ -353,10 +412,9 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                                 <div className="text-xs text-gray-400">{importMessage}</div>
                             </div>
                         ) : importStatus === 'success' ? (
-                            <div className="text-center">
+                            <div className="text-center animate-scale-in">
                                 <CheckCircle2 size={40} className="text-neon-green mx-auto mb-2" />
                                 <div className="text-xs text-gray-400">{importMessage}</div>
-                                <div className="mt-4 text-[10px] text-neon-blue bg-neon-blue/10 px-3 py-1 rounded-full">3秒后自动重置</div>
                             </div>
                         ) : (
                             <>
@@ -368,24 +426,25 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                                 <div className="p-4 rounded-full bg-white/5 group-hover:bg-neon-purple/20 transition-colors mb-4 text-gray-400 group-hover:text-neon-purple">
                                     <Upload size={32} />
                                 </div>
-                                <div className="font-bold text-white group-hover:text-neon-purple transition-colors">点击或拖拽上传 JSON</div>
-                                <div className="text-[10px] text-gray-500 mt-2">支持标准 ERP 数据结构备份文件</div>
+                                <div className="font-bold text-white group-hover:text-neon-purple transition-colors">点击或拖拽 JSON</div>
+                                <div className="text-[10px] text-gray-500 mt-2">支持任意层级的数组 (Deep Scan)</div>
                             </>
                         )}
                    </div>
 
                    <div className="mt-6 pt-6 border-t border-white/10 flex items-center justify-between">
                        <div className="text-xs text-gray-500">
-                           <div className="font-bold uppercase">当前缓存</div>
-                           <div className="text-white">{currentData.length} SKU</div>
+                           <div className="font-bold uppercase">数据概览</div>
+                           <div className="text-white flex items-center gap-2">
+                               <Database size={12}/> {currentData.length} SKU
+                           </div>
                        </div>
                        <div className="flex gap-2">
-                           {/* Refresh button to reload from local storage if needed */}
-                           <button onClick={() => window.location.reload()} className="p-3 rounded-xl border border-white/20 hover:bg-white/10 text-white transition-all" title="刷新页面">
+                           <button onClick={() => window.location.reload()} className="p-3 rounded-xl border border-white/20 hover:bg-white/10 text-white transition-all" title="强制刷新">
                                <RefreshCw size={16} />
                            </button>
                            <button onClick={handleExport} className="px-6 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white text-sm font-bold flex items-center gap-2 transition-all">
-                               <Download size={16} /> 备份数据
+                               <Download size={16} /> 导出备份
                            </button>
                        </div>
                    </div>
