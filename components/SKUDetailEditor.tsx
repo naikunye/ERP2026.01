@@ -5,6 +5,7 @@ import {
   DollarSign, TrendingUp, Calculator, Package, 
   Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText
 } from 'lucide-react';
+import ImageUpload from './ImageUpload';
 
 interface SKUDetailEditorProps {
   product: Product;
@@ -17,6 +18,7 @@ interface SKUDetailEditorProps {
 interface SKUFormData {
   // Remark Field
   note: string;
+  imageUrl?: string; // Allow editing image here too
 
   // M1: Product & Supply Chain
   lifecycle: 'Growing' | 'Stable' | 'Declining';
@@ -59,6 +61,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   // Initialize with product data + mock defaults for the new fields
   const [formData, setFormData] = useState<SKUFormData>({
     note: product.note || '',
+    imageUrl: product.imageUrl,
     lifecycle: 'Growing',
     leadTimeProduction: 15,
     leadTimeShipping: 30,
@@ -177,8 +180,12 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         <Layers size={16} className="text-neon-purple" /> 产品与供应链
                     </h3>
                     <div className="flex gap-4 mb-6">
-                        <div className="w-20 h-20 rounded-xl bg-black/50 border border-white/10 overflow-hidden shrink-0">
-                            <img src={product.imageUrl} className="w-full h-full object-cover" alt="" />
+                        <div className="w-24 h-24 rounded-xl overflow-hidden shrink-0 border border-white/10">
+                            <ImageUpload 
+                                currentImage={formData.imageUrl || product.imageUrl}
+                                onImageChange={(url) => setFormData(p => ({...p, imageUrl: url}))}
+                                productName={product.name}
+                            />
                         </div>
                         <div className="space-y-4 flex-1">
                              <div className="space-y-1">

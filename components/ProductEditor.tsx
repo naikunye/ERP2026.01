@@ -6,12 +6,12 @@ import {
 } from 'lucide-react';
 import { 
   generateProductDescription, 
-  translateProductContent, 
-  analyzeMarketFit, 
   optimizeProductTitle,
-  generateSeoKeywords
+  generateSeoKeywords,
+  analyzeMarketFit
 } from '../services/geminiService';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+import ImageUpload from './ImageUpload';
 
 interface ProductEditorProps {
   onClose: () => void;
@@ -36,7 +36,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
       marketplaces: [],
       category: '',
       variants: [],
-      seoKeywords: []
+      seoKeywords: [],
+      imageUrl: ''
     }
   );
 
@@ -134,7 +135,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
     onSave({
       id: initialProduct?.id || Math.random().toString(36).substr(2, 9),
       lastUpdated: new Date().toISOString(),
-      imageUrl: initialProduct?.imageUrl || `https://picsum.photos/400/400?random=${Math.random()}`,
+      // Fallback image if none selected
+      imageUrl: formData.imageUrl || `https://picsum.photos/400/400?random=${Math.random()}`,
       ...formData as Product
     });
     onClose();
@@ -173,7 +175,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                  <div className="h-6 w-px bg-white/10"></div>
                  <div>
                     <h2 className="text-sm font-bold text-white leading-none tracking-wide flex items-center gap-2">
-                        {formData.name || 'Untitled Asset'}
+                        {formData.name || '新建资产 (New Asset)'}
                         {formData.hasVariants && <span className="px-1.5 py-0.5 rounded text-[9px] bg-neon-purple/20 text-neon-purple border border-neon-purple/30">MULTI-SKU</span>}
                     </h2>
                  </div>
@@ -215,18 +217,15 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
             <div className="max-w-5xl mx-auto p-8 pb-20">
                 
                 {activeTab === 'details' && (
-                    <div className="grid grid-cols-12 gap-8 animate-fade-in">
-                        {/* Left: Image & Quick Stats */}
-                        <div className="col-span-12 md:col-span-4 space-y-6">
-                            <div className="aspect-square rounded-2xl bg-black/40 border-2 border-dashed border-white/10 flex flex-col items-center justify-center relative overflow-hidden group hover:border-neon-blue/30 transition-all cursor-pointer">
-                                {formData.imageUrl ? (
-                                    <img src={formData.imageUrl} className="w-full h-full object-cover" />
-                                ) : (
-                                    <>
-                                        <ImageIcon className="text-gray-600 mb-2 group-hover:text-neon-blue group-hover:scale-110 transition-all" size={40} />
-                                        <span className="text-xs text-gray-500 font-bold">上传主图</span>
-                                    </>
-                                )}
+                    <div className="grid grid-cols-12 gap-8 animate-fade-in h-full">
+                        {/* Left: Image & Upload (Enhanced) */}
+                        <div className="col-span-12 md:col-span-4 flex flex-col gap-6">
+                            <div className="aspect-square w-full">
+                                <ImageUpload 
+                                    currentImage={formData.imageUrl} 
+                                    onImageChange={(newImg) => setFormData(prev => ({...prev, imageUrl: newImg}))}
+                                    productName={formData.name}
+                                />
                             </div>
                             
                             <div className="glass-card p-4 border-white/5 space-y-3">
@@ -234,13 +233,9 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                     <span className="text-gray-500">创建时间</span>
                                     <span className="text-white font-mono">{new Date().toLocaleDateString()}</span>
                                 </div>
-                                <div className="flex justify-between items-center text-xs">
-                                    <span className="text-gray-500">最后更新</span>
-                                    <span className="text-white font-mono">{new Date().toLocaleTimeString()}</span>
-                                </div>
                                 <div className="flex justify-between items-center text-xs pt-2 border-t border-white/5">
                                     <span className="text-gray-500">状态</span>
-                                    <span className="text-neon-green font-bold">Active</span>
+                                    <span className="text-neon-green font-bold">Draft</span>
                                 </div>
                             </div>
                         </div>
@@ -284,7 +279,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
                                     <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">产品描述</label>
-                                    <button onClick={handleAiGenerate} disabled={isLoadingAi} className="text-[10px] text-neon-blue hover:text-white flex items-center gap-1">
+                                    <button onClick={handleAiGenerate} disabled={isLoadingAi} className="text-[10px] text-neon-blue hover:text-white flex items-center gap-1 transition-colors">
                                         {isLoadingAi ? <Loader2 size={10} className="animate-spin"/> : <Sparkles size={10}/>} AI Writer
                                     </button>
                                 </div>
@@ -293,7 +288,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                     value={formData.description}
                                     onChange={handleInputChange}
                                     className="w-full h-40 p-4 input-glass rounded-xl text-sm leading-relaxed resize-none focus:border-neon-blue"
-                                    placeholder="Detailed product specifications..."
+                                    placeholder="输入详细的产品描述或参数..."
                                 />
                             </div>
                         </div>
@@ -496,7 +491,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                              </div>
                         </section>
 
-                         {/* 3. Market Fit Analysis (Legacy) */}
+                         {/* 3. Market Fit Analysis */}
                          <section className="glass-card p-6 border-white/10">
                              <div className="flex justify-between items-start mb-4">
                                  <div>
