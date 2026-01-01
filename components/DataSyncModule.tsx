@@ -3,7 +3,7 @@ import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
   Wifi, Activity, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw, Zap, ShieldAlert,
-  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu, Copy, Check
+  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu, Copy, Check, Layout
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -12,10 +12,13 @@ interface DataSyncModuleProps {
 }
 
 const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportData }) => {
-  const [serverUrl, setServerUrl] = useState('ws://119.28.72.106:8090');
+  // Protocol Selection: 'websocket' (Raw) or 'pocketbase' (HTTP/REST)
+  const [protocol, setProtocol] = useState<'websocket' | 'pocketbase'>('pocketbase');
+  
+  const [serverUrl, setServerUrl] = useState('http://119.28.72.106:8090');
   
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error' | 'simulating'>('disconnected');
-  const [errorCode, setErrorCode] = useState<number>(0);
+  const [errorCode, setErrorCode] = useState<number | string>(0);
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [wsMessageCount, setWsMessageCount] = useState(0);
   const [simulationInterval, setSimulationInterval] = useState<any>(null);
@@ -30,11 +33,18 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+      // Auto-switch protocol prefix based on selection
+      if (protocol === 'pocketbase' && serverUrl.startsWith('ws')) {
+          setServerUrl(serverUrl.replace('ws://', 'http://').replace('wss://', 'https://'));
+      } else if (protocol === 'websocket' && serverUrl.startsWith('http')) {
+          setServerUrl(serverUrl.replace('http://', 'ws://').replace('https://', 'wss://'));
+      }
+
       return () => {
           if (socket) socket.close();
           if (simulationInterval) clearInterval(simulationInterval);
       };
-  }, []);
+  }, [protocol]);
 
   const copyToClipboard = (text: string, stepId: number) => {
       navigator.clipboard.writeText(text);
@@ -54,49 +64,92 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           stock: Number(raw.stock) || Number(raw.inventory) || 0,
           category: raw.category || 'General',
           status: raw.status || ProductStatus.Draft,
-          imageUrl: raw.imageUrl || raw.image || raw.img || '',
+          imageUrl: raw.imageUrl ? 
+            (raw.imageUrl.startsWith('http') ? raw.imageUrl : `${serverUrl}/api/files/${raw.collectionId}/${raw.id}/${raw.imageUrl}`) 
+            : '',
           marketplaces: Array.isArray(raw.marketplaces) ? raw.marketplaces : [],
-          lastUpdated: raw.lastUpdated || new Date().toISOString(),
+          lastUpdated: raw.updated || new Date().toISOString(),
           supplier: raw.supplier || '',
           note: raw.note || '',
           inboundId: raw.inboundId || '',
           dailySales: Number(raw.dailySales) || 0,
           financials: {
-              costOfGoods: Number(raw.financials?.costOfGoods) || Number(raw.cost) || 0,
-              shippingCost: Number(raw.financials?.shippingCost) || 0,
-              otherCost: Number(raw.financials?.otherCost) || 0,
-              sellingPrice: Number(raw.financials?.sellingPrice) || Number(raw.price) || 0,
-              platformFee: Number(raw.financials?.platformFee) || 0,
-              adCost: Number(raw.financials?.adCost) || 0,
+              costOfGoods: Number(raw.costOfGoods) || 0,
+              shippingCost: Number(raw.shippingCost) || 0,
+              otherCost: Number(raw.otherCost) || 0,
+              sellingPrice: Number(raw.price) || 0,
+              platformFee: Number(raw.platformFee) || 0,
+              adCost: Number(raw.adCost) || 0,
           },
           logistics: {
-              method: raw.logistics?.method || 'Air',
-              carrier: raw.logistics?.carrier || '',
-              trackingNo: raw.logistics?.trackingNo || '',
-              status: raw.logistics?.status || 'Pending',
-              origin: raw.logistics?.origin || '',
-              destination: raw.logistics?.destination || '',
-              etd: raw.logistics?.etd || '',
-              eta: raw.logistics?.eta || ''
+              method: raw.logisticsMethod || 'Air',
+              carrier: raw.logisticsCarrier || '',
+              trackingNo: raw.logisticsTracking || '',
+              status: raw.logisticsStatus || 'Pending',
+              origin: raw.origin || '',
+              destination: raw.destination || '',
+              etd: '',
+              eta: ''
           }
       };
   };
 
-  const handleConnect = () => {
+  // --- PocketBase Logic ---
+  const handlePocketBaseSync = async () => {
+      setConnectionStatus('connecting');
+      setErrorCode(0);
+      
+      // 1. Check Protocol (Mixed Content)
+      const isHttps = window.location.protocol === 'https:';
+      const isTargetHttp = serverUrl.startsWith('http://');
+      if (isHttps && isTargetHttp) {
+          setConnectionStatus('error');
+          setErrorCode('MIXED_CONTENT');
+          return;
+      }
+
+      try {
+          // 2. Fetch Collection
+          // Standard PB API: /api/collections/{collection}/records
+          const response = await fetch(`${serverUrl}/api/collections/products/records?perPage=200`, {
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' }
+          });
+
+          if (!response.ok) {
+              if (response.status === 404) throw new Error('404_COLLECTION');
+              if (response.status === 403) throw new Error('403_PERMISSION');
+              throw new Error(`HTTP_${response.status}`);
+          }
+
+          const data = await response.json();
+          const items = data.items || [];
+          
+          if (items.length > 0) {
+              onImportData(items.map(sanitizeProduct));
+              setWsMessageCount(items.length);
+              setConnectionStatus('connected');
+          } else {
+              setConnectionStatus('connected'); // Connected but empty
+              setWsMessageCount(0);
+          }
+
+      } catch (err: any) {
+          console.error(err);
+          setConnectionStatus('error');
+          setErrorCode(err.message || 'UNKNOWN');
+      }
+  };
+
+  // --- WebSocket Logic ---
+  const handleWebSocketConnect = () => {
       if (socket) socket.close();
-      if (simulationInterval) clearInterval(simulationInterval);
       
       setConnectionStatus('connecting');
       setErrorCode(0);
 
       let targetUrl = serverUrl.trim();
-      if (!targetUrl.startsWith('ws://') && !targetUrl.startsWith('wss://')) {
-          targetUrl = `ws://${targetUrl}`;
-          setServerUrl(targetUrl);
-      }
-
-      console.log(`[Connecting] Target: ${targetUrl}`);
-
+      
       setTimeout(() => {
         try {
             const ws = new WebSocket(targetUrl);
@@ -104,7 +157,6 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
             ws.onopen = () => {
                 setConnectionStatus('connected');
                 setSocket(ws);
-                console.log("[Success] WebSocket Connected");
             };
 
             ws.onmessage = (event) => {
@@ -118,12 +170,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                 } catch (e) { console.warn("Invalid JSON", e); }
             };
 
-            ws.onerror = (e) => {
-                console.error("WS Error", e);
-            };
-
             ws.onclose = (e) => {
-                console.log(`[Closed] Code: ${e.code}, Reason: ${e.reason}`);
                 setSocket(null);
                 setConnectionStatus('error');
                 setErrorCode(e.code);
@@ -132,6 +179,14 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
             setConnectionStatus('error');
         }
       }, 800); 
+  };
+
+  const handleConnect = () => {
+      if (protocol === 'pocketbase') {
+          handlePocketBaseSync();
+      } else {
+          handleWebSocketConnect();
+      }
   };
 
   const handleDisconnect = () => {
@@ -214,25 +269,44 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           {/* Left: Connection Panel */}
           <div className="space-y-6">
               <section className={`glass-card p-8 h-full relative overflow-hidden flex flex-col group border-neon-blue/30 transition-colors ${connectionStatus === 'error' ? 'border-red-500/50' : ''}`}>
-                  <div className="absolute top-0 right-0 p-8 opacity-20"><Cloud size={120} className="text-neon-blue" /></div>
+                  
+                  {/* Protocol Switcher */}
+                  <div className="flex gap-2 mb-6 p-1 bg-black/20 rounded-xl border border-white/10 relative z-20">
+                      <button 
+                        onClick={() => setProtocol('pocketbase')}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${protocol === 'pocketbase' ? 'bg-neon-blue text-black shadow-glow-blue' : 'text-gray-400 hover:text-white'}`}
+                      >
+                          <Database size={14} /> PocketBase (HTTP)
+                      </button>
+                      <button 
+                        onClick={() => setProtocol('websocket')}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${protocol === 'websocket' ? 'bg-neon-purple text-white shadow-glow-purple' : 'text-gray-400 hover:text-white'}`}
+                      >
+                          <Zap size={14} /> Raw WebSocket
+                      </button>
+                  </div>
+
+                  <div className="absolute top-0 right-0 p-8 opacity-20 pointer-events-none"><Cloud size={120} className={protocol === 'pocketbase' ? 'text-neon-blue' : 'text-neon-purple'} /></div>
                   
                   <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
-                      <Server className="text-neon-blue" size={20} /> 
-                      直连腾讯云 (Direct IP)
+                      <Server className={protocol === 'pocketbase' ? 'text-neon-blue' : 'text-neon-purple'} size={20} /> 
+                      {protocol === 'pocketbase' ? 'PocketBase 集成' : '原始 WebSocket 连接'}
                   </h2>
                   <p className="text-sm text-gray-400 max-w-sm mb-6">
-                      使用原生 WebSocket 协议连接。
+                      {protocol === 'pocketbase' 
+                        ? '直接连接到您的 PocketBase 实例获取数据。无需额外代码。' 
+                        : '连接到自定义的 Node.js/Python WebSocket 服务端。'}
                   </p>
 
                   <div className="space-y-4 relative z-10">
                       <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase">WebSocket Server URL</label>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">Server Endpoint URL</label>
                           <div className="relative">
                               <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
                               <input 
                                 value={serverUrl}
                                 onChange={(e) => setServerUrl(e.target.value)}
-                                placeholder="ws://119.28.xx.xx:8090"
+                                placeholder={protocol === 'pocketbase' ? "http://119.28.xx.xx:8090" : "ws://119.28.xx.xx:8090"}
                                 disabled={connectionStatus === 'connected' || connectionStatus === 'simulating'}
                                 className="w-full h-12 pl-12 pr-4 bg-black/40 border border-white/10 rounded-xl text-sm text-white focus:border-neon-blue outline-none font-mono placeholder-gray-600"
                               />
@@ -249,10 +323,10 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                                   <button 
                                     onClick={handleConnect}
                                     disabled={connectionStatus === 'connecting'}
-                                    className="col-span-1 py-3 bg-gradient-neon-blue text-white rounded-xl font-bold text-sm hover:scale-[1.02] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                    className={`col-span-1 py-3 text-white rounded-xl font-bold text-sm hover:scale-[1.02] transition-all disabled:opacity-50 flex items-center justify-center gap-2 ${protocol === 'pocketbase' ? 'bg-gradient-neon-blue' : 'bg-gradient-neon-purple'}`}
                                   >
                                       {connectionStatus === 'connecting' ? <Loader2 className="animate-spin" size={18}/> : <Wifi size={18} />}
-                                      {connectionStatus === 'connecting' ? '连接中...' : '建立连接'}
+                                      {protocol === 'pocketbase' ? '同步数据' : '建立连接'}
                                   </button>
                                   <button 
                                     onClick={handleSimulate}
@@ -264,108 +338,78 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                           )}
                       </div>
 
-                      {/* --- Troubleshooting Wizard --- */}
-                      {connectionStatus === 'error' && errorCode === 1006 && (
+                      {/* --- Advanced Diagnostic / Error Area --- */}
+                      {connectionStatus === 'error' && (
                           <div className="mt-4 p-0 bg-black/60 border border-red-500/30 rounded-xl overflow-hidden animate-fade-in">
                                 <div className="bg-red-500/10 px-4 py-3 border-b border-red-500/20 flex justify-between items-center">
                                     <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
-                                        <ShieldAlert size={14} /> 连接诊断向导 (Server Diagnostics)
+                                        <ShieldAlert size={14} /> 
+                                        {protocol === 'pocketbase' ? '同步失败 (Sync Failed)' : '连接失败 (Socket Error)'}
                                     </div>
-                                    <div className="flex gap-2">
-                                        <span className="flex items-center gap-1 text-[10px] text-neon-green/80 bg-neon-green/10 px-2 py-0.5 rounded border border-neon-green/20">
-                                            <Check size={10} /> 浏览器
-                                        </span>
-                                        <span className="flex items-center gap-1 text-[10px] text-neon-green/80 bg-neon-green/10 px-2 py-0.5 rounded border border-neon-green/20">
-                                            <Check size={10} /> 云防火墙
-                                        </span>
-                                    </div>
+                                    <div className="text-[10px] font-mono opacity-70">{errorCode}</div>
                                 </div>
                                 
-                                <div className="p-5 space-y-6">
-                                    <p className="text-[11px] text-gray-400">
-                                        外部通道已打通！现在的目标是<b className="text-white">服务器内部</b>。请在 SSH 终端依次运行以下命令：
-                                    </p>
-
-                                    {/* Step 1 */}
-                                    <div>
-                                        <h4 className="text-white font-bold text-xs mb-2 flex items-center gap-2">
-                                            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-mono">1</span>
-                                            检查监听地址 (Port Binding)
-                                        </h4>
-                                        <div className="bg-black/50 rounded-lg p-3 font-mono text-[11px] border border-white/10 relative group hover:border-neon-blue/50 transition-colors">
-                                            <span className="text-neon-pink select-none">$ </span>
-                                            netstat -tunlp | grep 8090
-                                            <button 
-                                                onClick={() => copyToClipboard('netstat -tunlp | grep 8090', 1)}
-                                                className="absolute right-2 top-2 p-1.5 hover:bg-white/20 rounded bg-white/5 text-gray-400 hover:text-white transition-all" 
-                                                title="复制命令"
-                                            >
-                                                {copiedStep === 1 ? <Check size={12} className="text-neon-green"/> : <Copy size={12}/>}
-                                            </button>
+                                <div className="p-5 space-y-4 text-xs">
+                                    {errorCode === 'MIXED_CONTENT' && (
+                                        <div className="text-gray-300">
+                                            <p className="font-bold text-white mb-2">安全协议冲突 (Mixed Content)</p>
+                                            <p className="mb-2">您的浏览器正在拦截请求。因为此网页是 <span className="text-neon-green">HTTPS (安全)</span>，但您尝试连接的服务器是 <span className="text-red-400">HTTP (不安全)</span>。</p>
+                                            <p className="text-gray-500">解决方案：请点击浏览器地址栏左侧的“锁”图标或“设置”图标，允许该网站的“不安全内容”或“混合内容”。</p>
                                         </div>
-                                        <div className="mt-2 grid grid-cols-1 gap-1 text-[10px] pl-2 border-l-2 border-white/5">
-                                            <div className="text-gray-500 flex items-center gap-2">
-                                                <span className="text-red-400">❌ 127.0.0.1:8090</span> 
-                                                <span>(仅限本机访问 → 修改代码监听 0.0.0.0)</span>
-                                            </div>
-                                            <div className="text-gray-500 flex items-center gap-2">
-                                                <span className="text-neon-green">✅ 0.0.0.0:8090</span> 
-                                                <span>(允许外网访问 → 继续下一步)</span>
+                                    )}
+
+                                    {errorCode === '404_COLLECTION' && (
+                                        <div className="text-gray-300">
+                                            <p className="font-bold text-white mb-2">未找到数据表 (Collection Not Found)</p>
+                                            <p className="mb-3">成功连接到了 PocketBase，但未找到 <code className="text-neon-pink">products</code> 表。</p>
+                                            <div className="bg-white/10 p-3 rounded border border-white/10">
+                                                <div className="font-bold mb-1">请在 PocketBase 后台操作：</div>
+                                                <ol className="list-decimal list-inside space-y-1 text-gray-400">
+                                                    <li>点击 <strong>New Collection</strong></li>
+                                                    <li>名称填写: <span className="text-neon-blue select-all">products</span> (必须全小写)</li>
+                                                    <li>点击 Create</li>
+                                                </ol>
                                             </div>
                                         </div>
-                                    </div>
+                                    )}
 
-                                    {/* Step 2 */}
-                                    <div>
-                                        <h4 className="text-white font-bold text-xs mb-2 flex items-center gap-2">
-                                            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-mono">2</span>
-                                            放行内部防火墙 (Internal Firewall)
-                                        </h4>
-                                        <div className="space-y-2">
-                                            {/* Ubuntu */}
-                                            <div className="bg-black/50 rounded-lg p-3 font-mono text-[11px] border border-white/10 relative group hover:border-neon-purple/50 transition-colors">
-                                                <div className="text-gray-600 mb-1 select-none text-[9px] uppercase font-bold">Ubuntu / Debian (UFW)</div>
-                                                <span className="text-neon-pink select-none">$ </span>
-                                                sudo ufw allow 8090/tcp
-                                                <button 
-                                                    onClick={() => copyToClipboard('sudo ufw allow 8090/tcp', 2)}
-                                                    className="absolute right-2 top-2 p-1.5 hover:bg-white/20 rounded bg-white/5 text-gray-400 hover:text-white transition-all"
-                                                >
-                                                    {copiedStep === 2 ? <Check size={12} className="text-neon-green"/> : <Copy size={12}/>}
-                                                </button>
-                                            </div>
-
-                                            {/* CentOS */}
-                                            <div className="bg-black/50 rounded-lg p-3 font-mono text-[11px] border border-white/10 relative group hover:border-neon-purple/50 transition-colors">
-                                                <div className="text-gray-600 mb-1 select-none text-[9px] uppercase font-bold">CentOS / RedHat (FirewallD)</div>
-                                                <div className="flex flex-col gap-1">
-                                                    <div>
-                                                        <span className="text-neon-pink select-none">$ </span>
-                                                        firewall-cmd --zone=public --add-port=8090/tcp --permanent
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-neon-pink select-none">$ </span>
-                                                        firewall-cmd --reload
-                                                    </div>
-                                                </div>
-                                                <button 
-                                                    onClick={() => copyToClipboard('firewall-cmd --zone=public --add-port=8090/tcp --permanent && firewall-cmd --reload', 3)}
-                                                    className="absolute right-2 top-2 p-1.5 hover:bg-white/20 rounded bg-white/5 text-gray-400 hover:text-white transition-all"
-                                                >
-                                                    {copiedStep === 3 ? <Check size={12} className="text-neon-green"/> : <Copy size={12}/>}
-                                                </button>
+                                    {errorCode === '403_PERMISSION' && (
+                                        <div className="text-gray-300">
+                                            <p className="font-bold text-white mb-2">权限被拒绝 (API Rules)</p>
+                                            <p className="mb-3">找到了 products 表，但 API 权限是锁定的。</p>
+                                            <div className="bg-white/10 p-3 rounded border border-white/10">
+                                                <div className="font-bold mb-1">请解锁 API 规则：</div>
+                                                <ol className="list-decimal list-inside space-y-1 text-gray-400">
+                                                    <li>在 PocketBase 后台点击 <strong>products</strong> 表</li>
+                                                    <li>点击右上角 <strong>Settings (齿轮)</strong> &gt; <strong>API Rules</strong></li>
+                                                    <li>将 <strong>List/Search</strong> 规则留空 (默认是 Admin only)</li>
+                                                    <li>或者填入 <code className="text-neon-green">""</code> (空字符串) 以完全公开</li>
+                                                </ol>
                                             </div>
                                         </div>
-                                    </div>
+                                    )}
+
+                                    {errorCode === 1006 && protocol === 'websocket' && (
+                                        <div className="text-gray-300">
+                                            <p className="mb-2">检测到您正在运行 <strong className="text-white">PocketBase</strong> (从端口特征判断)。</p>
+                                            <p className="mb-2">PocketBase 不支持原生 WebSocket 连接。请切换到上方 <strong className="text-neon-blue">PocketBase (HTTP)</strong> 模式重试。</p>
+                                        </div>
+                                    )}
+                                    
+                                    {typeof errorCode === 'string' && errorCode.startsWith('HTTP_') && (
+                                        <p className="text-gray-300">服务器返回了错误状态码。请检查 PocketBase 日志。</p>
+                                    )}
                                 </div>
                           </div>
                       )}
 
-                      {/* Diagnostic / Status Area (Non-Error) */}
+                      {/* Status Success */}
                       {connectionStatus === 'connected' && (
                            <div className="p-3 bg-neon-green/10 border border-neon-green/20 rounded-lg text-neon-green text-xs flex items-center gap-2 animate-fade-in mt-4">
                                <Activity size={14} className="animate-pulse" /> 
-                               连接成功 | 已接收 {wsMessageCount} 条数据包
+                               {protocol === 'pocketbase' 
+                                ? `同步成功 | 已获取 ${wsMessageCount} 条记录` 
+                                : `连接保持中 | 已接收 ${wsMessageCount} 条数据包`}
                            </div>
                        )}
                        {connectionStatus === 'simulating' && (
