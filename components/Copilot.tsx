@@ -5,9 +5,6 @@ import {
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 
-// Initialize Gemini
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 interface CopilotProps {
   contextData: any; // Data from the current view to give context
 }
@@ -57,6 +54,9 @@ const Copilot: React.FC<CopilotProps> = ({ contextData }) => {
     setIsProcessing(true);
 
     try {
+      // Lazy Initialize Gemini to prevent crash on module load if env missing
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
       // Construct a prompt with context
       // Limit context size for demo purposes
       const contextSummary = JSON.stringify(contextData).slice(0, 5000); 
@@ -94,6 +94,7 @@ const Copilot: React.FC<CopilotProps> = ({ contextData }) => {
       setMessages(prev => [...prev, aiMsg]);
 
     } catch (error) {
+      console.error(error);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',

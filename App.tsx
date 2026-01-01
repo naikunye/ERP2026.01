@@ -181,7 +181,6 @@ const DEMO_SHIPMENTS: Shipment[] = [
   }
 ];
 
-// Mock Influencer Data
 const DEMO_INFLUENCERS: Influencer[] = [
     {
         id: 'INF-001',
@@ -233,7 +232,6 @@ const DEMO_INFLUENCERS: Influencer[] = [
     }
 ];
 
-// Mock Transaction Data
 const DEMO_TRANSACTIONS: Transaction[] = [
     { id: 'TX-1001', date: '2023-11-15', type: 'Revenue', category: 'Sales', amount: 4500.00, description: 'Amazon US Settlement', status: 'Cleared' },
     { id: 'TX-1002', date: '2023-11-14', type: 'Expense', category: 'Shipping', amount: 1200.00, description: 'DHL Express Payment', status: 'Cleared' },
@@ -248,7 +246,8 @@ const App: React.FC = () => {
   const [isCmdOpen, setIsCmdOpen] = useState(false);
   
   // --- SAFE INITIALIZATION WRAPPER ---
-  const loadSafe = <T,>(key: string, fallback: T): T => {
+  // Fix: Use 'extends unknown' to ensure <T> is not parsed as JSX in some environments
+  const loadSafe = <T extends unknown>(key: string, fallback: T): T => {
     try {
       const saved = localStorage.getItem(key);
       if (!saved) return fallback;
@@ -257,6 +256,8 @@ const App: React.FC = () => {
       return parsed;
     } catch (e) {
       console.warn(`Data corruption detected for key "${key}". Reverting to demo data.`, e);
+      // Clean up corrupt data to prevent white screen loop
+      try { localStorage.removeItem(key); } catch {}
       return fallback;
     }
   };
@@ -306,12 +307,41 @@ const App: React.FC = () => {
     if (editingSKU) {
        setProducts(prev => prev.map(p => {
            if (p.id !== editingSKU.id) return p;
+           
+           // Correctly reconstruct the financials object using existing values or defaults
+           // to prevent undefined errors in other modules
+           const existingFin = p.financials || { costOfGoods: 0, shippingCost: 0, otherCost: 0, sellingPrice: 0, platformFee: 0, adCost: 0 };
+           const existingLog = p.logistics || { method: 'Sea', carrier: '', trackingNo: '', status: 'Pending', origin: '', destination: '' };
+
+           // Calculate derived costs if needed, or trust the form
+           const shippingCost = (updatedData.shippingRate || 0) * (updatedData.unitWeight || 0);
+           const platformFee = (updatedData.sellingPrice || 0) * (updatedData.tiktokCommission || 0) / 100;
+           const otherCost = (updatedData.fulfillmentFee || 0);
+
            return {
                ...p,
                note: updatedData.note,
                supplier: updatedData.supplierName,
-               financials: { ...p.financials, ...updatedData.financials },
-               logistics: { ...p.logistics, ...updatedData.logistics }
+               // Deep merge financials
+               financials: {
+                   ...existingFin,
+                   costOfGoods: updatedData.unitCost || existingFin.costOfGoods,
+                   shippingCost: shippingCost || existingFin.shippingCost,
+                   otherCost: otherCost || existingFin.otherCost,
+                   sellingPrice: updatedData.sellingPrice || existingFin.sellingPrice,
+                   platformFee: platformFee || existingFin.platformFee,
+                   adCost: updatedData.adCostPerUnit || existingFin.adCost
+               },
+               // Deep merge logistics
+               logistics: {
+                   ...existingLog,
+                   carrier: updatedData.carrier || existingLog.carrier,
+                   trackingNo: updatedData.trackingNo || existingLog.trackingNo,
+                   method: updatedData.transportMethod || existingLog.method,
+                   // origin: 'China', // Keep existing origin
+                   destination: updatedData.destinationWarehouse || existingLog.destination,
+                   // etd: updatedData.restockDate // Optional
+               }
            } as Product;
        }));
     }

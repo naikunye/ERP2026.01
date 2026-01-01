@@ -3,7 +3,7 @@ import { Influencer } from '../types';
 import { 
   Search, Filter, Instagram, Youtube, Video, MessageCircle, 
   Send, PackageCheck, DollarSign, TrendingUp, Users, ExternalLink, Star,
-  Plus, Edit2, X, Check, Trash2, Camera, MapPin, Tag, LayoutTemplate, Kanban
+  Plus, Edit2, X, Check, Trash2, Camera, MapPin, Tag, LayoutTemplate, Columns
 } from 'lucide-react';
 
 interface InfluencerModuleProps {
@@ -181,7 +181,7 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
                         className={`p-2 rounded-md transition-all ${viewMode === 'Board' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-white'}`}
                         title="看板视图"
                     >
-                        <Kanban size={16}/>
+                        <Columns size={16}/>
                     </button>
                 </div>
                 
