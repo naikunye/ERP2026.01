@@ -13,23 +13,34 @@ interface SettingsModuleProps {
   onImportData: (data: Product[]) => void;
 }
 
-// Helper to fuzzy match keys from raw object
-const findValue = (obj: any, keys: string[]) => {
+// Enhanced Fuzzy Matcher
+const findValue = (obj: any, searchTerms: string[]) => {
     if (!obj) return undefined;
-    
-    // 1. Exact match
-    for (const key of keys) {
-        if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') return obj[key];
-    }
-
-    // 2. Case-insensitive / Space-insensitive search (more expensive, do only if needed)
-    const normalizedKeys = keys.map(k => k.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, ''));
     const objKeys = Object.keys(obj);
     
-    for (const objKey of objKeys) {
-        const normalizedObjKey = objKey.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
-        if (normalizedKeys.includes(normalizedObjKey)) {
-             if (obj[objKey] !== undefined && obj[objKey] !== null && obj[objKey] !== '') return obj[objKey];
+    // Strategy 1: Exact Key Match (Fastest)
+    for (const term of searchTerms) {
+        if (obj[term] !== undefined && obj[term] !== null && obj[term] !== '') return obj[term];
+    }
+
+    // Strategy 2: Normalized Match (Ignore case, special chars)
+    // AND Strategy 3: Partial Inclusion Match (Critical for "领星入库单号" vs "入库单号")
+    
+    // Normalize Search Terms
+    const normalizedTerms = searchTerms.map(t => t.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, ''));
+
+    for (const key of objKeys) {
+        const val = obj[key];
+        if (val === undefined || val === null || val === '') continue;
+
+        const normalizedKey = key.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+        
+        for (const term of normalizedTerms) {
+            // Check if the object key INCLUDES the search term
+            // e.g. objKey: "领星入库单号" (lingxingrukudanhao) includes term: "入库单号" (rukudanhao)
+            if (normalizedKey === term || normalizedKey.includes(term)) {
+                return val;
+            }
         }
     }
     return undefined;
@@ -79,33 +90,48 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             throw new Error("文件未包含有效的数组数据");
         }
         
-        // Strict Sanitization with Fuzzy Matching for Headers
+        // Strict Sanitization with Expanded Fuzzy Matching
         const sanitized: Product[] = arr.map((raw: any) => {
-            // Field mapping strategies
-            const id = findValue(raw, ['id', 'ID', 'product_id', '序号']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
-            const sku = findValue(raw, ['sku', 'SKU', 'sku_code', 'SKU编码']) || 'UNKNOWN-SKU';
-            const name = findValue(raw, ['name', 'title', 'product_name', '产品名称', '中文名称']) || 'Unnamed Product';
-            const note = findValue(raw, ['note', 'remarks', 'remark', '备注']) || '';
-            const supplier = findValue(raw, ['supplier', 'vendor', 'supplier_name', '供应商']) || '';
             
-            // Numeric fields
+            // Helper to parse numbers safely from strings like "¥23.50"
             const parseNum = (keys: string[]) => {
                 const val = findValue(raw, keys);
-                if (typeof val === 'string') return parseFloat(val.replace(/[$,¥]/g, '')) || 0;
-                return Number(val) || 0;
+                if (val === undefined || val === null) return 0;
+                if (typeof val === 'number') return val;
+                if (typeof val === 'string') {
+                    // Remove currency symbols and commas
+                    const clean = val.replace(/[$,¥,£, ]/g, '');
+                    return parseFloat(clean) || 0;
+                }
+                return 0;
             };
 
-            const price = parseNum(['price', 'selling_price', '销售价', '售价']);
-            const stock = parseNum(['stock', 'quantity', 'inventory', '库存', '现有库存']);
+            // --- 1. Basic Info ---
+            const id = findValue(raw, ['id', 'ID', 'product_id', '序号', 'sys_id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
+            const sku = findValue(raw, ['sku', 'SKU', 'sku_code', 'SKU编码', 'MSKU']) || 'UNKNOWN-SKU';
+            const name = findValue(raw, ['name', 'title', 'product_name', '产品名称', '中文名称', '标题']) || 'Unnamed Product';
+            // Expanded for Remarks
+            const note = findValue(raw, ['note', 'remarks', 'remark', '备注', '产品备注', '说明', 'Note', 'Memo']) || '';
+            const supplier = findValue(raw, ['supplier', 'vendor', 'supplier_name', '供应商', '厂家']) || '';
             
-            const unitCost = parseNum(['unitCost', 'cost', 'purchase_price', 'cost_price', '采购单价', '单价', '含税单价']);
-            const restockCartons = parseNum(['restockCartons', 'cartons', 'box_count', '采购箱数', '箱数']);
-            const itemsPerBox = parseNum(['itemsPerBox', 'per_box', 'boxing_qty', '装箱数', '每箱数量']);
-            const unitWeight = parseNum(['unitWeight', 'weight', 'weight_kg', '单品重量', '重量']);
-            
-            // Inbound ID
-            const inboundId = findValue(raw, ['inboundId', 'inbound_id', 'shipment_id', '入库单号', '货件编号']);
+            // --- 2. Inventory & Sales ---
+            const stock = parseNum(['stock', 'quantity', 'inventory', '库存', '现有库存', 'FBA库存', '可用库存']);
+            const price = parseNum(['price', 'selling_price', '销售价', '售价', '定价']);
+            const dailySales = parseNum(['dailySales', 'daily_sales', 'sales_velocity', '日销', '日均销量', '7天销量']);
 
+            // --- 3. Procurement (The tricky ones) ---
+            // "unitCost" matches: "采购单价", "最新采购单价", "含税单价", "PurchasePrice"
+            const unitCost = parseNum(['unitCost', 'cost', 'purchase_price', 'cost_price', '采购单价', '单价', '含税单价', '进货价']);
+            
+            // "inboundId" matches: "领星入库单号", "入库单号", "货件编号", "ShipmentID", "FBA号"
+            const inboundId = findValue(raw, ['inboundId', 'inbound_id', 'shipment_id', '入库单号', '货件编号', '货件ID', 'FBA单号']);
+
+            // --- 4. Physical Specs ---
+            const restockCartons = parseNum(['restockCartons', 'cartons', 'box_count', '采购箱数', '箱数', '件数']);
+            const itemsPerBox = parseNum(['itemsPerBox', 'per_box', 'boxing_qty', '装箱数', '每箱数量', '装箱量']);
+            const unitWeight = parseNum(['unitWeight', 'weight', 'weight_kg', '单品重量', '重量', '毛重']);
+
+            // --- 5. Reconstruction ---
             return {
                 id,
                 sku,
@@ -121,7 +147,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 imageUrl: raw.imageUrl || '',
                 lastUpdated: new Date().toISOString(),
                 supplier,
-                note,
+                note: typeof note === 'object' ? JSON.stringify(note) : String(note), // Ensure string
                 
                 // Mapped extended fields
                 unitWeight,
@@ -131,14 +157,14 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 boxWeight: Number(raw.boxWeight) || 0,
                 itemsPerBox,
                 restockCartons,
-                inboundId: inboundId || '', // Ensure empty string if not found, NOT undefined
+                inboundId: inboundId ? String(inboundId) : '',
 
                 // Financials reconstruction
                 financials: {
-                    costOfGoods: unitCost,
-                    shippingCost: parseNum(['shippingCost', 'shipping', 'head_freight', '头程运费']),
-                    otherCost: parseNum(['otherCost', 'fulfillment', 'fba_fee', '杂费']),
-                    sellingPrice: price, // Default to main price if sellingPrice not explicit in financials
+                    costOfGoods: unitCost, // Mapped above
+                    shippingCost: parseNum(['shippingCost', 'shipping', 'head_freight', '头程运费', '运费']),
+                    otherCost: parseNum(['otherCost', 'fulfillment', 'fba_fee', '杂费', '操作费']),
+                    sellingPrice: price, 
                     platformFee: parseNum(['platformFee', 'referral_fee', 'commission', '佣金']),
                     adCost: parseNum(['adCost', 'cpa', 'ad_spend', '广告费']),
                 },
@@ -150,7 +176,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                     origin: raw.logistics?.origin || '',
                     destination: raw.logistics?.destination || ''
                 },
-                dailySales: parseNum(['dailySales', 'daily_sales', 'sales_velocity', '日销', '日均销量'])
+                dailySales
             };
         });
 
@@ -308,7 +334,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       <div>
                           <h2 className="text-lg font-bold text-white mb-1">数据恢复导入</h2>
                           <p className="text-xs text-gray-400 px-6">
-                              {importStatus === 'success' ? <span className="text-neon-green">{importMessage}</span> : '支持 AERO 原生 JSON 或平铺式 Excel 转换数据 (包含 UnitCost, InboundID 等字段)'}
+                              {importStatus === 'success' ? <span className="text-neon-green">{importMessage}</span> : '支持 AERO 原生 JSON 或 Excel 导出的通用 JSON 数据。'}
                           </p>
                       </div>
                   </div>
@@ -340,7 +366,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 5.3.0 PRO (Build 20241029)</p>
+                      <p className="text-xs text-gray-500">Version 5.3.2 (Build 20241030)</p>
                   </div>
               </div>
               <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors">
