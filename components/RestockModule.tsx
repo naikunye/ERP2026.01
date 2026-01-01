@@ -256,18 +256,18 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           
                           {/* MOVED INBOUND ID HERE FOR VISIBILITY + WRAPPING FIX */}
                           {item.inboundId ? (
-                              <div className="flex items-start gap-1.5 text-[10px] text-neon-purple bg-neon-purple/5 px-1.5 py-0.5 rounded border border-neon-purple/20 w-full" title="Inbound ID (入库单号)">
+                              <div className="flex items-start gap-1.5 text-[10px] text-neon-purple w-full mt-1" title="Inbound ID (入库单号)">
                                   <Container size={10} className="shrink-0 mt-[2px]" />
                                   <span className="font-mono font-bold tracking-wide break-all whitespace-normal leading-tight">
                                       {item.inboundId}
                                   </span>
                               </div>
                           ) : (
-                              <div className="text-[9px] text-gray-600 border border-dashed border-gray-800 px-1 py-0.5 rounded w-fit">无入库单号</div>
+                              <div className="text-[9px] text-gray-600 border border-dashed border-gray-800 px-1 py-0.5 rounded w-fit mt-1">无入库单号</div>
                           )}
 
                           {item.note && (
-                              <div className="flex items-start gap-1.5 text-[10px] text-gray-400 bg-white/5 p-1.5 rounded border border-white/5 w-fit">
+                              <div className="flex items-start gap-1.5 text-[10px] text-gray-400 bg-white/5 p-1.5 rounded border border-white/5 w-fit mt-1">
                                    <StickyNote size={10} className="text-neon-yellow shrink-0 mt-[1px]" />
                                    <span className="text-gray-300 leading-snug line-clamp-2 break-all" title={item.note}>
                                       {item.note}
