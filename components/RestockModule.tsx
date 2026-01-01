@@ -103,11 +103,29 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       }
   }
 
+  // UPDATED TRACKING URL LOGIC
   const getTrackingUrl = (carrier: string = '', trackingNo: string = '') => {
       if (!trackingNo) return '#';
-      const c = carrier.toLowerCase();
-      if (c.includes('ups')) return `https://www.ups.com/track?tracknum=${trackingNo}&loc=zh_CN`;
-      if (c.includes('dhl')) return `https://www.dhl.com/cn-zh/home/tracking/tracking-express.html?submit=1&tracking-id=${trackingNo}`;
+      
+      const c = carrier.toLowerCase().trim();
+      const t = trackingNo.toUpperCase().trim();
+
+      // 1. Force UPS China for explicit UPS carrier OR 1Z... tracking numbers
+      if (c.includes('ups') || t.startsWith('1Z')) {
+          return `https://www.ups.com/track?loc=zh_CN&tracknum=${trackingNo}`;
+      }
+      
+      // 2. DHL
+      if (c.includes('dhl')) {
+          return `https://www.dhl.com/cn-zh/home/tracking/tracking-express.html?submit=1&tracking-id=${trackingNo}`;
+      }
+
+      // 3. FedEx
+      if (c.includes('fedex')) {
+          return `https://www.fedex.com/zh-cn/home.html`;
+      }
+
+      // 4. Default Fallback
       return `https://www.17track.net/zh-cn/track?nums=${trackingNo}`;
   };
 

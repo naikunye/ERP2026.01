@@ -33,7 +33,7 @@ const DEMO_PRODUCTS: Product[] = [
     lastUpdated: new Date().toISOString(),
     supplier: '深圳声学科技有限公司',
     financials: { costOfGoods: 22.5, shippingCost: 3.2, otherCost: 0.5, sellingPrice: 89.99, platformFee: 13.5, adCost: 12.0 },
-    logistics: { method: 'Air', carrier: 'DHL', trackingNo: 'DHL99283711HK', status: 'In Transit', origin: 'Shenzhen', destination: 'US-LAX' }
+    logistics: { method: 'Air', carrier: 'DHL', trackingNo: 'DHL99283711HK', status: 'In Transit', origin: 'Shenzhen', destination: 'US-LAX', shippingRate: 5.5 }
   },
   {
     id: 'DEMO-002',
@@ -50,7 +50,7 @@ const DEMO_PRODUCTS: Product[] = [
     lastUpdated: new Date().toISOString(),
     supplier: '安吉椅业集团',
     financials: { costOfGoods: 65.0, shippingCost: 45.0, otherCost: 2.0, sellingPrice: 199.00, platformFee: 29.85, adCost: 25.0 },
-    logistics: { method: 'Sea', carrier: 'Matson', trackingNo: 'MSN78291029US', status: 'Customs', origin: 'Ningbo', destination: 'US-LGB' }
+    logistics: { method: 'Sea', carrier: 'Matson', trackingNo: 'MSN78291029US', status: 'Customs', origin: 'Ningbo', destination: 'US-LGB', shippingRate: 1.2 }
   },
   {
     id: 'DEMO-003',
@@ -67,7 +67,7 @@ const DEMO_PRODUCTS: Product[] = [
     lastUpdated: new Date().toISOString(),
     supplier: '中山照明厂',
     financials: { costOfGoods: 8.0, shippingCost: 1.5, otherCost: 0.2, sellingPrice: 39.99, platformFee: 6.0, adCost: 8.0 },
-    logistics: { method: 'Air', carrier: 'UPS', trackingNo: '', status: 'Pending', origin: 'Zhongshan', destination: 'US-DAL' }
+    logistics: { method: 'Air', carrier: 'UPS', trackingNo: '', status: 'Pending', origin: 'Zhongshan', destination: 'US-DAL', shippingRate: 6.0 }
   }
 ];
 
@@ -364,7 +364,7 @@ const App: React.FC = () => {
                    ...p.financials!,
                    costOfGoods: updatedData.unitCost,
                    sellingPrice: updatedData.sellingPrice,
-                   shippingCost: p.financials?.shippingCost || 0,
+                   shippingCost: updatedData.unitShippingCost || p.financials?.shippingCost || 0, // CORRECTED: Use calculated cost if available
                    otherCost: updatedData.fulfillmentFee || 0,
                    adCost: updatedData.adCostPerUnit || 0,
                    platformFee: (updatedData.sellingPrice * (updatedData.tiktokCommission || 0)) / 100
@@ -374,7 +374,8 @@ const App: React.FC = () => {
                    method: updatedData.transportMethod,
                    carrier: updatedData.carrier,
                    trackingNo: updatedData.trackingNo,
-                   destination: updatedData.destinationWarehouse
+                   destination: updatedData.destinationWarehouse,
+                   shippingRate: updatedData.shippingRate // Persist input rate
                }
            } as Product;
        }));

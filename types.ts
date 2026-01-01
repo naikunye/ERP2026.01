@@ -43,6 +43,7 @@ export interface LogisticsInfo {
   eta?: string;
   origin: string;
   destination: string;
+  shippingRate?: number; // Added for persistence
 }
 
 // 核心财务数据结构

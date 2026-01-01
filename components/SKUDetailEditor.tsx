@@ -82,7 +82,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     transportMethod: product.logistics?.method || 'Sea',
     carrier: product.logistics?.carrier || '',
     trackingNo: product.logistics?.trackingNo || '',
-    shippingRate: 1.5, // Default for calculation
+    shippingRate: product.logistics?.shippingRate || 1.5, // Correct initialization
     destinationWarehouse: product.logistics?.destination || '',
     sellingPrice: product.financials?.sellingPrice || product.price,
     tiktokCommission: 5, // 5%
@@ -102,14 +102,14 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     const totalRealWeight = formData.boxWeight * formData.restockCartons;
     const chargeableWeight = Math.max(totalVolWeight, totalRealWeight);
     const totalShippingCost = chargeableWeight * formData.shippingRate;
-    const unitShippingCost = totalShippingCost / (totalRestockUnits || 1);
+    const unitShippingCost = totalRestockUnits > 0 ? totalShippingCost / totalRestockUnits : 0;
     
     // 3. Profit Analysis
     const revenue = formData.sellingPrice;
     const commissionCost = (formData.sellingPrice * formData.tiktokCommission) / 100;
     const totalUnitCost = formData.unitCost + unitShippingCost + commissionCost + formData.fulfillmentFee + formData.adCostPerUnit;
     const unitProfit = revenue - totalUnitCost;
-    const netMargin = (unitProfit / revenue) * 100;
+    const netMargin = revenue > 0 ? (unitProfit / revenue) * 100 : 0;
     const totalStockProfit = unitProfit * product.stock;
 
     return {
@@ -132,6 +132,14 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       ...prev,
       [name]: e.target.type === 'number' ? parseFloat(value) || 0 : value
     }));
+  };
+
+  const handleSave = () => {
+      // Pass both the form data AND the calculated metrics to the parent
+      onSave({
+          ...formData,
+          unitShippingCost: metrics.unitShippingCost // Crucial: Save the calculated unit cost
+      });
   };
 
   return (
@@ -455,7 +463,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                              <Trash2 size={20} />
                          </button>
                          <button 
-                            onClick={() => onSave(formData)}
+                            onClick={handleSave}
                             className="col-span-3 py-4 bg-gradient-neon-green text-black rounded-xl font-bold text-sm shadow-glow-green hover:scale-105 transition-all flex items-center justify-center gap-2"
                         >
                             <Save size={18} /> 保存配置
