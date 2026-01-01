@@ -85,6 +85,15 @@ export interface Product {
   dailySales?: number; 
   restockDate?: string; 
   
+  // Extended Physical Props
+  unitWeight?: number; // kg
+  boxLength?: number; // cm
+  boxWidth?: number;
+  boxHeight?: number;
+  boxWeight?: number; // kg
+  itemsPerBox?: number;
+  restockCartons?: number;
+
   logistics?: LogisticsInfo;
   financials?: FinancialInfo;
   

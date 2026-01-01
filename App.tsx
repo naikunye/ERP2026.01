@@ -350,6 +350,16 @@ const App: React.FC = () => {
                dailySales: updatedData.dailySales,
                inboundId: updatedData.inboundId,
                restockDate: updatedData.restockDate,
+               
+               // Persist Extended Physical Props
+               unitWeight: updatedData.unitWeight,
+               boxLength: updatedData.boxLength,
+               boxWidth: updatedData.boxWidth,
+               boxHeight: updatedData.boxHeight,
+               boxWeight: updatedData.boxWeight,
+               itemsPerBox: updatedData.itemsPerBox,
+               restockCartons: updatedData.restockCartons,
+
                financials: {
                    ...p.financials!,
                    costOfGoods: updatedData.unitCost,

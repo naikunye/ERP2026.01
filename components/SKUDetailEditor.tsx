@@ -58,7 +58,7 @@ interface SKUFormData {
 }
 
 const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete }) => {
-  // Initialize with product data + mock defaults for the new fields
+  // Initialize with product data + defaults for missing fields
   const [formData, setFormData] = useState<SKUFormData>({
     note: product.note || '',
     imageUrl: product.imageUrl,
@@ -66,28 +66,28 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     leadTimeProduction: 15,
     leadTimeShipping: 30,
     safetyStockDays: 14,
-    restockDate: new Date().toISOString().split('T')[0],
-    supplierName: '深圳科技实业有限公司',
-    supplierContact: 'WeChat: sz_tech_001',
-    unitCost: product.price * 0.3,
-    unitWeight: 0.5,
-    dailySales: Math.floor(Math.random() * 20) + 5,
-    boxLength: 50,
-    boxWidth: 40,
-    boxHeight: 30,
-    boxWeight: 12,
-    itemsPerBox: 24,
-    restockCartons: 10,
-    inboundId: `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-    transportMethod: 'Sea',
-    carrier: '美森快船',
-    trackingNo: '',
-    shippingRate: 1.5, // $1.5 per kg for sea
-    destinationWarehouse: 'US-WEST-01',
-    sellingPrice: product.price,
+    restockDate: product.restockDate || new Date().toISOString().split('T')[0],
+    supplierName: product.supplier || '未指定供应商',
+    supplierContact: '', // Not persisted in Product but could be
+    unitCost: product.financials?.costOfGoods || 0,
+    unitWeight: product.unitWeight || 0.5,
+    dailySales: product.dailySales || 0,
+    boxLength: product.boxLength || 50,
+    boxWidth: product.boxWidth || 40,
+    boxHeight: product.boxHeight || 30,
+    boxWeight: product.boxWeight || 12,
+    itemsPerBox: product.itemsPerBox || 24,
+    restockCartons: product.restockCartons || 10,
+    inboundId: product.inboundId || `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+    transportMethod: product.logistics?.method || 'Sea',
+    carrier: product.logistics?.carrier || '',
+    trackingNo: product.logistics?.trackingNo || '',
+    shippingRate: 1.5, // Default for calculation
+    destinationWarehouse: product.logistics?.destination || '',
+    sellingPrice: product.financials?.sellingPrice || product.price,
     tiktokCommission: 5, // 5%
-    fulfillmentFee: 4.5,
-    adCostPerUnit: 8.0,
+    fulfillmentFee: product.financials?.otherCost || 4.5,
+    adCostPerUnit: product.financials?.adCost || 8.0,
   });
 
   // --- Real-time Calculations ---

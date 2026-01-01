@@ -78,12 +78,21 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             lastUpdated: raw.lastUpdated || new Date().toISOString(),
             supplier: raw.supplier || '',
             note: raw.note || '',
+            // Physical Specs
+            unitWeight: Number(raw.unitWeight) || 0,
+            boxLength: Number(raw.boxLength) || 0,
+            boxWidth: Number(raw.boxWidth) || 0,
+            boxHeight: Number(raw.boxHeight) || 0,
+            boxWeight: Number(raw.boxWeight) || 0,
+            itemsPerBox: Number(raw.itemsPerBox) || 0,
+            restockCartons: Number(raw.restockCartons) || 0,
             // Nested Objects (Critical for preventing crash)
             financials: {
-                costOfGoods: Number(raw.financials?.costOfGoods) || 0,
+                // Support flat imports where cost might be at root
+                costOfGoods: Number(raw.financials?.costOfGoods || raw.cost || raw.unitCost) || 0,
                 shippingCost: Number(raw.financials?.shippingCost) || 0,
                 otherCost: Number(raw.financials?.otherCost) || 0,
-                sellingPrice: Number(raw.financials?.sellingPrice) || 0,
+                sellingPrice: Number(raw.financials?.sellingPrice || raw.price) || 0,
                 platformFee: Number(raw.financials?.platformFee) || 0,
                 adCost: Number(raw.financials?.adCost) || 0,
             },
