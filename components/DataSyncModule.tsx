@@ -3,7 +3,7 @@ import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
   Wifi, Activity, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw, Zap, ShieldAlert,
-  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck
+  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -123,32 +123,54 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                     const isPageHttps = window.location.protocol === 'https:';
                     const isTargetUnsecure = targetUrl.startsWith('ws://');
 
-                    // 如果已经在 HTTPS 下使用了 ws:// 且仍然 1006，
-                    // 并且用户已经开启了“不安全内容”（通过之前的步骤），
-                    // 那么最大的可能是服务器防火墙或者服务没启动。
-                    
                     if (isPageHttps && isTargetUnsecure) {
                         setErrorDetail(
-                            <div className="space-y-3 mt-2">
+                            <div className="space-y-4 mt-2">
                                 <div className="font-bold text-neon-pink flex items-center gap-2 text-sm border-b border-white/10 pb-2">
-                                    <ShieldAlert size={16}/> 连接被拒绝 (Code 1006)
+                                    <ShieldAlert size={16}/> 连接仍被拒绝 (Code 1006)
                                 </div>
                                 
-                                <div className="text-xs text-white leading-relaxed">
-                                    <span className="text-neon-yellow font-bold">如果您已开启浏览器“允许不安全内容”(地址栏有红色警告标)：</span>
-                                    <br/>
-                                    这说明浏览器已放行请求，但<b>腾讯云服务器拒绝了连接</b>。
+                                <div className="text-xs text-gray-300 leading-relaxed">
+                                    既然您已确认为浏览器开启了不安全内容权限，且腾讯云后台防火墙已放行，那么问题一定在<b>服务器内部设置</b>。
                                 </div>
 
-                                <div className="bg-white/10 p-4 rounded-lg border border-white/20 text-xs text-white">
-                                    <strong>请检查腾讯云防火墙 (90% 是这个问题):</strong>
-                                    <ol className="list-decimal list-inside mt-2 space-y-2 text-gray-300">
-                                        <li>登录腾讯云控制台，找到您的轻量应用服务器。</li>
-                                        <li>点击 <b>防火墙 (Firewall)</b> 标签页。</li>
-                                        <li>检查是否放行了 <b>TCP 8090</b> 端口。</li>
-                                        <li>如果没有，点击“添加规则” -&gt; 协议:TCP -&gt; 端口:8090 -&gt; 策略:允许。</li>
-                                        <li>如果使用宝塔面板，也需要在宝塔的安全页面放行 8090。</li>
-                                    </ol>
+                                <div className="bg-black/40 p-4 rounded-lg border border-white/20 text-xs text-white font-mono space-y-4">
+                                    <div className="flex items-start gap-3">
+                                        <Terminal size={16} className="text-neon-blue mt-1 shrink-0"/>
+                                        <div className="space-y-2 w-full">
+                                            <div className="font-bold text-neon-blue font-sans mb-1">关键排查：程序监听地址错误</div>
+                                            <p className="text-gray-400 font-sans">
+                                                很多程序默认只监听 <code>127.0.0.1</code> (本机)。为了让外网能连，必须监听 <code>0.0.0.0</code>。
+                                            </p>
+                                            <div className="bg-white/5 p-2 rounded border border-white/10 text-gray-300">
+                                                # 在服务器 SSH 中运行此命令查看：<br/>
+                                                <span className="text-neon-yellow">netstat -tunlp | grep 8090</span>
+                                            </div>
+                                            <div className="space-y-1 text-gray-400 font-sans pl-2 border-l-2 border-gray-700">
+                                                <div>❌ 错误显示: <span className="text-red-400">127.0.0.1:8090</span> (只能自己连)</div>
+                                                <div>✅ 正确显示: <span className="text-neon-green">0.0.0.0:8090</span> 或 <span className="text-neon-green">:::8090</span></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="w-full h-px bg-white/10"></div>
+
+                                    <div className="flex items-start gap-3">
+                                        <ShieldCheck size={16} className="text-neon-purple mt-1 shrink-0"/>
+                                        <div className="space-y-2 w-full">
+                                            <div className="font-bold text-neon-purple font-sans mb-1">关键排查：服务器内部防火墙</div>
+                                            <p className="text-gray-400 font-sans">
+                                                即使腾讯云放行了，Linux 系统内部可能还有一道墙 (ufw/firewalld)。
+                                            </p>
+                                            <div className="bg-white/5 p-2 rounded border border-white/10 text-gray-300">
+                                                # 尝试在 SSH 运行放行命令 (Ubuntu):<br/>
+                                                <span className="text-neon-yellow">sudo ufw allow 8090/tcp</span>
+                                                <br/>
+                                                # 或者 (CentOS):<br/>
+                                                <span className="text-neon-yellow">firewall-cmd --zone=public --add-port=8090/tcp --permanent</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         );
