@@ -14,32 +14,38 @@ interface SettingsModuleProps {
 }
 
 // ------------------------------------------------------------------
-// CORE MATCHING ENGINE (Super Robust)
+// CORE MATCHING ENGINE V4 (Term-First + Exclusion)
 // ------------------------------------------------------------------
-const findValue = (obj: any, searchTerms: string[]) => {
+const findValue = (obj: any, searchTerms: string[], excludeTerms: string[] = []) => {
     if (!obj) return undefined;
     const objKeys = Object.keys(obj);
     
-    // Normalize string: lowercase, remove ALL punctuation/spaces/symbols
-    // e.g. "LX：入库单(2024)" -> "lx入库单2024"
+    // Normalize string: lowercase, remove ALL punctuation/spaces/symbols (keep chinese/english/numbers)
     const clean = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
 
-    const normalizedTerms = searchTerms.map(t => clean(t));
+    const normalizedSearch = searchTerms.map(clean);
+    const normalizedExclude = excludeTerms.map(clean);
 
-    for (const key of objKeys) {
-        const val = obj[key];
-        if (val === undefined || val === null || val === '') continue;
+    // PRIORITY LOOP: Iterate through Search Terms FIRST. 
+    // This ensures specific terms (e.g. "purchase_price") are checked before generic ones (e.g. "price").
+    for (const term of normalizedSearch) {
+        if (!term) continue;
 
-        const normalizedKey = clean(key);
-        
-        for (const term of normalizedTerms) {
-            // Logic: 
-            // 1. Exact cleaned match (e.g. "price" == "price")
-            // 2. Key contains Term (e.g. "lx入库单" contains "入库单")
-            // 3. Term contains Key (e.g. "头程运费单价" contains "运费")
-            if (normalizedKey === term || normalizedKey.includes(term) || (term.length > 2 && term.includes(normalizedKey))) {
-                return val;
-            }
+        for (const key of objKeys) {
+             const normalizedKey = clean(key);
+             
+             // 1. CHECK EXCLUSIONS
+             // If key contains a forbidden word (e.g. key="purchase_price" contains "purchase"), skip if we are looking for "selling".
+             const isExcluded = normalizedExclude.some(ex => ex && normalizedKey.includes(ex));
+             if (isExcluded) continue;
+
+             // 2. CHECK MATCH
+             // Logic: Key includes Term (e.g. "领星入库单" includes "lx" or "入库")
+             if (normalizedKey.includes(term)) {
+                 const val = obj[key];
+                 // Return strictly if value exists (allow 0, but not undefined/null/empty string if expecting string)
+                 if (val !== undefined && val !== null && val !== '') return val;
+             }
         }
     }
     return undefined;
@@ -48,7 +54,6 @@ const findValue = (obj: any, searchTerms: string[]) => {
 const SettingsModule: React.FC<SettingsModuleProps> = ({ 
   currentTheme, onThemeChange, currentData, onImportData 
 }) => {
-  // Data Sync Logic
   const [importStatus, setImportStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [importMessage, setImportMessage] = useState('');
   const [dragActive, setDragActive] = useState(false);
@@ -68,11 +73,11 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('深度解析数据中...');
+    setImportMessage('正在应用 V4 智能匹配算法...');
     
     if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
         setImportStatus('error');
-        setImportMessage('目前仅支持 .json 文件。请将 Excel 另存为 JSON。');
+        setImportMessage('目前仅支持 .json 文件 (请将 Excel 另存为 JSON)');
         return;
     }
 
@@ -81,8 +86,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       try {
         const text = e.target?.result as string;
         const json = JSON.parse(text);
-        
-        // Handle various JSON structures
         const arr = Array.isArray(json) ? json : (json.products || json.items || json.data || []);
         
         if (!Array.isArray(arr) || arr.length === 0) {
@@ -90,74 +93,70 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         }
         
         // ------------------------------------------------
-        // MAPPING CONFIGURATION
+        // V4 MAPPING CONFIGURATION
         // ------------------------------------------------
         const sanitized: Product[] = arr.map((raw: any) => {
             
-            // Numerical Parser: Strip currency symbols, handle "100箱"
-            const parseNum = (keys: string[]) => {
-                const val = findValue(raw, keys);
+            // Helper: Numerical Parser with Exclusion
+            const parseNum = (keys: string[], exclude: string[] = []) => {
+                const val = findValue(raw, keys, exclude);
                 if (val === undefined || val === null) return 0;
                 if (typeof val === 'number') return val;
                 if (typeof val === 'string') {
-                    // Extract first valid float
                     const match = val.match(/-?\d+(\.\d+)?/);
                     return match ? parseFloat(match[0]) : 0;
                 }
                 return 0;
             };
 
-            // String Parser
-            const parseStr = (keys: string[]) => {
-                const val = findValue(raw, keys);
+            // Helper: String Parser with Exclusion
+            const parseStr = (keys: string[], exclude: string[] = []) => {
+                const val = findValue(raw, keys, exclude);
                 return val ? String(val).trim() : '';
             }
 
-            // --- 1. ID & SKU ---
-            const id = parseStr(['id', 'product_id', '序号', 'sys_id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
-            const sku = parseStr(['sku', 'sku_code', 'SKU编码', 'MSKU', '产品SKU']) || 'UNKNOWN';
-            const name = parseStr(['name', 'title', 'product_name', '产品名称', '中文名称', '标题']) || 'Unnamed Product';
+            // --- 1. CORE FINANCIALS (with Exclusion to prevent confusion) ---
             
-            // --- 2. 关键核心字段 (User Requested) ---
-            // Unit Cost
-            const unitCost = parseNum([
-                '产品单价', '采购单价', '含税单价', '单价', '成本价', 
-                'unit_cost', 'cost_price', 'purchase_price', 'cost'
-            ]);
+            // Cost: Look for 'purchase', 'cost', 'buying'. EXCLUDE 'selling', 'price' (generic), 'retail'.
+            // Note: 'purchase_price' contains 'price', so we don't exclude 'price' here, but we check 'purchase' first.
+            const unitCost = parseNum(
+                ['采购单价', '含税单价', '进货价', '成本', 'purchase_price', 'cost_price', 'buying_price', 'unit_cost', 'cost'], 
+                ['销售', 'selling', 'retail', 'market'] // Exclude Selling terms
+            );
 
-            // Cartons
-            const restockCartons = parseNum([
-                '箱子数量', '采购箱数', '箱数', '总箱数', '件数', 
-                'cartons', 'total_cartons', 'box_count', 'ctns'
-            ]);
+            // Price: Look for 'selling', 'retail', 'price'. EXCLUDE 'purchase', 'cost', 'buying'.
+            const price = parseNum(
+                ['销售价', '售价', '定价', 'selling_price', 'retail_price', 'sale_price', 'price'], 
+                ['采购', '成本', 'cost', 'purchase', 'buying', '进货'] // Exclude Cost terms
+            );
 
-            // Inbound ID (Specific fix for 'LX：入库单')
-            const inboundId = parseStr([
-                '入库单号', '入库单', 'LX入库单', '领星入库单', '货件编号', '货件ID', 
-                'inbound_id', 'shipment_id', 'fba_id', 'reference_id'
-            ]);
+            // --- 2. IDENTITY ---
+            // LX ID: Look for 'lx', '领星', 'inbound', 'shipment'.
+            const inboundId = parseStr(
+                ['lx', '领星', '入库单', '货件', 'shipment_id', 'inbound_id', 'fba_id'],
+                []
+            );
 
-            // Shipping Unit Cost
-            const shippingCost = parseNum([
-                '物流单价', '运费单价', '头程单价', '头程运费/个', '单位运费',
-                'shipping_cost', 'freight_unit', 'unit_shipping'
-            ]);
+            const id = parseStr(['id', 'product_id', 'sys_id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
+            const sku = parseStr(['sku', 'msku', '编码']) || 'UNKNOWN';
+            const name = parseStr(['name', 'title', '名称', '标题']) || 'Unnamed Product';
+            const note = parseStr(['note', 'remark', '备注', '说明', 'memo']);
+            const supplier = parseStr(['supplier', 'vendor', '供应商', '厂家']);
 
-            // --- 3. Other Specs ---
-            const stock = parseNum(['stock', 'quantity', 'inventory', '库存', '现有库存', 'FBA库存']);
-            const price = parseNum(['price', 'selling_price', '销售价', '售价', '定价']);
-            const itemsPerBox = parseNum(['itemsPerBox', '装箱数', '每箱数量', '单箱数量', 'qty_per_box']);
-            const unitWeight = parseNum(['unitWeight', '单品重量', '重量', 'weight', 'kg']);
-            const supplier = parseStr(['supplier', '供应商', '厂家', 'vendor']);
-            const note = parseStr(['note', '备注', '产品备注', '说明', 'remarks']);
+            // --- 3. SPECS ---
+            const stock = parseNum(['stock', 'qty', 'quantity', '库存', '现有']);
+            const restockCartons = parseNum(['restockCartons', 'cartons', 'box_count', '箱数', '件数']);
+            const itemsPerBox = parseNum(['itemsPerBox', 'per_box', 'boxing', '装箱数']);
+            const unitWeight = parseNum(['unitWeight', 'weight', '重量', 'kg']);
+            const shippingCost = parseNum(['shippingCost', 'freight', '运费', '头程']);
 
-            // --- 4. Object Reconstruction ---
+            // --- 4. RECONSTRUCT ---
             return {
                 id,
                 sku,
                 name,
                 description: raw.description || '',
-                price: price || (unitCost * 3), // Fallback if no selling price
+                price: price || (unitCost * 3), // Fallback logic
                 stock,
                 currency: raw.currency || Currency.USD,
                 status: raw.status || ProductStatus.Draft,
@@ -177,16 +176,16 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 boxWeight: Number(raw.boxWeight) || 0,
                 itemsPerBox,
                 restockCartons,
-                inboundId, // This should now catch 'LX：入库单'
+                inboundId, 
 
                 // Financials
                 financials: {
-                    costOfGoods: unitCost,     // *** CRITICAL FIX ***
-                    shippingCost: shippingCost, // *** CRITICAL FIX ***
-                    otherCost: parseNum(['otherCost', '杂费', '操作费']),
+                    costOfGoods: unitCost,
+                    shippingCost: shippingCost,
+                    otherCost: parseNum(['otherCost', '杂费']),
                     sellingPrice: price, 
                     platformFee: parseNum(['platformFee', '佣金']),
-                    adCost: parseNum(['adCost', '广告费']),
+                    adCost: parseNum(['adCost', '广告']),
                 },
                 logistics: {
                     method: raw.logistics?.method || 'Sea',
@@ -196,13 +195,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                     origin: '',
                     destination: ''
                 },
-                dailySales: parseNum(['dailySales', '日销', '日均销量'])
+                dailySales: parseNum(['dailySales', '日销', 'sales'])
             };
         });
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`成功导入 ${sanitized.length} 条数据 (已更新价格/箱数/入库单)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条 (已修正价格/成本/LX单号)`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
@@ -214,10 +213,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         setImportMessage('JSON 解析失败，请检查文件格式');
       }
     };
-    reader.onerror = () => {
-        setImportStatus('error');
-        setImportMessage('读取文件失败');
-    }
     reader.readAsText(file);
   };
 
@@ -386,7 +381,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 5.4.0 (Logic Fix)</p>
+                      <p className="text-xs text-gray-500">Version 5.4.0 (Matcher Logic V4)</p>
                   </div>
               </div>
               <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors">

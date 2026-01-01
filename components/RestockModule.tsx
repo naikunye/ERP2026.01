@@ -198,7 +198,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       <div className="space-y-3">
           {/* Header Row */}
           <div className="grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12">
-              <div className="col-span-2">SKU 标识</div>
+              <div className="col-span-2">SKU 标识 / 备注</div>
               <div className="col-span-2">产品详情</div>
               <div className="col-span-2">物流 & 入库</div>
               <div className="col-span-2">库存健康度 (DOI)</div>
@@ -249,17 +249,18 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
 
                       {/* 1. Identity */}
                       <div className="col-span-2 p-4 pl-12 border-r border-white/5 h-full flex flex-col justify-center relative">
-                          <div className="font-mono text-neon-blue font-bold text-sm mb-1 flex items-center gap-2">
+                          <div className="font-mono text-neon-blue font-bold text-sm">
                               {item.sku}
-                              {item.note && (
-                                  <div className="group/note relative">
-                                      <StickyNote size={12} className="text-neon-yellow" />
-                                      <div className="absolute left-full top-0 ml-2 w-48 p-2 bg-black/90 border border-white/20 rounded-lg text-[10px] text-white hidden group-hover/note:block z-50 pointer-events-none">
-                                          {item.note}
-                                      </div>
-                                  </div>
-                              )}
                           </div>
+                          {/* Updated Note Display: Visible directly in list */}
+                          {item.note && (
+                              <div className="mt-1.5 flex items-start gap-1.5 text-[10px] text-gray-400 bg-white/5 p-1.5 rounded border border-white/5 w-fit">
+                                   <StickyNote size={10} className="text-neon-yellow shrink-0 mt-[1px]" />
+                                   <span className="text-gray-300 leading-snug line-clamp-2 break-all" title={item.note}>
+                                      {item.note}
+                                   </span>
+                              </div>
+                          )}
                       </div>
 
                       {/* 2. Product Detail */}
