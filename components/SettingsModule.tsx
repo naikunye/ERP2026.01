@@ -14,7 +14,7 @@ interface SettingsModuleProps {
 }
 
 // ------------------------------------------------------------------
-// CORE MATCHING ENGINE V5 (Aggressive Include Matcher)
+// CORE MATCHING ENGINE V5.1 (Enhanced Keywords)
 // ------------------------------------------------------------------
 const findValue = (obj: any, searchTerms: string[], excludeTerms: string[] = []) => {
     if (!obj) return undefined;
@@ -69,7 +69,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('正在应用 V5 强力匹配算法...');
+    setImportMessage('正在应用 V5.1 强力匹配算法...');
     
     if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
         setImportStatus('error');
@@ -89,7 +89,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         }
         
         // ------------------------------------------------
-        // V5 MAPPING CONFIGURATION
+        // V5.1 MAPPING CONFIGURATION
         // ------------------------------------------------
         const sanitized: Product[] = arr.map((raw: any) => {
             
@@ -114,7 +114,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             // --- 1. CORE FINANCIALS ---
             const unitCost = parseNum(
                 ['采购单价', '含税单价', '进货价', '成本', 'purchase_price', 'cost_price', 'buying_price', 'unit_cost', 'cost'], 
-                ['销售', 'selling', 'retail', 'market'] 
+                ['销售', 'selling', 'retail', 'market', '物流', '运费'] // Added '物流' exclusion to prevent mixing
             );
 
             const price = parseNum(
@@ -142,7 +142,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const restockCartons = parseNum(['restockCartons', 'cartons', 'box_count', '箱数', '件数']);
             const itemsPerBox = parseNum(['itemsPerBox', 'per_box', 'boxing', '装箱数']);
             const unitWeight = parseNum(['unitWeight', 'weight', '重量', 'kg']);
-            const shippingCost = parseNum(['shippingCost', 'freight', '运费', '头程']);
+            
+            // Fixed: Expanded keywords for Logistics Unit Price
+            const shippingCost = parseNum([
+                'shippingCost', 'freight', '运费', '头程', 
+                '物流单价', '物流费', '物流成本', '海运费', '空运费', // Explicit keywords
+                'shipping_price', 'logistics_cost'
+            ]);
 
             // --- 4. RECONSTRUCT ---
             return {
@@ -193,7 +199,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条 (LX单号修复版)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条 (修正: 物流单价)`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
@@ -373,7 +379,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 5.5.0 (Inbound Fix)</p>
+                      <p className="text-xs text-gray-500">Version 5.5.1 (Shipping Fix)</p>
                   </div>
               </div>
               <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors">
