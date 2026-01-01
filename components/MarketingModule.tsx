@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Megaphone, Video, Mail, PenTool, Hash, Sparkles, Copy, 
-  Check, RefreshCw, Wand2, Layers, AlertCircle 
+  Check, RefreshCw, Wand2, Layers, AlertCircle, Save, Trash2, FileText
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 
@@ -89,6 +89,14 @@ const TOOLS = [
     }
 ];
 
+interface SavedContent {
+    id: string;
+    type: string;
+    product: string;
+    content: string;
+    date: string;
+}
+
 const MarketingModule: React.FC = () => {
     const [activeToolId, setActiveToolId] = useState('tiktok');
     const [productName, setProductName] = useState('');
@@ -97,6 +105,8 @@ const MarketingModule: React.FC = () => {
     const [generatedContent, setGeneratedContent] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [showSaved, setShowSaved] = useState(false);
+    const [savedDrafts, setSavedDrafts] = useState<SavedContent[]>([]);
 
     const activeTool = TOOLS.find(t => t.id === activeToolId) || TOOLS[0];
 
@@ -104,6 +114,7 @@ const MarketingModule: React.FC = () => {
         if (!productName || !sellingPoint) return;
         setIsGenerating(true);
         setGeneratedContent('');
+        setShowSaved(false);
         
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -129,6 +140,23 @@ const MarketingModule: React.FC = () => {
         setTimeout(() => setCopied(false), 2000);
     };
 
+    const handleSaveDraft = () => {
+        if (!generatedContent) return;
+        const newDraft: SavedContent = {
+            id: Date.now().toString(),
+            type: activeTool.name,
+            product: productName,
+            content: generatedContent,
+            date: new Date().toLocaleDateString()
+        };
+        setSavedDrafts([newDraft, ...savedDrafts]);
+        setShowSaved(true); // Switch view to show it's saved
+    };
+
+    const handleDeleteDraft = (id: string) => {
+        setSavedDrafts(prev => prev.filter(d => d.id !== id));
+    };
+
     return (
         <div className="space-y-6 animate-fade-in w-full pb-20 h-full flex flex-col">
             
@@ -141,6 +169,12 @@ const MarketingModule: React.FC = () => {
                     </h1>
                     <p className="text-gray-400 text-sm mt-2">无需外包，让 AI 为您生成世界级的跨境营销素材。</p>
                 </div>
+                <button 
+                    onClick={() => setShowSaved(!showSaved)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 ${showSaved ? 'bg-neon-purple text-white border-neon-purple shadow-glow-purple' : 'bg-white/5 text-gray-400 border-white/10 hover:text-white'}`}
+                >
+                    <FileText size={16}/> 创意库 ({savedDrafts.length})
+                </button>
             </div>
 
             <div className="flex-1 flex gap-8 overflow-hidden min-h-0">
@@ -153,16 +187,16 @@ const MarketingModule: React.FC = () => {
                         {TOOLS.map(tool => (
                             <button
                                 key={tool.id}
-                                onClick={() => setActiveToolId(tool.id)}
+                                onClick={() => { setActiveToolId(tool.id); setShowSaved(false); }}
                                 className={`p-4 rounded-xl border text-left transition-all duration-300 relative overflow-hidden group ${
-                                    activeToolId === tool.id 
+                                    activeToolId === tool.id && !showSaved
                                     ? `${tool.color} shadow-lg` 
                                     : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-400'
                                 }`}
                             >
                                 <div className="mb-2">{tool.icon}</div>
-                                <div className={`text-sm font-bold ${activeToolId === tool.id ? 'text-white' : ''}`}>{tool.name}</div>
-                                {activeToolId === tool.id && (
+                                <div className={`text-sm font-bold ${activeToolId === tool.id && !showSaved ? 'text-white' : ''}`}>{tool.name}</div>
+                                {activeToolId === tool.id && !showSaved && (
                                     <div className="absolute right-2 top-2">
                                         <Sparkles size={12} className="animate-pulse"/>
                                     </div>
@@ -230,46 +264,101 @@ const MarketingModule: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Right: Output Area */}
+                {/* Right: Output Area or Saved Drafts */}
                 <div className="flex-1 glass-card border-white/10 flex flex-col overflow-hidden relative bg-[#0a0a10]">
-                    <div className="p-4 border-b border-white/10 bg-white/5 flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${generatedContent ? 'bg-neon-green' : 'bg-gray-500'}`}></div>
-                            <span className="text-xs font-bold text-white">AI 输出结果</span>
+                    {showSaved ? (
+                        <div className="flex-1 flex flex-col">
+                            <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
+                                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                    <FileText size={16}/> 已保存的创意
+                                </h3>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                                {savedDrafts.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4">
+                                        <FileText size={48} className="opacity-20"/>
+                                        <p className="text-xs">暂无保存的创意。生成内容后点击“保存”即可归档。</p>
+                                    </div>
+                                ) : (
+                                    savedDrafts.map(draft => (
+                                        <div key={draft.id} className="p-4 bg-white/5 rounded-xl border border-white/5 hover:border-white/20 transition-all group">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div>
+                                                    <span className="text-[10px] bg-neon-blue/10 text-neon-blue px-2 py-0.5 rounded border border-neon-blue/20">{draft.type}</span>
+                                                    <span className="text-xs text-gray-400 ml-2">{draft.date}</span>
+                                                    <div className="text-white font-bold text-sm mt-1">{draft.product}</div>
+                                                </div>
+                                                <button onClick={() => handleDeleteDraft(draft.id)} className="text-gray-600 hover:text-red-500 transition-colors">
+                                                    <Trash2 size={14}/>
+                                                </button>
+                                            </div>
+                                            <div className="text-xs text-gray-300 font-mono bg-black/30 p-3 rounded-lg max-h-32 overflow-hidden relative">
+                                                {draft.content.slice(0, 200)}...
+                                                <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-black/50 to-transparent"></div>
+                                            </div>
+                                            <div className="mt-3 flex justify-end">
+                                                <button 
+                                                    onClick={() => { navigator.clipboard.writeText(draft.content); alert('Copied!'); }}
+                                                    className="text-[10px] font-bold text-gray-400 hover:text-white flex items-center gap-1"
+                                                >
+                                                    <Copy size={12}/> 复制全文
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
                         </div>
-                        {generatedContent && (
-                            <button 
-                                onClick={handleCopy}
-                                className="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 text-xs font-bold text-gray-300 flex items-center gap-2 transition-all"
-                            >
-                                {copied ? <Check size={14} className="text-neon-green"/> : <Copy size={14}/>}
-                                {copied ? '已复制' : '复制内容'}
-                            </button>
-                        )}
-                    </div>
+                    ) : (
+                        <>
+                            <div className="p-4 border-b border-white/10 bg-white/5 flex justify-between items-center">
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${generatedContent ? 'bg-neon-green' : 'bg-gray-500'}`}></div>
+                                    <span className="text-xs font-bold text-white">AI 输出结果</span>
+                                </div>
+                                {generatedContent && (
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={handleSaveDraft}
+                                            className="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 text-xs font-bold text-neon-purple flex items-center gap-2 transition-all"
+                                        >
+                                            <Save size={14} /> 保存
+                                        </button>
+                                        <button 
+                                            onClick={handleCopy}
+                                            className="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 text-xs font-bold text-gray-300 flex items-center gap-2 transition-all"
+                                        >
+                                            {copied ? <Check size={14} className="text-neon-green"/> : <Copy size={14}/>}
+                                            {copied ? '已复制' : '复制内容'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
 
-                    <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                        {generatedContent ? (
-                            <div className="prose prose-invert max-w-none">
-                                <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-200 font-mono">
-                                    {generatedContent}
-                                </div>
+                            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                                {generatedContent ? (
+                                    <div className="prose prose-invert max-w-none animate-fade-in">
+                                        <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-200 font-mono">
+                                            {generatedContent}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-50 space-y-4">
+                                        <Megaphone size={64} strokeWidth={1} />
+                                        <div className="text-center">
+                                            <p className="text-sm font-bold">准备就绪</p>
+                                            <p className="text-xs mt-1">在左侧输入信息，让 AI 为您生成爆款文案。</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        ) : (
-                            <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-50 space-y-4">
-                                <Megaphone size={64} strokeWidth={1} />
-                                <div className="text-center">
-                                    <p className="text-sm font-bold">准备就绪</p>
-                                    <p className="text-xs mt-1">在左侧输入信息，让 AI 为您生成爆款文案。</p>
-                                </div>
+                            
+                            {/* Decoration */}
+                            <div className="absolute bottom-0 right-0 p-8 pointer-events-none opacity-20">
+                                <Sparkles size={100} className="text-neon-purple/20 blur-sm"/>
                             </div>
-                        )}
-                    </div>
-                    
-                    {/* Decoration */}
-                    <div className="absolute bottom-0 right-0 p-8 pointer-events-none opacity-20">
-                        <Sparkles size={100} className="text-neon-purple/20 blur-sm"/>
-                    </div>
+                        </>
+                    )}
                 </div>
 
             </div>

@@ -322,10 +322,10 @@ const App: React.FC = () => {
       const oldShipment = shipments.find(s => s.id === updatedShipment.id);
       
       if (oldShipment) {
-          const oldMap = new Map(oldShipment.items.map(i => [i.skuId, i.quantity]));
-          const newMap = new Map(updatedShipment.items.map(i => [i.skuId, i.quantity]));
+          const oldMap = new Map<string, number>(oldShipment.items.map(i => [i.skuId, i.quantity] as [string, number]));
+          const newMap = new Map<string, number>(updatedShipment.items.map(i => [i.skuId, i.quantity] as [string, number]));
           
-          const allSkus = new Set([...oldMap.keys(), ...newMap.keys()]);
+          const allSkus = new Set<string>([...oldMap.keys(), ...newMap.keys()]);
           
           allSkus.forEach(skuId => {
               const oldQty = oldMap.get(skuId) || 0;
@@ -371,7 +371,7 @@ const App: React.FC = () => {
           return;
       }
 
-      const trackingNo = logInfo.trackingNo.trim();
+      const trackingNo = (logInfo.trackingNo || '').trim();
       const restockCartons = product.restockCartons || 0;
       const itemsPerBox = product.itemsPerBox || 0;
       const boxWeight = product.boxWeight || 0;
@@ -408,7 +408,7 @@ const App: React.FC = () => {
           addNotification('success', '拼柜成功', `SKU ${product.sku} 已追加到运单 ${trackingNo}`);
 
       } else {
-          const newShipment: Shipment = {
+          const newShip: Shipment = {
               id: `SH-SYNC-${Date.now()}`,
               trackingNo: trackingNo,
               carrier: logInfo.carrier || 'Unknown',
@@ -428,7 +428,7 @@ const App: React.FC = () => {
               }],
               lastUpdate: new Date().toISOString()
           };
-          setShipments(prev => [newShipment, ...prev]);
+          setShipments(prev => [newShip, ...prev]);
           addNotification('success', '同步成功', `新运单 ${trackingNo} 已创建`);
       }
 
@@ -651,6 +651,21 @@ const App: React.FC = () => {
   
   const handleUpdateTasks = (updatedTasks: Task[]) => setTasks(updatedTasks);
 
+  const handleResetData = () => {
+      setProducts(DEMO_PRODUCTS);
+      setShipments(DEMO_SHIPMENTS);
+      setInfluencers(DEMO_INFLUENCERS);
+      setTransactions(DEMO_TRANSACTIONS);
+      setTasks(DEMO_TASKS);
+      setInventoryLogs([]);
+      setCompetitors(DEMO_COMPETITORS);
+      setMessages(DEMO_MESSAGES);
+      
+      localStorage.clear(); // Clear all keys
+      
+      addNotification('success', '重置完成', '所有数据已恢复为演示初始状态');
+  };
+
   const handleOpenProduct = (product: Product) => {
       setEditingProduct(product);
   };
@@ -664,7 +679,7 @@ const App: React.FC = () => {
       case 'orders': return <LogisticsModule shipments={shipments} products={products} onAddShipment={handleAddShipment} onUpdateShipment={handleUpdateShipment} />;
       case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} onNotify={addNotification} />;
       case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
-      case 'settings': return <SettingsModule currentTheme={currentTheme} onThemeChange={setCurrentTheme} currentData={products} onImportData={handleImportData} onNotify={addNotification} />;
+      case 'settings': return <SettingsModule currentTheme={currentTheme} onThemeChange={setCurrentTheme} currentData={products} onImportData={handleImportData} onNotify={addNotification} onResetData={handleResetData} />;
       case 'market_radar': return <MarketRadarModule competitors={competitors} onAddCompetitor={handleAddCompetitor} />; // New View
       case 'inbox': return <GlobalInboxModule messages={messages} onReplyMessage={handleReplyMessage} />; // New View
       default: return null;

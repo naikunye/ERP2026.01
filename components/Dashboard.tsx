@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, 
-  BarChart, Bar, Cell, LineChart, Line, ComposedChart, ReferenceLine 
+  BarChart, Bar, Cell, LineChart, Line, ComposedChart 
 } from 'recharts';
 import { Product, Shipment, Transaction, Influencer } from '../types';
 import { 
-  TrendingUp, TrendingDown, DollarSign, Package, Globe, Users, Zap, 
-  Activity, Radio, Truck, AlertTriangle, ArrowUpRight, ArrowDownRight, 
-  Layers, Wallet, Anchor, Clock, AlertCircle, CheckCircle2, ChevronRight, Loader2
+  TrendingUp, ArrowUpRight, ArrowDownRight, 
+  Layers, Wallet, Anchor, Clock, AlertCircle, ChevronRight, Loader2,
+  Map as MapIcon, BarChart3, Navigation, Zap, Activity, Truck, Package, AlertTriangle, Users
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -19,16 +19,15 @@ interface DashboardProps {
   onNotify?: (type: any, title: string, message: string) => void;
 }
 
-// ... (Keep existing Sub-components KPIWidget and ActionItem) ...
+// --- SUB-COMPONENTS ---
+
 const KPIWidget = ({ title, value, subValue, trend, trendUp, data, color, icon: Icon, delay }: any) => {
     return (
         <div 
             className="glass-card relative overflow-hidden group hover:-translate-y-1 transition-all duration-500 border-white/10"
             style={{ animationDelay: `${delay}ms` }}
         >
-            {/* Background Gradient */}
             <div className={`absolute -right-6 -top-6 w-32 h-32 rounded-full opacity-10 blur-3xl transition-opacity group-hover:opacity-20 ${color.bg}`}></div>
-            
             <div className="p-5 flex flex-col h-full justify-between relative z-10">
                 <div className="flex justify-between items-start">
                     <div>
@@ -41,7 +40,6 @@ const KPIWidget = ({ title, value, subValue, trend, trendUp, data, color, icon: 
                         <Icon size={20} />
                     </div>
                 </div>
-
                 <div className="flex items-end justify-between mt-4">
                     <div className="flex flex-col">
                         <div className={`flex items-center gap-1 text-xs font-bold ${trendUp ? 'text-neon-green' : 'text-neon-pink'}`}>
@@ -50,18 +48,10 @@ const KPIWidget = ({ title, value, subValue, trend, trendUp, data, color, icon: 
                         </div>
                         <div className="text-[10px] text-gray-500 font-mono mt-0.5">{subValue}</div>
                     </div>
-                    
-                    {/* Mini Sparkline */}
                     <div className="w-24 h-10">
                         <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={data}>
-                                <Line 
-                                    type="monotone" 
-                                    dataKey="value" 
-                                    stroke={trendUp ? '#00FF9D' : '#FF2975'} 
-                                    strokeWidth={2} 
-                                    dot={false} 
-                                />
+                                <Line type="monotone" dataKey="value" stroke={trendUp ? '#00FF9D' : '#FF2975'} strokeWidth={2} dot={false} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -91,8 +81,126 @@ const ActionItem = ({ icon: Icon, color, title, desc, actionLabel, onClick }: an
     </div>
 );
 
+// --- WORLD MAP COMPONENT ---
+const WorldMapVisualization = ({ shipments }: { shipments: Shipment[] }) => {
+    // Simplified coordinates for visual demo
+    const locations: Record<string, { x: number, y: number, label: string }> = {
+        'CN': { x: 780, y: 220, label: 'Shenzhen/Ningbo' },
+        'US_W': { x: 180, y: 200, label: 'Los Angeles' },
+        'US_E': { x: 280, y: 190, label: 'New York' },
+        'EU': { x: 520, y: 160, label: 'Hamburg' },
+    };
+
+    const activeRoutes = useMemo(() => {
+        return shipments
+            .filter(s => s.status === 'In Transit' || s.status === 'Customs' || s.status === 'Out for Delivery')
+            .map(s => {
+                const start = locations['CN'];
+                // Simple heuristic for destination mapping
+                let end = locations['US_W'];
+                if (s.destination.includes('NY') || s.destination.includes('New York')) end = locations['US_E'];
+                if (s.destination.includes('DE') || s.destination.includes('UK') || s.destination.includes('EU')) end = locations['EU'];
+                
+                return {
+                    id: s.id,
+                    start,
+                    end,
+                    progress: s.progress,
+                    method: s.method,
+                    tracking: s.trackingNo
+                };
+            });
+    }, [shipments]);
+
+    return (
+        <div className="relative w-full h-full bg-[#050510] rounded-xl overflow-hidden flex items-center justify-center group">
+            {/* Map Background (Abstract Dots) */}
+            <div className="absolute inset-0 opacity-20" style={{
+                backgroundImage: 'radial-gradient(circle, #3b82f6 1px, transparent 1px)',
+                backgroundSize: '20px 20px'
+            }}></div>
+            
+            {/* World Map SVG Silhouette (Simplified) */}
+            <svg viewBox="0 0 1000 500" className="w-full h-full absolute inset-0 pointer-events-none opacity-40">
+                <path d="M150,150 Q200,100 250,150 T350,150 T450,180 T550,150 T650,200 T750,220 T850,200 T950,250" fill="none" stroke="#334155" strokeWidth="2" strokeDasharray="5,5"/> 
+                {/* Visual Fake Continents */}
+                <path d="M160,180 Q200,160 220,220 T180,280 Z" fill="#1e293b" /> {/* US */}
+                <path d="M480,140 Q520,130 530,170 T500,190 Z" fill="#1e293b" /> {/* EU */}
+                <path d="M720,180 Q800,160 820,240 T750,280 Z" fill="#1e293b" /> {/* CN/Asia */}
+            </svg>
+
+            {/* Routes */}
+            <svg viewBox="0 0 1000 500" className="w-full h-full absolute inset-0 z-10">
+                {activeRoutes.map((route, i) => {
+                    // Create a curve
+                    const midX = (route.start.x + route.end.x) / 2;
+                    const midY = Math.min(route.start.y, route.end.y) - 50; // Arc up
+                    const pathD = `M${route.start.x},${route.start.y} Q${midX},${midY} ${route.end.x},${route.end.y}`;
+                    
+                    return (
+                        <g key={route.id}>
+                            {/* Path Line */}
+                            <path 
+                                d={pathD} 
+                                fill="none" 
+                                stroke={route.method === 'Air' ? '#B829FF' : '#29D9FF'} 
+                                strokeWidth="2" 
+                                strokeOpacity="0.3"
+                            />
+                            {/* Animated Dash */}
+                            <path 
+                                d={pathD} 
+                                fill="none" 
+                                stroke={route.method === 'Air' ? '#B829FF' : '#29D9FF'} 
+                                strokeWidth="2" 
+                                strokeDasharray="10,10"
+                                className="animate-[dash_20s_linear_infinite]"
+                            />
+                            {/* Moving Particle */}
+                            <circle r="4" fill="white" className="animate-pulse">
+                                <animateMotion 
+                                    dur={`${route.method === 'Air' ? '3s' : '8s'}`} 
+                                    repeatCount="indefinite" 
+                                    path={pathD}
+                                    keyPoints={`${route.progress / 100};1`}
+                                    keyTimes="0;1"
+                                    calcMode="linear"
+                                />
+                            </circle>
+                        </g>
+                    )
+                })}
+                
+                {/* Hub Dots */}
+                {Object.values(locations).map((loc: any, i) => (
+                    <g key={i}>
+                        <circle cx={loc.x} cy={loc.y} r="4" fill="#00FF9D" className="animate-ping opacity-75" />
+                        <circle cx={loc.x} cy={loc.y} r="3" fill="#00FF9D" />
+                        <text x={loc.x} y={loc.y + 15} textAnchor="middle" fill="#94a3b8" fontSize="10" fontWeight="bold">{loc.label}</text>
+                    </g>
+                ))}
+            </svg>
+
+            {/* Overlay Stats */}
+            <div className="absolute top-4 left-4 z-20 space-y-2">
+                <div className="flex items-center gap-2">
+                    <div className="w-3 h-1 bg-neon-purple rounded"></div>
+                    <span className="text-[10px] text-gray-400">Air Freight ({activeRoutes.filter(r => r.method === 'Air').length})</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-3 h-1 bg-neon-blue rounded"></div>
+                    <span className="text-[10px] text-gray-400">Ocean Freight ({activeRoutes.filter(r => r.method === 'Sea').length})</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- MAIN COMPONENT ---
+
 const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions, influencers, onChangeView, onNotify }) => {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [displayMode, setDisplayMode] = useState<'finance' | 'map'>('finance');
 
   // --- 1. Data Processing Core ---
 
@@ -155,10 +263,6 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
           setIsGeneratingReport(false);
           if (onNotify) onNotify('success', '简报已生成', 'Daily_Briefing.pdf 已准备就绪并发送至您的邮箱');
       }, 2000);
-  };
-
-  const handleOpenMap = () => {
-      if (onNotify) onNotify('info', '模块维护中', '3D 地球组件正在进行 WebGL 升级，请稍后访问。');
   };
 
   return (
@@ -244,44 +348,65 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
       {/* 3. Main Data Visualization Section */}
       <div className="grid grid-cols-12 gap-6 min-h-[450px]">
           
-          {/* Left: Financial Ecology (Composed Chart) */}
-          <div className="col-span-12 lg:col-span-8 glass-card p-6 flex flex-col relative overflow-hidden">
+          {/* Left: Financial Ecology / Map View */}
+          <div className="col-span-12 lg:col-span-8 glass-card p-6 flex flex-col relative overflow-hidden transition-all duration-500">
               <div className="flex justify-between items-center mb-6 relative z-10">
                   <div>
                       <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                          <Radio size={18} className="text-neon-blue" /> 财务生态概览
+                          {displayMode === 'finance' ? (
+                              <><BarChart3 size={18} className="text-neon-blue" /> 财务生态概览</>
+                          ) : (
+                              <><MapIcon size={18} className="text-neon-blue" /> 全球物流战情室</>
+                          )}
                       </h2>
-                      <p className="text-[10px] text-gray-500 font-mono mt-1">REVENUE VS EXPENSE / NET CASHFLOW</p>
+                      <p className="text-[10px] text-gray-500 font-mono mt-1">
+                          {displayMode === 'finance' ? 'REVENUE VS EXPENSE / NET CASHFLOW' : 'GLOBAL LOGISTICS & SHIPMENT TRACKING'}
+                      </p>
                   </div>
-                  <div className="flex items-center gap-4 text-[10px] font-bold">
-                      <div className="flex items-center gap-2 text-gray-400"><div className="w-2 h-2 rounded-full bg-neon-blue"></div> 营收</div>
-                      <div className="flex items-center gap-2 text-gray-400"><div className="w-2 h-2 rounded-full bg-neon-pink"></div> 支出</div>
-                      <div className="flex items-center gap-2 text-gray-400"><div className="w-2 h-0.5 bg-neon-green"></div> 净利趋势</div>
+                  
+                  {/* Mode Toggle */}
+                  <div className="flex bg-white/5 rounded-lg p-1 border border-white/10">
+                      <button 
+                          onClick={() => setDisplayMode('finance')}
+                          className={`px-3 py-1.5 rounded-md text-[10px] font-bold flex items-center gap-2 transition-all ${displayMode === 'finance' ? 'bg-neon-blue text-black shadow-glow-blue' : 'text-gray-400 hover:text-white'}`}
+                      >
+                          <BarChart3 size={14}/> 财务
+                      </button>
+                      <button 
+                          onClick={() => setDisplayMode('map')}
+                          className={`px-3 py-1.5 rounded-md text-[10px] font-bold flex items-center gap-2 transition-all ${displayMode === 'map' ? 'bg-neon-blue text-black shadow-glow-blue' : 'text-gray-400 hover:text-white'}`}
+                      >
+                          <MapIcon size={14}/> 地图
+                      </button>
                   </div>
               </div>
 
-              {/* Chart Container */}
+              {/* Chart/Map Container */}
               <div className="flex-1 w-full min-h-0 relative z-10">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={mainChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                          <defs>
-                              <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="0%" stopColor="#29D9FF" stopOpacity={0.8}/>
-                                  <stop offset="100%" stopColor="#29D9FF" stopOpacity={0.2}/>
-                              </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 10}} dy={10} />
-                          <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 10}} tickFormatter={(val) => `$${val/1000}k`} />
-                          <Tooltip 
-                              contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}
-                              cursor={{fill: 'rgba(255,255,255,0.05)'}}
-                          />
-                          <Bar dataKey="revenue" fill="url(#barGradient)" barSize={20} radius={[4, 4, 0, 0]} />
-                          <Area type="monotone" dataKey="expense" fill="#FF2975" fillOpacity={0.1} stroke="#FF2975" strokeWidth={2} />
-                          <Line type="monotone" dataKey="profit" stroke="#00FF9D" strokeWidth={3} dot={{r: 4, fill: '#09090b', strokeWidth: 2}} />
-                      </ComposedChart>
-                  </ResponsiveContainer>
+                  {displayMode === 'finance' ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={mainChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                              <defs>
+                                  <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%" stopColor="#29D9FF" stopOpacity={0.8}/>
+                                      <stop offset="100%" stopColor="#29D9FF" stopOpacity={0.2}/>
+                                  </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+                              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 10}} dy={10} />
+                              <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 10}} tickFormatter={(val) => `$${val/1000}k`} />
+                              <Tooltip 
+                                  contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}
+                                  cursor={{fill: 'rgba(255,255,255,0.05)'}}
+                              />
+                              <Bar dataKey="revenue" fill="url(#barGradient)" barSize={20} radius={[4, 4, 0, 0]} />
+                              <Area type="monotone" dataKey="expense" fill="#FF2975" fillOpacity={0.1} stroke="#FF2975" strokeWidth={2} />
+                              <Line type="monotone" dataKey="profit" stroke="#00FF9D" strokeWidth={3} dot={{r: 4, fill: '#09090b', strokeWidth: 2}} />
+                          </ComposedChart>
+                      </ResponsiveContainer>
+                  ) : (
+                      <WorldMapVisualization shipments={shipments} />
+                  )}
               </div>
           </div>
 
@@ -322,16 +447,16 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
 
                {/* Logistics Efficiency Card */}
                <div className="glass-card p-6 flex-1 flex flex-col relative overflow-hidden border-neon-blue/20">
-                  <div className="absolute top-0 right-0 p-4 opacity-10"><Globe size={80} className="text-neon-blue"/></div>
+                  <div className="absolute top-0 right-0 p-4 opacity-10"><Anchor size={80} className="text-neon-blue"/></div>
                   <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                      <Anchor size={16} className="text-neon-blue" /> 全球物流网络
+                      <Navigation size={16} className="text-neon-blue" /> 物流效率概览
                   </h3>
                   <div className="flex justify-between items-center mb-4 relative z-10">
                        <button 
-                           onClick={handleOpenMap}
+                           onClick={() => setDisplayMode('map')}
                            className="text-[10px] text-neon-blue hover:text-white border border-neon-blue/30 px-2 py-1 rounded hover:bg-neon-blue/20 transition-all"
                        >
-                           查看地图模式
+                           {displayMode === 'map' ? '正在查看地图' : '切换到地图模式'}
                        </button>
                   </div>
                   <div className="grid grid-cols-2 gap-4 relative z-10">

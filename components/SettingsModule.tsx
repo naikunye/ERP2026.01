@@ -3,7 +3,7 @@ import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle
 } from 'lucide-react';
 
 interface SettingsModuleProps {
@@ -12,6 +12,7 @@ interface SettingsModuleProps {
   currentData: Product[];
   onImportData: (data: Product[]) => void;
   onNotify?: (type: any, title: string, message: string) => void;
+  onResetData?: () => void; // New Prop
 }
 
 // ------------------------------------------------------------------
@@ -55,7 +56,7 @@ const findValueGreedy = (obj: any, aliases: string[], exclude: string[] = []): a
 };
 
 const SettingsModule: React.FC<SettingsModuleProps> = ({ 
-  currentTheme, onThemeChange, currentData, onImportData, onNotify 
+  currentTheme, onThemeChange, currentData, onImportData, onNotify, onResetData
 }) => {
   const [importStatus, setImportStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [importMessage, setImportMessage] = useState('');
@@ -259,6 +260,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       }
   };
 
+  const handleReset = () => {
+      if(confirm('警告：此操作将清除所有本地缓存并恢复到初始演示数据。确定继续吗？')) {
+          if (onResetData) onResetData();
+      }
+  };
+
   const themes = [
       { id: 'neon', name: 'Neon Glass', desc: '赛博朋克深色 (Default)', icon: Zap, color: 'text-neon-blue', bg: 'bg-black' },
       { id: 'ivory', name: 'Ivory Air', desc: '极简主义浅色 (Light)', icon: Sun, color: 'text-yellow-500', bg: 'bg-gray-100' },
@@ -410,22 +417,30 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
               <Shield size={16} /> 关于系统
           </h2>
-          <div className="glass-card p-6 flex items-center justify-between">
+          <div className="glass-card p-6 flex justify-between items-center">
               <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center">
                       <Globe size={24} className="text-gray-400"/>
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 7.2.0 (Shipping Unit Price Fix)</p>
+                      <p className="text-xs text-gray-500">Version 7.2.0 (Stable) • 离线就绪</p>
                   </div>
               </div>
-              <button 
-                onClick={handleCheckUpdate}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors"
-              >
-                  检查更新
-              </button>
+              <div className="flex gap-3">
+                  <button 
+                    onClick={handleReset}
+                    className="px-4 py-2 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 rounded-lg text-xs font-bold text-red-400 transition-colors flex items-center gap-2"
+                  >
+                      <RotateCcw size={14}/> 重置出厂设置
+                  </button>
+                  <button 
+                    onClick={handleCheckUpdate}
+                    className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors"
+                  >
+                      检查更新
+                  </button>
+              </div>
           </div>
       </section>
 
