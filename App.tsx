@@ -8,6 +8,9 @@ import LogisticsModule from './components/LogisticsModule';
 import DataSyncModule from './components/DataSyncModule';
 import InfluencerModule from './components/InfluencerModule';
 import FinanceModule from './components/FinanceModule';
+import AnalyticsModule from './components/AnalyticsModule';
+import CommandPalette from './components/CommandPalette';
+import Copilot from './components/Copilot';
 import { Product, ProductStatus, Currency, Shipment, Influencer, Transaction, Theme } from './types';
 
 // --- HIGH FIDELITY DEMO DATA ---
@@ -242,21 +245,18 @@ const DEMO_TRANSACTIONS: Transaction[] = [
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [currentTheme, setCurrentTheme] = useState<Theme>('neon');
+  const [isCmdOpen, setIsCmdOpen] = useState(false);
   
   // --- SAFE INITIALIZATION WRAPPER ---
-  // Helper to safely load JSON from localStorage. If corrupted, returns fallback.
   const loadSafe = <T,>(key: string, fallback: T): T => {
     try {
       const saved = localStorage.getItem(key);
       if (!saved) return fallback;
       const parsed = JSON.parse(saved);
-      // Basic check: if array required but object returned, or vice versa
       if (Array.isArray(fallback) && !Array.isArray(parsed)) throw new Error('Type mismatch: Expected array');
       return parsed;
     } catch (e) {
       console.warn(`Data corruption detected for key "${key}". Reverting to demo data.`, e);
-      // Optional: Clear corrupted data to prevent future crashes
-      // localStorage.removeItem(key); 
       return fallback;
     }
   };
@@ -270,27 +270,27 @@ const App: React.FC = () => {
   const [editingSKU, setEditingSKU] = useState<Product | null>(null);
 
   // Persistence Effects
-  useEffect(() => {
-    localStorage.setItem('aero_erp_products', JSON.stringify(products));
-  }, [products]);
-
-  useEffect(() => {
-    localStorage.setItem('aero_erp_shipments', JSON.stringify(shipments));
-  }, [shipments]);
-
-  useEffect(() => {
-    localStorage.setItem('aero_erp_influencers', JSON.stringify(influencers));
-  }, [influencers]);
-
-  useEffect(() => {
-    localStorage.setItem('aero_erp_transactions', JSON.stringify(transactions));
-  }, [transactions]);
+  useEffect(() => { localStorage.setItem('aero_erp_products', JSON.stringify(products)); }, [products]);
+  useEffect(() => { localStorage.setItem('aero_erp_shipments', JSON.stringify(shipments)); }, [shipments]);
+  useEffect(() => { localStorage.setItem('aero_erp_influencers', JSON.stringify(influencers)); }, [influencers]);
+  useEffect(() => { localStorage.setItem('aero_erp_transactions', JSON.stringify(transactions)); }, [transactions]);
 
   // Theme Side Effect
   useEffect(() => {
-    // Apply theme to document body
     document.documentElement.setAttribute('data-theme', currentTheme);
   }, [currentTheme]);
+
+  // CMD+K Listener
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setIsCmdOpen((open) => !open);
+      }
+    };
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, []);
 
   const handleSaveProduct = (savedProduct: Product) => {
     setProducts(prev => {
@@ -306,29 +306,13 @@ const App: React.FC = () => {
     if (editingSKU) {
        setProducts(prev => prev.map(p => {
            if (p.id !== editingSKU.id) return p;
-           
            return {
                ...p,
                note: updatedData.note,
                supplier: updatedData.supplierName,
-               financials: {
-                   costOfGoods: updatedData.unitCost,
-                   shippingCost: updatedData.shippingRate * updatedData.unitWeight,
-                   otherCost: updatedData.fulfillmentFee + updatedData.adCostPerUnit,
-                   sellingPrice: updatedData.sellingPrice,
-                   platformFee: (updatedData.sellingPrice * updatedData.tiktokCommission) / 100,
-                   adCost: updatedData.adCostPerUnit
-               },
-               logistics: {
-                   method: updatedData.transportMethod,
-                   carrier: updatedData.carrier,
-                   trackingNo: updatedData.trackingNo,
-                   status: 'Pending',
-                   origin: 'China',
-                   destination: updatedData.destinationWarehouse,
-                   etd: updatedData.restockDate
-               }
-           };
+               financials: { ...p.financials, ...updatedData.financials },
+               logistics: { ...p.logistics, ...updatedData.logistics }
+           } as Product;
        }));
     }
     setEditingSKU(null);
@@ -358,101 +342,59 @@ const App: React.FC = () => {
   };
 
   const handleImportData = (importedData: Product[]) => {
-      // Final safety check before setting state
       if (!Array.isArray(importedData)) return;
-
       setProducts(prev => {
           const prevMap = new Map(prev.map(p => [p.id, p]));
-          importedData.forEach(p => {
-              if (p && p.id) {
-                 prevMap.set(p.id, p);
-              }
-          });
+          importedData.forEach(p => { if (p && p.id) prevMap.set(p.id, p); });
           return Array.from(prevMap.values());
       });
   };
   
-  // Logistics Handlers
-  const handleAddShipment = (newShipment: Shipment) => {
-      setShipments(prev => [newShipment, ...prev]);
-  }
-  const handleUpdateShipment = (updatedShipment: Shipment) => {
-      setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
-  }
-
-  // Influencer Handlers
-  const handleAddInfluencer = (newInfluencer: Influencer) => {
-      setInfluencers(prev => [newInfluencer, ...prev]);
-  }
-  const handleUpdateInfluencer = (updatedInfluencer: Influencer) => {
-      setInfluencers(prev => prev.map(inf => inf.id === updatedInfluencer.id ? updatedInfluencer : inf));
-  }
-  const handleDeleteInfluencer = (id: string) => {
-      if(window.confirm('确定删除此达人档案吗？')) {
-          setInfluencers(prev => prev.filter(inf => inf.id !== id));
-      }
-  }
-
-  const handleAddTransaction = (newTx: Transaction) => {
-      setTransactions(prev => [newTx, ...prev]);
-  };
+  // Handlers for modules
+  const handleAddShipment = (newShipment: Shipment) => setShipments(prev => [newShipment, ...prev]);
+  const handleUpdateShipment = (updatedShipment: Shipment) => setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
+  const handleAddInfluencer = (newInfluencer: Influencer) => setInfluencers(prev => [newInfluencer, ...prev]);
+  const handleUpdateInfluencer = (updatedInfluencer: Influencer) => setInfluencers(prev => prev.map(inf => inf.id === updatedInfluencer.id ? updatedInfluencer : inf));
+  const handleDeleteInfluencer = (id: string) => { if(window.confirm('确定删除?')) setInfluencers(prev => prev.filter(inf => inf.id !== id)); }
+  const handleAddTransaction = (newTx: Transaction) => setTransactions(prev => [newTx, ...prev]);
 
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard':
-        return (
-            <Dashboard 
-                products={products}
-                shipments={shipments}
-                transactions={transactions}
-                influencers={influencers}
-                onChangeView={setActiveView}
-            />
-        );
-      case 'restock':
-        return (
-          <RestockModule 
-            products={products} 
-            onEditSKU={(p) => setEditingSKU(p)}
-            onCloneSKU={handleCloneSKU}
-            onDeleteSKU={handleDeleteSKU}
-            onAddNew={() => setEditingProduct(null)} // Enable Creating New Products via Restock Module
-          />
-        );
-      case 'orders':
-        return (
-            <LogisticsModule 
-                shipments={shipments} 
-                products={products} // Pass products to enable SKU selection
-                onAddShipment={handleAddShipment} 
-                onUpdateShipment={handleUpdateShipment}
-            />
-        );
-      case 'influencers': 
-        return (
-            <InfluencerModule 
-                influencers={influencers} 
-                onAddInfluencer={handleAddInfluencer}
-                onUpdateInfluencer={handleUpdateInfluencer}
-                onDeleteInfluencer={handleDeleteInfluencer}
-            />
-        );
-      case 'finance': 
-        return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
-      case 'datasync':
-        return (
-            <DataSyncModule 
-                currentData={products} 
-                onImportData={handleImportData} 
-            />
-        );
-      default:
-        return null;
+      case 'dashboard': return <Dashboard products={products} shipments={shipments} transactions={transactions} influencers={influencers} onChangeView={setActiveView} />;
+      case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct(null)} />;
+      case 'orders': return <LogisticsModule shipments={shipments} products={products} onAddShipment={handleAddShipment} onUpdateShipment={handleUpdateShipment} />;
+      case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} />;
+      case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
+      case 'analytics': return <AnalyticsModule />;
+      case 'datasync': return <DataSyncModule currentData={products} onImportData={handleImportData} />;
+      default: return null;
     }
   };
 
   return (
     <div className="min-h-screen font-sans selection:bg-neon-pink selection:text-white overflow-hidden text-gray-900 bg-transparent">
+      
+      {/* 1. Global Command Palette */}
+      <CommandPalette 
+        isOpen={isCmdOpen} 
+        onClose={() => setIsCmdOpen(false)}
+        onChangeView={setActiveView}
+        products={products}
+        onAddNewProduct={() => setEditingProduct(null)}
+      />
+
+      {/* 2. Global AI Copilot */}
+      <Copilot 
+         contextData={{ 
+            activeView, 
+            stats: { 
+                products: products.length, 
+                shipments: shipments.length, 
+                activeInfluencers: influencers.filter(i=>i.status==='Content Live').length 
+            } 
+         }} 
+      />
+
       <Sidebar 
         activeView={activeView} 
         onChangeView={setActiveView} 
@@ -460,14 +402,13 @@ const App: React.FC = () => {
         onThemeChange={setCurrentTheme}
       />
       
-      {/* Main Content Area */}
       <main className="ml-[320px] h-screen overflow-y-auto no-scrollbar pr-6">
         <div className="w-full h-full pt-6 pb-32 pl-0 pr-0">
           {renderContent()}
         </div>
       </main>
 
-      {/* Basic Product Editor Modal */}
+      {/* Modals */}
       {editingProduct !== undefined && (
         <ProductEditor 
           onClose={() => setEditingProduct(undefined)}
@@ -476,7 +417,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Advanced SKU Detail Editor Modal */}
       {editingSKU && (
         <SKUDetailEditor 
           product={editingSKU}

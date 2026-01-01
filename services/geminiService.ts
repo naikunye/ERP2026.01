@@ -28,6 +28,58 @@ export const generateProductDescription = async (productName: string, features: 
   }
 };
 
+export const optimizeProductTitle = async (productName: string, keywords: string): Promise<string> => {
+    try {
+        const prompt = `
+            Act as an Amazon/TikTok Shop SEO expert.
+            Optimize this product title for maximum click-through rate and search visibility.
+            Original Name: "${productName}"
+            Keywords to include: "${keywords}"
+            Target Audience: Global English speaking market.
+            Output: ONLY the optimized title string, no explanation. Max 100 characters.
+        `;
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+        });
+        return response.text?.trim() || productName;
+    } catch (error) {
+        return productName;
+    }
+};
+
+export const generateSeoKeywords = async (productName: string, description: string): Promise<string[]> => {
+    try {
+        const prompt = `
+            Analyze this product and generate 10 high-traffic SEO keywords (tags) for e-commerce.
+            Product: "${productName}"
+            Description: "${description}"
+            Output: A JSON array of strings. e.g. ["keyword1", "keyword2"]
+        `;
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        keywords: { type: Type.ARRAY, items: { type: Type.STRING } }
+                    }
+                }
+            }
+        });
+        
+        const jsonText = response.text;
+        if (!jsonText) return [];
+        const data = JSON.parse(jsonText);
+        return data.keywords || [];
+    } catch (error) {
+        console.error("Keyword Gen Error", error);
+        return ["Error", "Retry"];
+    }
+};
+
 export const translateProductContent = async (text: string, targetLanguage: string): Promise<string> => {
   try {
     const prompt = `Translate the following e-commerce product text into ${targetLanguage}. Maintain the marketing tone. Text: "${text}"`;

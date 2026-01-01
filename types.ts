@@ -1,5 +1,4 @@
 
-
 export enum ProductStatus {
   Draft = 'Draft',
   Active = 'Active',
@@ -37,6 +36,16 @@ export interface FinancialInfo {
   adCost: number; // 广告预算
 }
 
+// SKU 变体结构
+export interface ProductVariant {
+  id: string;
+  sku: string;
+  name: string; // e.g., "Blue / L"
+  price: number;
+  stock: number;
+  attributes: Record<string, string>; // { color: "Blue", size: "L" }
+}
+
 export interface Product {
   id: string;
   sku: string;
@@ -61,6 +70,15 @@ export interface Product {
   // Real ERP Data Fields
   logistics?: LogisticsInfo;
   financials?: FinancialInfo;
+  
+  // Variant Support
+  hasVariants?: boolean;
+  variants?: ProductVariant[];
+  
+  // AI SEO Data
+  seoTitle?: string;
+  seoKeywords?: string[];
+  marketingHook?: string;
 }
 
 export interface Shipment {
