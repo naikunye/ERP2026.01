@@ -129,7 +129,13 @@ const DEMO_SHIPMENTS: Shipment[] = [
     weight: 3500,
     cartons: 120,
     riskReason: '正常航行',
-    skuIds: ['DEMO-002']
+    skuIds: ['DEMO-002'],
+    vesselName: 'COSCO GALAXY',
+    voyageNo: 'V.049W',
+    containerNo: 'MSKU9022831',
+    sealNo: 'H882910',
+    customsStatus: 'Cleared',
+    lastUpdate: '2023-11-10T08:30:00Z'
   },
   {
     id: 'SH-002',
@@ -145,7 +151,30 @@ const DEMO_SHIPMENTS: Shipment[] = [
     weight: 240,
     cartons: 20,
     riskReason: '清关查验排队中',
-    skuIds: ['DEMO-001']
+    skuIds: ['DEMO-001'],
+    customsStatus: 'Inspection',
+    customsBroker: 'Flexport Customs',
+    lastUpdate: '2023-11-11T14:15:00Z'
+  },
+  {
+    id: 'SH-003',
+    trackingNo: 'UPS1Z9928301',
+    carrier: 'UPS Worldwide',
+    method: 'Air',
+    origin: 'Shanghai, CN',
+    destination: 'New York, US',
+    etd: '2023-10-25',
+    eta: '2023-10-28',
+    status: 'Delivered',
+    progress: 100,
+    weight: 50,
+    cartons: 5,
+    riskReason: '',
+    skuIds: ['DEMO-003'],
+    customsStatus: 'Cleared',
+    podName: 'J. SMITH (Dock)',
+    podTime: '2023-10-28T10:30:00Z',
+    lastUpdate: '2023-10-28T10:30:00Z'
   }
 ];
 

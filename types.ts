@@ -1,4 +1,5 @@
 
+
 export enum ProductStatus {
   Draft = 'Draft',
   Active = 'Active',
@@ -78,6 +79,17 @@ export interface Shipment {
   riskReason?: string;
   // 关联的 SKU IDs
   skuIds: string[]; 
+  
+  // Advanced Logistics Fields
+  vesselName?: string;
+  voyageNo?: string;
+  containerNo?: string;
+  sealNo?: string;
+  customsStatus?: 'Cleared' | 'Held' | 'Inspection' | 'Pending';
+  customsBroker?: string;
+  podName?: string; // Proof of Delivery signature
+  podTime?: string;
+  lastUpdate?: string; // Last event timestamp
 }
 
 export interface Influencer {
