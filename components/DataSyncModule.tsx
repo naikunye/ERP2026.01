@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Product } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
@@ -19,6 +19,8 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   const [importDragActive, setImportDragActive] = useState(false);
   const [importStatus, setImportStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [importMessage, setImportMessage] = useState('');
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // REAL Logic: Attempt to connect to the provided URL
   const handleConnect = () => {
@@ -90,19 +92,25 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
     }
   };
 
-  const processFile = (file: File) => {
-    // Robust check: Check MIME type OR file extension (case insensitive)
-    const isJsonType = file.type === "application/json";
-    const isJsonExt = file.name.toLowerCase().endsWith('.json');
+  const handleZoneClick = () => {
+      if (fileInputRef.current) {
+          fileInputRef.current.click();
+      }
+  };
 
-    if (!isJsonType && !isJsonExt) {
+  const processFile = (file: File) => {
+    // Relaxed check: Check extension mostly, type is unreliable on some OS
+    const isJsonExt = file.name.toLowerCase().endsWith('.json');
+    const isJsonType = file.type === "application/json";
+
+    if (!isJsonExt && !isJsonType) {
       setImportStatus('error');
-      setImportMessage(`格式错误：不支持的文件类型 (${file.type || 'unknown'})，请上传 .json 文件`);
+      setImportMessage(`格式不支持：请上传 .json 后缀的文件`);
       return;
     }
 
     setImportStatus('processing');
-    setImportMessage('正在解析数据...');
+    setImportMessage('正在解析数据结构...');
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -111,27 +119,45 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
         if (!content) throw new Error("File is empty");
 
         const json = JSON.parse(content);
+        let productsToImport: Product[] = [];
         
+        // Flexible parsing strategy
         if (Array.isArray(json)) {
-            onImportData(json as Product[]);
-            setImportStatus('success');
-            setImportMessage(`成功导入 ${json.length} 条数据`);
+            productsToImport = json as Product[];
         } else if (typeof json === 'object' && json !== null) {
-            // Support importing a single object wrapped in an array
-            if ('id' in json && 'sku' in json) {
-                onImportData([json] as Product[]);
-                setImportStatus('success');
-                setImportMessage(`成功导入 1 条数据`);
+            // Support importing { products: [...] } or single object
+            if ('products' in json && Array.isArray((json as any).products)) {
+                productsToImport = (json as any).products;
+            } else if ('id' in json) {
+                productsToImport = [json as Product];
             } else {
-                throw new Error("Invalid structure: Expected Array or Product Object");
+                // Fallback: try to find any array property that looks like products
+                const values = Object.values(json);
+                const potentialArray = values.find(v => Array.isArray(v) && v.length > 0 && 'sku' in v[0]);
+                if (potentialArray) {
+                    productsToImport = potentialArray as Product[];
+                }
             }
-        } else {
-            throw new Error("Invalid JSON structure");
         }
+
+        if (productsToImport.length === 0) {
+            throw new Error("JSON 中未找到有效的产品数据 (Empty or Invalid Structure)");
+        }
+
+        onImportData(productsToImport);
+        setImportStatus('success');
+        setImportMessage(`成功导入 ${productsToImport.length} 条数据`);
+        
+        // Auto reset to idle state so user can import again easily
+        setTimeout(() => {
+            setImportStatus('idle');
+            setImportMessage('');
+        }, 3000);
+
       } catch (err) {
         console.error("Import Error:", err);
         setImportStatus('error');
-        setImportMessage('文件解析失败：JSON 格式不正确');
+        setImportMessage('文件解析失败：JSON 格式不正确或结构不匹配');
       }
     };
     
@@ -238,13 +264,20 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                    
                    {/* Import Zone */}
                    <div 
-                      className={`flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-8 transition-all duration-300 relative ${
-                          importDragActive ? 'border-neon-purple bg-neon-purple/10' : 'border-white/20 bg-black/20 hover:border-white/40'
+                      className={`flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-8 transition-all duration-300 relative cursor-pointer group ${
+                          importDragActive ? 'border-neon-purple bg-neon-purple/10' : 'border-white/20 bg-black/20 hover:border-white/40 hover:bg-white/5'
                       }`}
                       onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
+                      onClick={handleZoneClick}
                    >
-                        {/* Note: onChange requires re-selection if we don't clear value, handled in handleFileChange */}
-                        <input type="file" id="file-upload" className="hidden" accept=".json,application/json" onChange={handleFileChange} />
+                        <input 
+                            ref={fileInputRef}
+                            type="file" 
+                            className="hidden" 
+                            accept=".json,application/json" 
+                            onChange={handleFileChange}
+                            onClick={(e) => e.stopPropagation()} 
+                        />
 
                         {importStatus === 'processing' ? (
                             <div className="flex flex-col items-center">
@@ -255,18 +288,20 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                             <div className="text-center">
                                 <CheckCircle2 size={40} className="text-neon-green mx-auto mb-2" />
                                 <div className="text-xs text-gray-400">{importMessage}</div>
-                                <label htmlFor="file-upload" className="mt-2 text-xs text-neon-blue underline cursor-pointer inline-block">继续导入</label>
+                                <div className="mt-4 text-[10px] text-neon-blue bg-neon-blue/10 px-3 py-1 rounded-full">3秒后自动重置</div>
                             </div>
                         ) : (
                             <>
                                 {importStatus === 'error' && (
-                                    <div className="absolute top-4 left-0 right-0 text-center text-xs text-red-400 flex items-center justify-center gap-1">
+                                    <div className="absolute top-4 left-4 right-4 text-center text-xs text-red-400 bg-red-500/10 border border-red-500/20 p-2 rounded-lg flex items-center justify-center gap-1">
                                         <AlertCircle size={12} /> {importMessage}
                                     </div>
                                 )}
-                                <Upload size={28} className="text-gray-400 mb-4" />
-                                <label htmlFor="file-upload" className="cursor-pointer text-neon-purple font-bold hover:underline">点击导入 JSON</label>
-                                <div className="text-[10px] text-gray-500 mt-2">支持拖拽上传</div>
+                                <div className="p-4 rounded-full bg-white/5 group-hover:bg-neon-purple/20 transition-colors mb-4 text-gray-400 group-hover:text-neon-purple">
+                                    <Upload size={32} />
+                                </div>
+                                <div className="font-bold text-white group-hover:text-neon-purple transition-colors">点击或拖拽上传 JSON</div>
+                                <div className="text-[10px] text-gray-500 mt-2">支持标准 ERP 数据结构备份文件</div>
                             </>
                         )}
                    </div>
@@ -276,8 +311,8 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                            <div className="font-bold uppercase">当前缓存</div>
                            <div className="text-white">{currentData.length} SKU</div>
                        </div>
-                       <button onClick={handleExport} className="px-6 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white text-sm font-bold flex items-center gap-2">
-                           <Download size={16} /> 导出
+                       <button onClick={handleExport} className="px-6 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white text-sm font-bold flex items-center gap-2 transition-all">
+                           <Download size={16} /> 备份数据
                        </button>
                    </div>
                </section>
