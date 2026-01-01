@@ -3,8 +3,8 @@ import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
   Wifi, Activity, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw, Zap, ShieldAlert,
-  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu, Copy, Check, Layout, MousePointerClick, Settings, List, ChevronRight, ChevronLeft,
-  Plus
+  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu, Copy, Check, Layout, MousePointerClick, Settings, List,
+  Plus, ChevronRight, ChevronLeft
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -18,7 +18,10 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error' | 'simulating'>('disconnected');
   const [errorCode, setErrorCode] = useState<number | string>(0);
   const [wsMessageCount, setWsMessageCount] = useState(0);
+  
+  // Wizard State
   const [wizardStep, setWizardStep] = useState(1);
+  
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [simulationInterval, setSimulationInterval] = useState<any>(null);
   const [importDragActive, setImportDragActive] = useState(false);
