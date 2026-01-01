@@ -275,7 +275,30 @@ const App: React.FC = () => {
 
   const handleUpdateShipment = (updatedShipment: Shipment) => {
       setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
-      addNotification('success', '状态更新', `运单 ${updatedShipment.trackingNo} 状态已更新`);
+      
+      // SYNC LOGIC: Update products linked to this shipment
+      // We look for products that are either in the shipment items list OR match the tracking number
+      setProducts(prev => prev.map(p => {
+          const isIncludedInItems = updatedShipment.items?.some(item => item.skuId === p.id);
+          const isTrackingMatch = p.logistics?.trackingNo === updatedShipment.trackingNo;
+
+          if (isIncludedInItems || isTrackingMatch) {
+              return {
+                  ...p,
+                  logistics: {
+                      ...p.logistics!,
+                      // Sync status, ETA and Carrier updates back to product view
+                      status: updatedShipment.status,
+                      eta: updatedShipment.eta,
+                      carrier: updatedShipment.carrier,
+                      method: updatedShipment.method
+                  }
+              };
+          }
+          return p;
+      }));
+
+      addNotification('success', '状态更新', `运单 ${updatedShipment.trackingNo} 状态已更新并同步至备货清单`);
   };
 
   // --- SYNC FEATURE: Restock -> Logistics ---
@@ -293,8 +316,6 @@ const App: React.FC = () => {
       }
 
       // Calculate Total Qty (Logic: Cartons * ItemsPerBox, or stock as fallback)
-      // Note: In SKUDetailEditor, we added totalRestockUnits, but that's local state. 
-      // If persisted, use it. Otherwise calc.
       const calcQty = (product.restockCartons || 0) * (product.itemsPerBox || 0);
       const finalQty = calcQty > 0 ? calcQty : (product.stock || 0);
 

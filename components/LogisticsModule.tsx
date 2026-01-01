@@ -264,11 +264,11 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                   <select 
                                       value={form.method}
                                       onChange={(e) => setForm(p => ({...p, method: e.target.value as any}))}
-                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                      className="w-full h-10 bg-black/40 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
                                   >
-                                      <option value="Sea">海运 (Sea)</option>
-                                      <option value="Air">空运 (Air)</option>
-                                      <option value="Rail">铁路 (Rail)</option>
+                                      <option value="Sea" className="bg-[#1a1a2e] text-white">海运 (Sea)</option>
+                                      <option value="Air" className="bg-[#1a1a2e] text-white">空运 (Air)</option>
+                                      <option value="Rail" className="bg-[#1a1a2e] text-white">铁路 (Rail)</option>
                                   </select>
                               </div>
                               <div className="space-y-1">
@@ -276,16 +276,16 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                   <select 
                                       value={form.status}
                                       onChange={(e) => setForm(p => ({...p, status: e.target.value as any}))}
-                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
+                                      className="w-full h-10 bg-black/40 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
                                   >
-                                      <option value="Pending">⏳ 待发货 (Pending)</option>
-                                      <option value="In Transit">🚚 运输中 (In Transit)</option>
-                                      <option value="Delivered">✅ 已送达 (Delivered)</option>
-                                      <option disabled>──────────</option>
-                                      <option value="In Production">🏭 生产中</option>
-                                      <option value="Customs">🛃 清关中</option>
-                                      <option value="Out for Delivery">📦 派送中</option>
-                                      <option value="Exception">⚠️ 异常</option>
+                                      <option value="Pending" className="bg-[#1a1a2e] text-white">⏳ 待发货 (Pending)</option>
+                                      <option value="In Transit" className="bg-[#1a1a2e] text-white">🚚 运输中 (In Transit)</option>
+                                      <option value="Delivered" className="bg-[#1a1a2e] text-white">✅ 已送达 (Delivered)</option>
+                                      <option disabled className="bg-[#1a1a2e] text-gray-500">──────────</option>
+                                      <option value="In Production" className="bg-[#1a1a2e] text-white">🏭 生产中</option>
+                                      <option value="Customs" className="bg-[#1a1a2e] text-white">🛃 清关中</option>
+                                      <option value="Out for Delivery" className="bg-[#1a1a2e] text-white">📦 派送中</option>
+                                      <option value="Exception" className="bg-[#1a1a2e] text-white">⚠️ 异常</option>
                                   </select>
                               </div>
                               <div className="space-y-1">
