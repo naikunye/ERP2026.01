@@ -11,7 +11,10 @@ import FinanceModule from './components/FinanceModule';
 import TaskModule from './components/TaskModule';
 import CommandPalette from './components/CommandPalette';
 import Copilot from './components/Copilot';
-import { Product, ProductStatus, Currency, Shipment, Influencer, Transaction, Theme, InventoryLog, Task } from './types';
+import ToastSystem from './components/ToastSystem';
+import MarketRadarModule from './components/MarketRadarModule';
+import GlobalInboxModule from './components/GlobalInboxModule';
+import { Product, ProductStatus, Currency, Shipment, Influencer, Transaction, Theme, InventoryLog, Task, Notification } from './types';
 
 // --- HIGH FIDELITY DEMO DATA (Updated for New Structure) ---
 
@@ -152,6 +155,7 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [currentTheme, setCurrentTheme] = useState<Theme>('neon');
   const [isCmdOpen, setIsCmdOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   
   // --- Data Loading ---
   const loadSafe = <T extends unknown>(key: string, fallback: T): T => {
@@ -200,18 +204,37 @@ const App: React.FC = () => {
     return () => document.removeEventListener('keydown', down);
   }, []);
 
+  // --- NOTIFICATION SYSTEM ---
+  const addNotification = (type: Notification['type'], title: string, message: string) => {
+      const newNotif: Notification = {
+          id: Date.now().toString(),
+          type,
+          title,
+          message
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+  };
+
+  const removeNotification = (id: string) => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
   // --- CORE BUSINESS LOGIC CONTROLLER ---
 
   const handleInventoryTransaction = (
       productId: string, 
       delta: number, 
-      type: 'Inbound' | 'Outbound' | 'Adjustment', 
+      type: 'Inbound' | 'Outbound' | 'Adjustment' | 'OrderPlaced', 
       reason: string,
       operator: string = 'Admin'
   ) => {
       setProducts(prev => prev.map(p => {
           if (p.id !== productId) return p;
-          const newStock = Math.max(0, p.stock + delta); // Prevent negative stock
+          // IMPORTANT: If 'OrderPlaced', we do NOT change physical stock yet, just logging for now.
+          // In a full DB, we would update 'incoming' stock.
+          if (type === 'OrderPlaced') return p; 
+
+          const newStock = Math.max(0, p.stock + delta);
           return { ...p, stock: newStock };
       }));
 
@@ -229,21 +252,11 @@ const App: React.FC = () => {
 
   const handleAddShipment = (newShipment: Shipment) => {
       setShipments(prev => [newShipment, ...prev]);
-
-      // Logic: If it's a new outbound shipment, deduct stock
       newShipment.items.forEach(item => {
-          handleInventoryTransaction(
-              item.skuId, 
-              -item.quantity, 
-              'Outbound', 
-              `发货出库: ${newShipment.trackingNo} (${newShipment.method})`
-          );
+          handleInventoryTransaction(item.skuId, -item.quantity, 'Outbound', `发货出库: ${newShipment.trackingNo} (${newShipment.method})`);
       });
-
-      // Logic: Auto-generate Finance Entry (Estimate)
       const rate = newShipment.method === 'Air' ? 5.5 : 1.5;
       const estimatedCost = newShipment.weight * rate;
-      
       if (estimatedCost > 0) {
           const expense: Transaction = {
               id: `TX-AUTO-${Date.now()}`,
@@ -255,11 +268,55 @@ const App: React.FC = () => {
               status: 'Pending'
           };
           setTransactions(prev => [expense, ...prev]);
+          addNotification('success', '运单已创建', `成功扣除库存并记录预计运费 $${estimatedCost.toFixed(2)}`);
       }
   };
 
   const handleUpdateShipment = (updatedShipment: Shipment) => {
       setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
+      addNotification('success', '状态更新', `运单 ${updatedShipment.trackingNo} 状态已更新`);
+  };
+
+  // --- PROCUREMENT WORKFLOW (New Feature) ---
+  const handleCreatePurchaseOrder = (poItems: { skuId: string, quantity: number, cost: number }[], supplierName: string) => {
+      const poId = `PO-${new Date().getFullYear()}${Math.floor(Math.random()*10000)}`;
+      let totalCost = 0;
+      let totalQty = 0;
+
+      // 1. Log Inventory Changes (Order Placed)
+      poItems.forEach(item => {
+          handleInventoryTransaction(item.skuId, item.quantity, 'OrderPlaced', `采购下单: ${poId}`);
+          totalCost += item.cost * item.quantity;
+          totalQty += item.quantity;
+      });
+
+      // 2. Create Finance Entry (Pending Expense)
+      const expense: Transaction = {
+          id: `TX-PO-${Date.now()}`,
+          date: new Date().toISOString().split('T')[0],
+          type: 'Expense',
+          category: 'COGS',
+          amount: totalCost,
+          description: `采购单 ${poId} - ${supplierName}`,
+          status: 'Pending' // Accounts Payable
+      };
+      setTransactions(prev => [expense, ...prev]);
+
+      // 3. Create Task (Receive Goods)
+      const task: Task = {
+          id: `T-PO-${Date.now()}`,
+          title: `收货入库: ${poId}`,
+          desc: `供应商: ${supplierName}。共 ${totalQty} 件商品等待入库。请核对数量和质量。`,
+          priority: 'High',
+          status: 'Todo',
+          assignee: 'https://ui-avatars.com/api/?name=Warehouse&background=random',
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // +7 days
+          tags: ['Inbound', 'Procurement']
+      };
+      setTasks(prev => [task, ...prev]);
+
+      // 4. Notification
+      addNotification('success', '采购单已生成', `${poId} 已发送。财务挂账 $${totalCost.toLocaleString()}，待办任务已创建。`);
   };
 
   // --- CRUD Handlers ---
@@ -275,8 +332,10 @@ const App: React.FC = () => {
       }
 
       if (exists) {
+        addNotification('success', '保存成功', `资产 ${savedProduct.sku} 已更新`);
         return prev.map(p => p.id === savedProduct.id ? savedProduct : p);
       }
+      addNotification('success', '创建成功', `新资产 ${savedProduct.sku} 已录入`);
       return [savedProduct, ...prev];
     });
   };
@@ -297,6 +356,7 @@ const App: React.FC = () => {
                },
            } as Product;
        }));
+       addNotification('success', '配置已保存', `${editingSKU.sku} 详情已更新`);
     }
     setEditingSKU(null);
   };
@@ -313,6 +373,7 @@ const App: React.FC = () => {
       note: product.note ? `[Clone] ${product.note}` : undefined
     };
     setProducts(prev => [newProduct, ...prev]);
+    addNotification('info', '复制成功', `已创建 ${product.sku} 的副本`);
   };
 
   const handleDeleteSKU = (productId: string) => {
@@ -321,6 +382,7 @@ const App: React.FC = () => {
       if (editingSKU?.id === productId) {
         setEditingSKU(null);
       }
+      addNotification('warning', '已删除', 'SKU 资产已永久移除');
     }
   };
 
@@ -331,17 +393,27 @@ const App: React.FC = () => {
           importedData.forEach(p => { if (p && p.id) prevMap.set(p.id, p); });
           return Array.from(prevMap.values());
       });
+      addNotification('success', '导入完成', `成功同步 ${importedData.length} 条数据`);
   };
   
-  const handleAddInfluencer = (newInfluencer: Influencer) => setInfluencers(prev => [newInfluencer, ...prev]);
+  const handleAddInfluencer = (newInfluencer: Influencer) => {
+      setInfluencers(prev => [newInfluencer, ...prev]);
+      addNotification('success', '达人已录入', `新增 ${newInfluencer.platform} 达人: ${newInfluencer.name}`);
+  }
   const handleUpdateInfluencer = (updatedInfluencer: Influencer) => setInfluencers(prev => prev.map(inf => inf.id === updatedInfluencer.id ? updatedInfluencer : inf));
-  const handleDeleteInfluencer = (id: string) => { if(window.confirm('确定删除?')) setInfluencers(prev => prev.filter(inf => inf.id !== id)); }
-  const handleAddTransaction = (newTx: Transaction) => setTransactions(prev => [newTx, ...prev]);
+  const handleDeleteInfluencer = (id: string) => { 
+      if(window.confirm('确定删除?')) {
+          setInfluencers(prev => prev.filter(inf => inf.id !== id));
+          addNotification('info', '已移除', '达人档案已删除');
+      }
+  }
+  const handleAddTransaction = (newTx: Transaction) => {
+      setTransactions(prev => [newTx, ...prev]);
+      addNotification('success', '记账成功', `${newTx.type === 'Revenue' ? '收入' : '支出'} $${newTx.amount} 已记录`);
+  }
   
-  // Task Handlers
   const handleUpdateTasks = (updatedTasks: Task[]) => setTasks(updatedTasks);
 
-  // Command Palette Handler
   const handleOpenProduct = (product: Product) => {
       setEditingProduct(product);
   };
@@ -349,8 +421,10 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard products={products} shipments={shipments} transactions={transactions} influencers={influencers} onChangeView={setActiveView} />;
+      case 'radar': return <MarketRadarModule />; // New
+      case 'inbox': return <GlobalInboxModule />; // New
       case 'tasks': return <TaskModule tasks={tasks} onUpdateTasks={handleUpdateTasks} />;
-      case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct(null)} />;
+      case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct(null)} onCreatePO={handleCreatePurchaseOrder} />;
       case 'orders': return <LogisticsModule shipments={shipments} products={products} onAddShipment={handleAddShipment} onUpdateShipment={handleUpdateShipment} />;
       case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} />;
       case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
@@ -362,7 +436,9 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen font-sans selection:bg-neon-pink selection:text-white overflow-hidden text-gray-900 bg-transparent">
       
-      {/* 1. Global Command Palette */}
+      {/* Global Toast System */}
+      <ToastSystem notifications={notifications} onRemove={removeNotification} />
+
       <CommandPalette 
         isOpen={isCmdOpen} 
         onClose={() => setIsCmdOpen(false)}
@@ -372,7 +448,6 @@ const App: React.FC = () => {
         onOpenProduct={handleOpenProduct}
       />
 
-      {/* 2. Global AI Copilot */}
       <Copilot 
          contextData={{ 
             activeView, 

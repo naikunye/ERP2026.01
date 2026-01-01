@@ -14,13 +14,53 @@ export enum Currency {
 
 export type Theme = 'neon' | 'ivory' | 'midnight' | 'sunset' | 'forest' | 'nebula';
 
-// 库存流水记录 (核心实战功能)
+// 全局通知类型
+export interface Notification {
+    id: string;
+    type: 'success' | 'error' | 'info' | 'warning';
+    title: string;
+    message: string;
+}
+
+// 竞品情报结构
+export interface Competitor {
+    id: string;
+    asin: string; // or Product ID
+    brand: string;
+    name: string;
+    price: number;
+    priceHistory: { date: string, price: number }[];
+    rating: number;
+    reviewCount: number;
+    imageUrl: string;
+    dailySalesEst: number;
+    keywords: string[]; // Organic keywords
+    lastUpdate: string;
+    status: 'Tracking' | 'Lost' | 'New';
+}
+
+// 全球客服消息结构
+export interface CustomerMessage {
+    id: string;
+    platform: 'Amazon' | 'TikTok' | 'Shopify' | 'Email';
+    customerName: string;
+    customerAvatar?: string;
+    subject: string; // or preview
+    content: string;
+    timestamp: string;
+    status: 'Unread' | 'Replied' | 'Pending';
+    sentiment: 'Positive' | 'Neutral' | 'Negative' | 'Urgent';
+    orderId?: string;
+    aiDraft?: string; // Pre-generated AI reply
+}
+
+// 库存流水记录
 export interface InventoryLog {
     id: string;
     productId: string;
-    type: 'Inbound' | 'Outbound' | 'Adjustment';
-    quantity: number; // 正数增加，负数减少
-    reason: string; // e.g., "PO-20231001 采购入库", "SH-001 发货扣减"
+    type: 'Inbound' | 'Outbound' | 'Adjustment' | 'OrderPlaced';
+    quantity: number;
+    reason: string;
     timestamp: string;
     operator: string;
 }
@@ -39,22 +79,22 @@ export interface LogisticsInfo {
 
 // 核心财务数据结构
 export interface FinancialInfo {
-  costOfGoods: number; // 采购成本
-  shippingCost: number; // 头程运费
-  otherCost: number; // 杂费 (贴标/包装)
-  sellingPrice: number; // 售价
-  platformFee: number; // 平台佣金
-  adCost: number; // 广告预算
+  costOfGoods: number; 
+  shippingCost: number; 
+  otherCost: number; 
+  sellingPrice: number; 
+  platformFee: number; 
+  adCost: number; 
 }
 
 // SKU 变体结构
 export interface ProductVariant {
   id: string;
   sku: string;
-  name: string; // e.g., "Blue / L"
+  name: string; 
   price: number;
   stock: number;
-  attributes: Record<string, string>; // { color: "Blue", size: "L" }
+  attributes: Record<string, string>; 
 }
 
 export interface Product {
@@ -64,7 +104,7 @@ export interface Product {
   description: string;
   price: number;
   currency: Currency;
-  stock: number; // 当前可用库存
+  stock: number; 
   category: string;
   status: ProductStatus;
   imageUrl: string;
@@ -73,29 +113,24 @@ export interface Product {
   note?: string;
   supplier?: string;
   
-  // Enhanced Fields for Restock Module
-  inboundId?: string; // 入库单号
-  dailySales?: number; // 日均销量
-  restockDate?: string; // 建议补货日期
+  inboundId?: string; 
+  dailySales?: number; 
+  restockDate?: string; 
   
-  // Real ERP Data Fields
   logistics?: LogisticsInfo;
   financials?: FinancialInfo;
   
-  // Variant Support
   hasVariants?: boolean;
   variants?: ProductVariant[];
   
-  // AI SEO Data
   seoTitle?: string;
   seoKeywords?: string[];
   marketingHook?: string;
 }
 
-// 货件内容详情 (实战级：必须包含数量)
 export interface ShipmentItem {
     skuId: string;
-    skuCode: string; // Snapshot for display
+    skuCode: string; 
     quantity: number;
 }
 
@@ -113,11 +148,7 @@ export interface Shipment {
   weight: number; 
   cartons: number;
   riskReason?: string;
-  
-  // 关联的 SKU 详情 (不再是简单的 ID 数组)
   items: ShipmentItem[]; 
-  
-  // Advanced Logistics Fields
   vesselName?: string;
   voyageNo?: string;
   containerNo?: string;
