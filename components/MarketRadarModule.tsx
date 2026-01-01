@@ -1,58 +1,54 @@
 import React, { useState } from 'react';
 import { 
   Radar, Target, ArrowUp, ArrowDown, Search, Plus, 
-  TrendingUp, Activity, AlertTriangle, ExternalLink, Zap
+  TrendingUp, Activity, AlertTriangle, ExternalLink, Zap, Save, X
 } from 'lucide-react';
 import { Competitor } from '../types';
 import { 
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area
 } from 'recharts';
 
-// --- MOCK DATA ---
-const DEMO_COMPETITORS: Competitor[] = [
-    {
-        id: 'C-001',
-        asin: 'B08XJ8912',
-        brand: 'SoundCore',
-        name: 'SoundCore Noise Cancelling Headphones Q30',
-        price: 79.99,
-        priceHistory: [
-            { date: '11/01', price: 79.99 }, { date: '11/05', price: 79.99 },
-            { date: '11/10', price: 69.99 }, { date: '11/15', price: 69.99 },
-            { date: '11/20', price: 79.99 }, { date: '11/25', price: 79.99 }
-        ],
-        rating: 4.5,
-        reviewCount: 12450,
-        imageUrl: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=150&q=80',
-        dailySalesEst: 150,
-        keywords: ['anc headphones', 'bluetooth headset'],
-        lastUpdate: '10 min ago',
-        status: 'Tracking'
-    },
-    {
-        id: 'C-002',
-        asin: 'B09Y2921',
-        brand: 'Sony',
-        name: 'Sony WH-CH720N Noise Canceling',
-        price: 148.00,
-        priceHistory: [
-            { date: '11/01', price: 148.00 }, { date: '11/05', price: 148.00 },
-            { date: '11/10', price: 128.00 }, { date: '11/15', price: 148.00 },
-            { date: '11/20', price: 148.00 }, { date: '11/25', price: 148.00 }
-        ],
-        rating: 4.4,
-        reviewCount: 8900,
-        imageUrl: 'https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?auto=format&fit=crop&w=150&q=80',
-        dailySalesEst: 80,
-        keywords: ['sony headphones', 'wireless audio'],
-        lastUpdate: '1 hour ago',
-        status: 'Tracking'
-    }
-];
+interface MarketRadarProps {
+    competitors: Competitor[];
+    onAddCompetitor: (comp: Competitor) => void;
+}
 
-const MarketRadarModule: React.FC = () => {
-    const [competitors, setCompetitors] = useState<Competitor[]>(DEMO_COMPETITORS);
-    const [selectedComp, setSelectedComp] = useState<Competitor | null>(DEMO_COMPETITORS[0]);
+const MarketRadarModule: React.FC<MarketRadarProps> = ({ competitors, onAddCompetitor }) => {
+    const [selectedComp, setSelectedComp] = useState<Competitor | null>(competitors[0] || null);
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [form, setForm] = useState<Partial<Competitor>>({});
+
+    const handleOpenAdd = () => {
+        setForm({
+            asin: '',
+            name: '',
+            price: 0,
+            brand: ''
+        });
+        setIsAddModalOpen(true);
+    };
+
+    const handleSave = () => {
+        if (!form.name || !form.price) return;
+        const newComp: Competitor = {
+            id: `C-${Date.now()}`,
+            asin: form.asin || 'UNKNOWN',
+            brand: form.brand || 'Generic',
+            name: form.name,
+            price: Number(form.price),
+            priceHistory: Array(5).fill(0).map((_, i) => ({ date: `D-${5-i}`, price: Number(form.price) + (Math.random() * 10 - 5) })),
+            rating: 0,
+            reviewCount: 0,
+            imageUrl: 'https://placehold.co/150x150/1a1a2e/FFF?text=Product',
+            dailySalesEst: Math.floor(Math.random() * 100),
+            keywords: [],
+            lastUpdate: 'Just now',
+            status: 'Tracking'
+        };
+        onAddCompetitor(newComp);
+        setIsAddModalOpen(false);
+        setSelectedComp(newComp);
+    };
 
     return (
         <div className="space-y-6 animate-fade-in w-full pb-20 h-full flex flex-col">
@@ -66,7 +62,10 @@ const MarketRadarModule: React.FC = () => {
                     </h1>
                     <p className="text-gray-400 text-sm mt-2">实时竞对监控与价格战术分析。</p>
                 </div>
-                <button className="h-10 px-4 bg-neon-pink text-white rounded-xl font-bold text-xs shadow-glow-pink hover:scale-105 transition-all flex items-center gap-2">
+                <button 
+                    onClick={handleOpenAdd}
+                    className="h-10 px-4 bg-neon-pink text-white rounded-xl font-bold text-xs shadow-glow-pink hover:scale-105 transition-all flex items-center gap-2"
+                >
                     <Plus size={16} strokeWidth={3} /> 添加监控目标
                 </button>
             </div>
@@ -218,6 +217,59 @@ const MarketRadarModule: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {/* Add Modal */}
+            {isAddModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
+                    <div className="w-full max-w-md glass-card border border-white/20 shadow-2xl overflow-hidden animate-scale-in">
+                        <div className="px-6 py-4 border-b border-white/10 bg-white/5 flex justify-between items-center">
+                            <h3 className="text-lg font-bold text-white">添加监控目标</h3>
+                            <button onClick={() => setIsAddModalOpen(false)} className="text-gray-400 hover:text-white"><X size={20}/></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-500 uppercase">产品 ASIN / ID</label>
+                                <input 
+                                    value={form.asin || ''}
+                                    onChange={e => setForm({...form, asin: e.target.value})}
+                                    className="w-full h-10 bg-black/30 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-500 uppercase">产品名称</label>
+                                <input 
+                                    value={form.name || ''}
+                                    onChange={e => setForm({...form, name: e.target.value})}
+                                    className="w-full h-10 bg-black/30 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-500 uppercase">当前价格 ($)</label>
+                                <input 
+                                    type="number"
+                                    value={form.price || ''}
+                                    onChange={e => setForm({...form, price: parseFloat(e.target.value)})}
+                                    className="w-full h-10 bg-black/30 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-500 uppercase">品牌</label>
+                                <input 
+                                    value={form.brand || ''}
+                                    onChange={e => setForm({...form, brand: e.target.value})}
+                                    className="w-full h-10 bg-black/30 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-pink outline-none"
+                                />
+                            </div>
+                            <button 
+                                onClick={handleSave}
+                                className="w-full py-3 bg-neon-pink text-white rounded-lg font-bold text-sm shadow-glow-pink hover:scale-105 transition-all flex items-center justify-center gap-2 mt-4"
+                            >
+                                <Save size={16}/> 开始监控
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

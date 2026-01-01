@@ -11,9 +11,10 @@ interface InfluencerModuleProps {
   onAddInfluencer?: (inf: Influencer) => void;
   onUpdateInfluencer?: (inf: Influencer) => void;
   onDeleteInfluencer?: (id: string) => void;
+  onNotify?: (type: any, title: string, message: string) => void;
 }
 
-const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddInfluencer, onUpdateInfluencer, onDeleteInfluencer }) => {
+const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddInfluencer, onUpdateInfluencer, onDeleteInfluencer, onNotify }) => {
   const [viewMode, setViewMode] = useState<'List' | 'Board'>('List');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPlatform, setFilterPlatform] = useState<string>('All');
@@ -61,6 +62,20 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
   };
 
   // --- Actions ---
+
+  const handleContact = (inf: Influencer) => {
+      if (onNotify) onNotify('success', '邮件已加入队列', `已准备发送合作邀请给 ${inf.name} (${inf.handle})`);
+  };
+
+  const handleSendSample = (inf: Influencer) => {
+      if (onNotify) {
+          if (inf.sampleSku && inf.sampleSku !== 'N/A') {
+              onNotify('success', '样品申请已提交', `仓库将尽快为 ${inf.name} 寄出 ${inf.sampleSku}`);
+          } else {
+              onNotify('warning', '缺少样品信息', '请先编辑档案指定样品 SKU');
+          }
+      }
+  };
 
   const handleOpenAdd = () => {
       setEditMode(false);
@@ -350,10 +365,16 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
 
                   {/* Actions */}
                   <div className="mt-4 flex gap-2 relative z-10">
-                      <button className="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-bold text-white border border-white/10 flex items-center justify-center gap-2 transition-colors">
+                      <button 
+                        onClick={() => handleContact(inf)}
+                        className="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-bold text-white border border-white/10 flex items-center justify-center gap-2 transition-colors"
+                      >
                           <MessageCircle size={14} /> 联系
                       </button>
-                      <button className="flex-1 py-2 rounded-lg bg-neon-pink/10 hover:bg-neon-pink/20 text-neon-pink border border-neon-pink/20 text-xs font-bold flex items-center justify-center gap-2 transition-colors">
+                      <button 
+                        onClick={() => handleSendSample(inf)}
+                        className="flex-1 py-2 rounded-lg bg-neon-pink/10 hover:bg-neon-pink/20 text-neon-pink border border-neon-pink/20 text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                      >
                           <Send size={14} /> 寄样
                       </button>
                   </div>

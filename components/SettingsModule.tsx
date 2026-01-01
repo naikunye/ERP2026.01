@@ -11,6 +11,7 @@ interface SettingsModuleProps {
   onThemeChange: (theme: Theme) => void;
   currentData: Product[];
   onImportData: (data: Product[]) => void;
+  onNotify?: (type: any, title: string, message: string) => void;
 }
 
 // ------------------------------------------------------------------
@@ -54,7 +55,7 @@ const findValueGreedy = (obj: any, aliases: string[], exclude: string[] = []): a
 };
 
 const SettingsModule: React.FC<SettingsModuleProps> = ({ 
-  currentTheme, onThemeChange, currentData, onImportData 
+  currentTheme, onThemeChange, currentData, onImportData, onNotify 
 }) => {
   const [importStatus, setImportStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [importMessage, setImportMessage] = useState('');
@@ -252,6 +253,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       e.target.value = '';
   };
 
+  const handleCheckUpdate = () => {
+      if (onNotify) {
+          onNotify('info', '系统已是最新', '当前版本: V.7.2.0 (Stable)');
+      }
+  };
+
   const themes = [
       { id: 'neon', name: 'Neon Glass', desc: '赛博朋克深色 (Default)', icon: Zap, color: 'text-neon-blue', bg: 'bg-black' },
       { id: 'ivory', name: 'Ivory Air', desc: '极简主义浅色 (Light)', icon: Sun, color: 'text-yellow-500', bg: 'bg-gray-100' },
@@ -413,7 +420,10 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       <p className="text-xs text-gray-500">Version 7.2.0 (Shipping Unit Price Fix)</p>
                   </div>
               </div>
-              <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors">
+              <button 
+                onClick={handleCheckUpdate}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors"
+              >
                   检查更新
               </button>
           </div>

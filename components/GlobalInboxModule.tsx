@@ -6,45 +6,13 @@ import {
   CheckCircle2, Reply
 } from 'lucide-react';
 
-const DEMO_MESSAGES: CustomerMessage[] = [
-    {
-        id: 'MSG-001',
-        platform: 'Amazon',
-        customerName: 'Alice Smith',
-        subject: 'Defective Item Received',
-        content: 'I received the headphones yesterday but the right ear cup is not working. I am very disappointed as this was a gift.',
-        timestamp: '10:30 AM',
-        status: 'Unread',
-        sentiment: 'Negative',
-        orderId: '112-39283-12321',
-        aiDraft: 'Dear Alice,\n\nI am so sorry to hear about the issue with the right ear cup. This is certainly not the experience we want for our customers, especially for a gift.\n\nWe would be happy to send you a free replacement immediately, no return needed. Please confirm your shipping address.\n\nBest regards,\nCustomer Support'
-    },
-    {
-        id: 'MSG-002',
-        platform: 'TikTok',
-        customerName: 'cool_dude_99',
-        subject: 'DM',
-        content: 'Yo! Can I get a discount code for the LED strips? Love your vids!',
-        timestamp: '09:15 AM',
-        status: 'Unread',
-        sentiment: 'Positive',
-        aiDraft: 'Hey! Thanks for the love! 🔥\n\nUse code TIKTOK10 for 10% off your order. Can\'t wait to see your setup!\n\nCheers!'
-    },
-    {
-        id: 'MSG-003',
-        platform: 'Email',
-        customerName: 'Logistics Partner',
-        subject: 'Inbound Shipment Delayed',
-        content: 'Please be advised that shipment SH-002 is held at customs for inspection.',
-        timestamp: 'Yesterday',
-        status: 'Replied',
-        sentiment: 'Urgent'
-    }
-];
+interface GlobalInboxProps {
+    messages: CustomerMessage[];
+    onReplyMessage: (id: string, replyText: string) => void;
+}
 
-const GlobalInboxModule: React.FC = () => {
-    const [messages, setMessages] = useState<CustomerMessage[]>(DEMO_MESSAGES);
-    const [selectedId, setSelectedId] = useState<string>(DEMO_MESSAGES[0].id);
+const GlobalInboxModule: React.FC<GlobalInboxProps> = ({ messages, onReplyMessage }) => {
+    const [selectedId, setSelectedId] = useState<string>(messages[0]?.id || '');
     const [replyText, setReplyText] = useState('');
 
     const selectedMsg = messages.find(m => m.id === selectedId);
@@ -58,6 +26,12 @@ const GlobalInboxModule: React.FC = () => {
         if (selectedMsg?.aiDraft) {
             setReplyText(selectedMsg.aiDraft);
         }
+    };
+
+    const handleSendReply = () => {
+        if (!replyText || !selectedMsg) return;
+        onReplyMessage(selectedMsg.id, replyText);
+        setReplyText('');
     };
 
     const getPlatformIcon = (platform: string) => {
@@ -93,7 +67,7 @@ const GlobalInboxModule: React.FC = () => {
                 <div className="flex gap-2">
                     <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-neon-pink animate-pulse"></div>
-                        <span className="text-xs font-bold text-white">3 待处理</span>
+                        <span className="text-xs font-bold text-white">{messages.filter(m => m.status === 'Unread').length} 待处理</span>
                     </div>
                 </div>
             </div>
@@ -136,6 +110,11 @@ const GlobalInboxModule: React.FC = () => {
                                 {msg.sentiment !== 'Neutral' && (
                                     <div className="absolute top-4 right-4" title={`Sentiment: ${msg.sentiment}`}>
                                         {getSentimentIcon(msg.sentiment)}
+                                    </div>
+                                )}
+                                {msg.status === 'Replied' && (
+                                    <div className="absolute bottom-2 right-2 text-neon-green">
+                                        <CheckCircle2 size={12} />
                                     </div>
                                 )}
                             </div>
@@ -201,6 +180,18 @@ const GlobalInboxModule: React.FC = () => {
                                         </button>
                                     </div>
                                 )}
+
+                                {/* User Reply (if exists) */}
+                                {selectedMsg.status === 'Replied' && (
+                                    <div className="flex gap-4 flex-row-reverse">
+                                        <div className="w-8 h-8 rounded-full bg-neon-green/20 flex items-center justify-center shrink-0 mt-1 border border-neon-green/30">
+                                            <User size={14} className="text-neon-green"/>
+                                        </div>
+                                        <div className="bg-neon-green/5 border border-neon-green/20 p-4 rounded-2xl rounded-tr-none max-w-[80%]">
+                                            <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">回复已发送 (Reply Sent)</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Reply Input */}
@@ -211,14 +202,20 @@ const GlobalInboxModule: React.FC = () => {
                                         onChange={(e) => setReplyText(e.target.value)}
                                         className="w-full h-32 bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white focus:border-neon-green outline-none resize-none placeholder-gray-600"
                                         placeholder="输入回复内容..."
+                                        disabled={selectedMsg.status === 'Replied'}
                                     />
                                     <div className="absolute bottom-3 right-3 flex gap-2">
                                         <button className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
                                             <Sparkles size={18} />
                                         </button>
-                                        <button className="px-4 py-2 bg-neon-green text-black rounded-lg font-bold text-xs flex items-center gap-2 hover:scale-105 transition-transform shadow-glow-green">
-                                            <Send size={14} /> 发送
-                                        </button>
+                                        {selectedMsg.status !== 'Replied' && (
+                                            <button 
+                                                onClick={handleSendReply}
+                                                className="px-4 py-2 bg-neon-green text-black rounded-lg font-bold text-xs flex items-center gap-2 hover:scale-105 transition-transform shadow-glow-green"
+                                            >
+                                                <Send size={14} /> 发送
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>

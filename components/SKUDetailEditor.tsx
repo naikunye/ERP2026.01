@@ -12,6 +12,7 @@ interface SKUDetailEditorProps {
   onClose: () => void;
   onSave: (updatedProduct: any) => void;
   onDelete?: () => void;
+  onChangeView?: (view: string) => void; // New prop
 }
 
 // Complex Interface for the detailed form state
@@ -59,7 +60,13 @@ interface SKUFormData {
   adCostPerUnit: number; // CPA
 }
 
-const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete }) => {
+const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete, onChangeView }) => {
+  
+  // Calculate initial commission from existing financials if available
+  const initialCommission = (product.financials?.platformFee && product.financials?.sellingPrice) 
+        ? (product.financials.platformFee / product.financials.sellingPrice) * 100 
+        : 5;
+
   // Initialize with product data + defaults for missing fields
   const [formData, setFormData] = useState<SKUFormData>({
     note: product.note || '',
@@ -90,7 +97,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     shippingRate: product.logistics?.shippingRate || 1.5,
     destinationWarehouse: product.logistics?.destination || '',
     sellingPrice: product.financials?.sellingPrice || product.price,
-    tiktokCommission: 5, // 5%
+    tiktokCommission: parseFloat(initialCommission.toFixed(2)),
     fulfillmentFee: product.financials?.otherCost || 4.5,
     adCostPerUnit: product.financials?.adCost || 8.0,
   });
@@ -340,8 +347,8 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                         formData.inboundStatus === 'Received' ? 'text-neon-green border-neon-green/30' : 'text-neon-yellow border-neon-yellow/30'
                                     }`}
                                 >
-                                    <option value="Pending">⏳ 待入库</option>
-                                    <option value="Received">✅ 已入库</option>
+                                    <option value="Pending" className="text-gray-900 bg-gray-200">⏳ 待入库</option>
+                                    <option value="Received" className="text-gray-900 bg-gray-200">✅ 已入库</option>
                                 </select>
                             </div>
                         </div>
@@ -409,7 +416,10 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     <div className="space-y-5">
                          <div className="flex items-center gap-4">
                               <InputGroup label="销售价 (USD $)" name="sellingPrice" value={formData.sellingPrice} highlight="text-neon-green text-xl" onChange={handleChange} />
-                              <button className="h-10 px-3 mt-4 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-bold text-gray-400 flex items-center gap-2">
+                              <button 
+                                onClick={() => { if (onChangeView) { onClose(); onChangeView('market_radar'); } }}
+                                className="h-10 px-3 mt-4 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-bold text-gray-400 hover:text-white flex items-center gap-2 transition-all"
+                              >
                                  <Anchor size={14}/> 竞品
                               </button>
                          </div>

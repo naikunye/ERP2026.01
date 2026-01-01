@@ -10,10 +10,12 @@ import InfluencerModule from './components/InfluencerModule';
 import FinanceModule from './components/FinanceModule';
 import TaskModule from './components/TaskModule';
 import MarketingModule from './components/MarketingModule'; 
+import MarketRadarModule from './components/MarketRadarModule'; // Import
+import GlobalInboxModule from './components/GlobalInboxModule'; // Import
 import CommandPalette from './components/CommandPalette';
 import Copilot from './components/Copilot';
 import ToastSystem from './components/ToastSystem';
-import { Product, ProductStatus, Currency, Shipment, Influencer, Transaction, Theme, InventoryLog, Task, Notification } from './types';
+import { Product, ProductStatus, Currency, Shipment, Influencer, Transaction, Theme, InventoryLog, Task, Notification, Competitor, CustomerMessage } from './types';
 
 // --- HIGH FIDELITY DEMO DATA (Updated for New Structure) ---
 
@@ -154,6 +156,43 @@ const DEMO_TASKS: Task[] = [
   }
 ];
 
+const DEMO_COMPETITORS: Competitor[] = [
+    {
+        id: 'C-001',
+        asin: 'B08XJ8912',
+        brand: 'SoundCore',
+        name: 'SoundCore Noise Cancelling Headphones Q30',
+        price: 79.99,
+        priceHistory: [
+            { date: '11/01', price: 79.99 }, { date: '11/05', price: 79.99 },
+            { date: '11/10', price: 69.99 }, { date: '11/15', price: 69.99 },
+            { date: '11/20', price: 79.99 }, { date: '11/25', price: 79.99 }
+        ],
+        rating: 4.5,
+        reviewCount: 12450,
+        imageUrl: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=150&q=80',
+        dailySalesEst: 150,
+        keywords: ['anc headphones', 'bluetooth headset'],
+        lastUpdate: '10 min ago',
+        status: 'Tracking'
+    }
+];
+
+const DEMO_MESSAGES: CustomerMessage[] = [
+    {
+        id: 'MSG-001',
+        platform: 'Amazon',
+        customerName: 'Alice Smith',
+        subject: 'Defective Item Received',
+        content: 'I received the headphones yesterday but the right ear cup is not working. I am very disappointed as this was a gift.',
+        timestamp: '10:30 AM',
+        status: 'Unread',
+        sentiment: 'Negative',
+        orderId: '112-39283-12321',
+        aiDraft: 'Dear Alice,\n\nI am so sorry to hear about the issue with the right ear cup. This is certainly not the experience we want for our customers, especially for a gift.\n\nWe would be happy to send you a free replacement immediately, no return needed. Please confirm your shipping address.\n\nBest regards,\nCustomer Support'
+    }
+];
+
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [currentTheme, setCurrentTheme] = useState<Theme>('neon');
@@ -166,7 +205,7 @@ const App: React.FC = () => {
       const saved = localStorage.getItem(key);
       if (!saved) return fallback;
       return JSON.parse(saved);
-    } catch (e) {
+    } catch (e: any) {
       console.warn(`Data corruption detected for key "${key}".`, e);
       return fallback;
     }
@@ -178,6 +217,8 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>(() => loadSafe('aero_erp_transactions', DEMO_TRANSACTIONS));
   const [tasks, setTasks] = useState<Task[]>(() => loadSafe('aero_erp_tasks', DEMO_TASKS));
   const [inventoryLogs, setInventoryLogs] = useState<InventoryLog[]>(() => loadSafe('aero_erp_inventory_logs', []));
+  const [competitors, setCompetitors] = useState<Competitor[]>(() => loadSafe('aero_erp_competitors', DEMO_COMPETITORS));
+  const [messages, setMessages] = useState<CustomerMessage[]>(() => loadSafe('aero_erp_messages', DEMO_MESSAGES));
 
   const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined);
   const [editingSKU, setEditingSKU] = useState<Product | null>(null);
@@ -189,6 +230,8 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('aero_erp_transactions', JSON.stringify(transactions)); }, [transactions]);
   useEffect(() => { localStorage.setItem('aero_erp_tasks', JSON.stringify(tasks)); }, [tasks]);
   useEffect(() => { localStorage.setItem('aero_erp_inventory_logs', JSON.stringify(inventoryLogs)); }, [inventoryLogs]);
+  useEffect(() => { localStorage.setItem('aero_erp_competitors', JSON.stringify(competitors)); }, [competitors]);
+  useEffect(() => { localStorage.setItem('aero_erp_messages', JSON.stringify(messages)); }, [messages]);
 
   // Theme Side Effect
   useEffect(() => {
@@ -274,21 +317,40 @@ const App: React.FC = () => {
   };
 
   const handleUpdateShipment = (updatedShipment: Shipment) => {
+      // 1. Calculate Inventory Delta
+      // Find the previous version of this shipment to compare items
+      const oldShipment = shipments.find(s => s.id === updatedShipment.id);
+      
+      if (oldShipment) {
+          const oldMap = new Map(oldShipment.items.map(i => [i.skuId, i.quantity]));
+          const newMap = new Map(updatedShipment.items.map(i => [i.skuId, i.quantity]));
+          
+          const allSkus = new Set([...oldMap.keys(), ...newMap.keys()]);
+          
+          allSkus.forEach(skuId => {
+              const oldQty = oldMap.get(skuId) || 0;
+              const newQty = newMap.get(skuId) || 0;
+              const delta = newQty - oldQty;
+              
+              if (delta !== 0) {
+                  handleInventoryTransaction(skuId, -delta, delta > 0 ? 'Outbound' : 'Adjustment', `运单修正: ${updatedShipment.trackingNo}`);
+              }
+          });
+      }
+
       setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
       
-      // SYNC LOGIC: Update products linked to this shipment
-      // We look for products that are either in the shipment items list OR match the tracking number
       setProducts(prev => prev.map(p => {
-          const isIncludedInItems = updatedShipment.items?.some(item => item.skuId === p.id);
-          const isTrackingMatch = p.logistics?.trackingNo === updatedShipment.trackingNo;
+          const wasLinked = oldShipment && p.logistics?.trackingNo === oldShipment.trackingNo;
+          const isInNewItems = updatedShipment.items?.some(item => item.skuId === p.id);
 
-          if (isIncludedInItems || isTrackingMatch) {
+          if (wasLinked || isInNewItems) {
               return {
                   ...p,
                   logistics: {
                       ...p.logistics!,
-                      // Sync status, ETA and Carrier updates back to product view
-                      status: updatedShipment.status,
+                      trackingNo: updatedShipment.trackingNo, // Sync Tracking Number
+                      status: updatedShipment.status as any,
                       eta: updatedShipment.eta,
                       carrier: updatedShipment.carrier,
                       method: updatedShipment.method
@@ -301,63 +363,114 @@ const App: React.FC = () => {
       addNotification('success', '状态更新', `运单 ${updatedShipment.trackingNo} 状态已更新并同步至备货清单`);
   };
 
-  // --- SYNC FEATURE: Restock -> Logistics ---
+  // --- SYNC FEATURE: Restock -> Logistics (FIXED LOGIC) ---
   const handleSyncToLogistics = (product: Product) => {
-      if (!product.logistics?.trackingNo) {
+      const logInfo = product.logistics;
+      if (!logInfo?.trackingNo) {
           addNotification('error', '同步失败', '该 SKU 暂无物流单号，请先编辑填写');
           return;
       }
 
-      // Check for duplicate tracking number
-      const exists = shipments.find(s => s.trackingNo === product.logistics?.trackingNo);
-      if (exists) {
-          addNotification('warning', '重复同步', '该运单号已存在于物流模块中');
+      const trackingNo = logInfo.trackingNo.trim();
+      const restockCartons = product.restockCartons || 0;
+      const itemsPerBox = product.itemsPerBox || 0;
+      const boxWeight = product.boxWeight || 0;
+      const addedWeight = restockCartons * boxWeight;
+      const addedQty = restockCartons * itemsPerBox || product.stock; 
+
+      if(addedQty <= 0) {
+          addNotification('warning', '数据无效', '请先配置发货箱数 (Cartons) 和装箱数 (Items/Box)');
           return;
       }
 
-      // Calculate Total Qty (Logic: Cartons * ItemsPerBox, or stock as fallback)
-      const calcQty = (product.restockCartons || 0) * (product.itemsPerBox || 0);
-      const finalQty = calcQty > 0 ? calcQty : (product.stock || 0);
+      const existingShipment = shipments.find(s => s.trackingNo === trackingNo);
 
-      const newShipment: Shipment = {
-          id: `SH-SYNC-${Date.now()}`,
-          trackingNo: product.logistics.trackingNo,
-          carrier: product.logistics.carrier || 'Unknown Carrier',
-          method: product.logistics.method || 'Sea',
-          origin: product.supplier || 'China Warehouse',
-          destination: product.logistics.destination || 'FBA / Overseas',
-          etd: new Date().toISOString().split('T')[0], // Default to today
-          eta: '', // TBD
-          status: product.logistics.status || 'Pending',
-          progress: 0,
-          weight: (product.restockCartons || 0) * (product.boxWeight || 0),
-          cartons: product.restockCartons || 0,
-          items: [{
-              skuId: product.id,
-              skuCode: product.sku,
-              quantity: finalQty
-          }],
-          lastUpdate: new Date().toISOString()
-      };
+      if (existingShipment) {
+          const skuExists = existingShipment.items.find(i => i.skuId === product.id);
+          if (skuExists) {
+              addNotification('warning', '重复添加', `SKU ${product.sku} 已存在于运单 ${trackingNo} 中`);
+              return;
+          }
 
-      setShipments(prev => [newShipment, ...prev]);
-      addNotification('success', '同步成功', `运单 ${newShipment.trackingNo} 已推送到物流追踪模块`);
+          const updatedShipment = {
+              ...existingShipment,
+              weight: existingShipment.weight + addedWeight,
+              cartons: existingShipment.cartons + restockCartons,
+              items: [...existingShipment.items, {
+                  skuId: product.id,
+                  skuCode: product.sku,
+                  quantity: addedQty
+              }],
+              lastUpdate: new Date().toISOString()
+          };
+
+          setShipments(prev => prev.map(s => s.id === existingShipment.id ? updatedShipment : s));
+          addNotification('success', '拼柜成功', `SKU ${product.sku} 已追加到运单 ${trackingNo}`);
+
+      } else {
+          const newShipment: Shipment = {
+              id: `SH-SYNC-${Date.now()}`,
+              trackingNo: trackingNo,
+              carrier: logInfo.carrier || 'Unknown',
+              method: logInfo.method || 'Sea',
+              origin: product.supplier || 'China Warehouse',
+              destination: logInfo.destination || 'FBA / Overseas',
+              etd: new Date().toISOString().split('T')[0],
+              eta: '',
+              status: logInfo.status || 'Pending',
+              progress: 0,
+              weight: addedWeight,
+              cartons: restockCartons,
+              items: [{
+                  skuId: product.id,
+                  skuCode: product.sku,
+                  quantity: addedQty
+              }],
+              lastUpdate: new Date().toISOString()
+          };
+          setShipments(prev => [newShipment, ...prev]);
+          addNotification('success', '同步成功', `新运单 ${trackingNo} 已创建`);
+      }
+
+      handleInventoryTransaction(product.id as string, -addedQty, 'Outbound', `发货同步: ${trackingNo} (${logInfo.method})`);
+
+      const method = logInfo.method;
+      const defaultRate = method === 'Air' ? 5.5 : 1.5;
+      const rate: number = (typeof logInfo.shippingRate === 'number' ? logInfo.shippingRate : 0) || defaultRate;
+      
+      const estimatedCost = addedWeight * rate;
+      
+      if (estimatedCost > 0) {
+          const expense: Transaction = {
+              id: `TX-SYNC-${Date.now()}`,
+              date: new Date().toISOString().split('T')[0],
+              type: 'Expense',
+              category: 'Shipping',
+              amount: estimatedCost,
+              description: `[系统同步] 运费预估: ${trackingNo} - ${product.sku as string}`,
+              status: 'Pending'
+          };
+          setTransactions(prev => [expense, ...prev]);
+      }
+
+      setProducts(prev => prev.map(p => p.id === product.id ? {
+          ...p,
+          logistics: { ...p.logistics!, status: 'Pending' }
+      } : p));
   };
 
   // --- PROCUREMENT WORKFLOW (New Feature) ---
-  const handleCreatePurchaseOrder = (poItems: { skuId: string, quantity: number, cost: number }[], supplierName: string) => {
+  const handleCreatePurchaseOrder = (poItems: Array<{ skuId: string; quantity: number; cost: number }>, supplierName: string) => {
       const poId = `PO-${new Date().getFullYear()}${Math.floor(Math.random()*10000)}`;
       let totalCost = 0;
       let totalQty = 0;
 
-      // 1. Log Inventory Changes (Order Placed)
-      poItems.forEach(item => {
+      for (const item of poItems) {
           handleInventoryTransaction(item.skuId, item.quantity, 'OrderPlaced', `采购下单: ${poId}`);
           totalCost += item.cost * item.quantity;
           totalQty += item.quantity;
-      });
+      }
 
-      // 2. Create Finance Entry (Pending Expense)
       const expense: Transaction = {
           id: `TX-PO-${Date.now()}`,
           date: new Date().toISOString().split('T')[0],
@@ -365,11 +478,10 @@ const App: React.FC = () => {
           category: 'COGS',
           amount: totalCost,
           description: `采购单 ${poId} - ${supplierName}`,
-          status: 'Pending' // Accounts Payable
+          status: 'Pending'
       };
       setTransactions(prev => [expense, ...prev]);
 
-      // 3. Create Task (Receive Goods)
       const task: Task = {
           id: `T-PO-${Date.now()}`,
           title: `收货入库: ${poId}`,
@@ -377,13 +489,38 @@ const App: React.FC = () => {
           priority: 'High',
           status: 'Todo',
           assignee: 'https://ui-avatars.com/api/?name=Warehouse&background=random',
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // +7 days
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], 
           tags: ['Inbound', 'Procurement']
       };
       setTasks(prev => [task, ...prev]);
 
-      // 4. Notification
+      setProducts(prev => prev.map(p => {
+          const poItem = poItems.find(i => i.skuId === p.id);
+          if (poItem) {
+              return {
+                  ...p,
+                  inboundId: poId,
+                  inboundStatus: 'Pending'
+              };
+          }
+          return p;
+      }));
+
       addNotification('success', '采购单已生成', `${poId} 已发送。财务挂账 $${totalCost.toLocaleString()}，待办任务已创建。`);
+  };
+
+  // --- MARKET RADAR HANDLERS ---
+  const handleAddCompetitor = (comp: Competitor) => {
+      setCompetitors(prev => [comp, ...prev]);
+      addNotification('success', '监控已添加', `开始追踪 ${comp.name} 的价格与销量变动`);
+  };
+
+  // --- MESSAGING HANDLERS ---
+  const handleReplyMessage = (id: string, replyText: string) => {
+      setMessages(prev => prev.map(msg => 
+          msg.id === id ? { ...msg, status: 'Replied' } : msg
+      ));
+      addNotification('success', '回复已发送', '客户将很快收到您的消息');
   };
 
   // --- CRUD Handlers ---
@@ -414,15 +551,13 @@ const App: React.FC = () => {
            return {
                ...p,
                note: updatedData.note,
-               // CRITICAL FIX: Check for undefined specifically to allow empty string updates (deleting image)
                imageUrl: updatedData.imageUrl !== undefined ? updatedData.imageUrl : p.imageUrl, 
                supplier: updatedData.supplierName,
                dailySales: updatedData.dailySales,
                inboundId: updatedData.inboundId,
-               inboundStatus: updatedData.inboundStatus, // Persist Status
+               inboundStatus: updatedData.inboundStatus, 
                restockDate: updatedData.restockDate,
                
-               // Persist Extended Physical Props
                unitWeight: updatedData.unitWeight,
                boxLength: updatedData.boxLength,
                boxWidth: updatedData.boxWidth,
@@ -435,7 +570,7 @@ const App: React.FC = () => {
                    ...p.financials!,
                    costOfGoods: updatedData.unitCost,
                    sellingPrice: updatedData.sellingPrice,
-                   shippingCost: updatedData.unitShippingCost || p.financials?.shippingCost || 0, // CORRECTED: Use calculated cost if available
+                   shippingCost: updatedData.unitShippingCost || p.financials?.shippingCost || 0, 
                    otherCost: updatedData.fulfillmentFee || 0,
                    adCost: updatedData.adCostPerUnit || 0,
                    platformFee: (updatedData.sellingPrice * (updatedData.tiktokCommission || 0)) / 100
@@ -446,7 +581,7 @@ const App: React.FC = () => {
                    carrier: updatedData.carrier,
                    trackingNo: updatedData.trackingNo,
                    destination: updatedData.destinationWarehouse,
-                   shippingRate: updatedData.shippingRate // Persist input rate
+                   shippingRate: updatedData.shippingRate 
                }
            } as Product;
        }));
@@ -488,9 +623,7 @@ const App: React.FC = () => {
       setProducts(prev => {
           const prevMap = new Map(prev.map(p => [p.id, p]));
           importedData.forEach(p => { 
-              if (p && (p.name || p.sku)) { // Ensure bare minimum validity
-                  // If ID exists in system, update it. If not, treat as new.
-                  // If import data doesn't have ID, generate one.
+              if (p && (p.name || p.sku)) { 
                   const id = p.id || `IMP-${Math.random().toString(36).substr(2,9)}`;
                   prevMap.set(id, { ...p, id }); 
               }
@@ -524,14 +657,16 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard products={products} shipments={shipments} transactions={transactions} influencers={influencers} onChangeView={setActiveView} />;
+      case 'dashboard': return <Dashboard products={products} shipments={shipments} transactions={transactions} influencers={influencers} onChangeView={setActiveView} onNotify={addNotification} />;
       case 'marketing': return <MarketingModule />; 
       case 'tasks': return <TaskModule tasks={tasks} onUpdateTasks={handleUpdateTasks} />;
       case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct(null)} onCreatePO={handleCreatePurchaseOrder} onSyncToLogistics={handleSyncToLogistics} />;
       case 'orders': return <LogisticsModule shipments={shipments} products={products} onAddShipment={handleAddShipment} onUpdateShipment={handleUpdateShipment} />;
-      case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} />;
+      case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} onNotify={addNotification} />;
       case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
-      case 'settings': return <SettingsModule currentTheme={currentTheme} onThemeChange={setCurrentTheme} currentData={products} onImportData={handleImportData} />;
+      case 'settings': return <SettingsModule currentTheme={currentTheme} onThemeChange={setCurrentTheme} currentData={products} onImportData={handleImportData} onNotify={addNotification} />;
+      case 'market_radar': return <MarketRadarModule competitors={competitors} onAddCompetitor={handleAddCompetitor} />; // New View
+      case 'inbox': return <GlobalInboxModule messages={messages} onReplyMessage={handleReplyMessage} />; // New View
       default: return null;
     }
   };
@@ -592,6 +727,7 @@ const App: React.FC = () => {
           onClose={() => setEditingSKU(null)}
           onSave={handleSaveSKU}
           onDelete={() => handleDeleteSKU(editingSKU.id)}
+          onChangeView={setActiveView} // Pass nav control
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, 
   BarChart, Bar, Cell, LineChart, Line, ComposedChart, ReferenceLine 
@@ -7,7 +7,7 @@ import { Product, Shipment, Transaction, Influencer } from '../types';
 import { 
   TrendingUp, TrendingDown, DollarSign, Package, Globe, Users, Zap, 
   Activity, Radio, Truck, AlertTriangle, ArrowUpRight, ArrowDownRight, 
-  Layers, Wallet, Anchor, Clock, AlertCircle, CheckCircle2, ChevronRight
+  Layers, Wallet, Anchor, Clock, AlertCircle, CheckCircle2, ChevronRight, Loader2
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -16,11 +16,10 @@ interface DashboardProps {
   transactions: Transaction[];
   influencers: Influencer[];
   onChangeView: (view: string) => void;
+  onNotify?: (type: any, title: string, message: string) => void;
 }
 
-// --- Sub-components for Atomic Design ---
-
-// 1. Sparkline Widget (Mini Chart inside Card)
+// ... (Keep existing Sub-components KPIWidget and ActionItem) ...
 const KPIWidget = ({ title, value, subValue, trend, trendUp, data, color, icon: Icon, delay }: any) => {
     return (
         <div 
@@ -72,7 +71,6 @@ const KPIWidget = ({ title, value, subValue, trend, trendUp, data, color, icon: 
     );
 };
 
-// 2. Action Item Row
 const ActionItem = ({ icon: Icon, color, title, desc, actionLabel, onClick }: any) => (
     <div 
         onClick={onClick}
@@ -93,8 +91,9 @@ const ActionItem = ({ icon: Icon, color, title, desc, actionLabel, onClick }: an
     </div>
 );
 
-const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions, influencers, onChangeView }) => {
-  
+const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions, influencers, onChangeView, onNotify }) => {
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
   // --- 1. Data Processing Core ---
 
   const metrics = useMemo(() => {
@@ -150,6 +149,18 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
   // Mock Sparkline Data generators
   const genSpark = (base: number, volatility: number) => Array(10).fill(0).map(() => ({ value: base + Math.random() * volatility - volatility/2 }));
 
+  const handleGenerateReport = () => {
+      setIsGeneratingReport(true);
+      setTimeout(() => {
+          setIsGeneratingReport(false);
+          if (onNotify) onNotify('success', '简报已生成', 'Daily_Briefing.pdf 已准备就绪并发送至您的邮箱');
+      }, 2000);
+  };
+
+  const handleOpenMap = () => {
+      if (onNotify) onNotify('info', '模块维护中', '3D 地球组件正在进行 WebGL 升级，请稍后访问。');
+  };
+
   return (
     <div className="space-y-6 animate-fade-in pb-12 w-full">
       
@@ -171,8 +182,13 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
            </h1>
         </div>
         <div className="flex gap-3">
-            <button className="h-10 px-4 rounded-xl bg-white text-black text-xs font-bold hover:scale-105 shadow-glow-white transition-all flex items-center gap-2">
-                <Zap size={16} fill="black" /> 生成简报
+            <button 
+                onClick={handleGenerateReport}
+                disabled={isGeneratingReport}
+                className="h-10 px-4 rounded-xl bg-white text-black text-xs font-bold hover:scale-105 shadow-glow-white transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-wait"
+            >
+                {isGeneratingReport ? <Loader2 size={16} className="animate-spin text-black"/> : <Zap size={16} fill="black" />}
+                {isGeneratingReport ? '生成中...' : '生成简报'}
             </button>
         </div>
       </div>
@@ -310,6 +326,14 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
                   <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                       <Anchor size={16} className="text-neon-blue" /> 全球物流网络
                   </h3>
+                  <div className="flex justify-between items-center mb-4 relative z-10">
+                       <button 
+                           onClick={handleOpenMap}
+                           className="text-[10px] text-neon-blue hover:text-white border border-neon-blue/30 px-2 py-1 rounded hover:bg-neon-blue/20 transition-all"
+                       >
+                           查看地图模式
+                       </button>
+                  </div>
                   <div className="grid grid-cols-2 gap-4 relative z-10">
                        <div className="bg-white/5 rounded-xl p-3 border border-white/5">
                            <div className="text-[10px] text-gray-500 uppercase font-bold">海运 (Sea)</div>

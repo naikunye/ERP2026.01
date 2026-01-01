@@ -39,7 +39,7 @@ export interface LogisticsInfo {
   method: 'Air' | 'Sea' | 'Rail';
   carrier: string;
   trackingNo: string;
-  status: 'In Production' | 'In Transit' | 'Customs' | 'Delivered' | 'Pending' | 'Exception';
+  status: 'In Production' | 'In Transit' | 'Customs' | 'Delivered' | 'Pending' | 'Exception' | 'Out for Delivery'; // Added Out for Delivery
   etd?: string;
   eta?: string;
   origin: string;

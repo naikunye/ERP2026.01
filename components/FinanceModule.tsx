@@ -66,6 +66,26 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
       setTxType('Expense');
   };
 
+  const handleExportCSV = () => {
+      const headers = ['ID', 'Date', 'Type', 'Category', 'Amount', 'Status', 'Description'];
+      const rows = transactions.map(t => [
+          t.id, t.date, t.type, t.category, t.amount, t.status, `"${t.description.replace(/"/g, '""')}"`
+      ]);
+      const csvContent = [
+          headers.join(','),
+          ...rows.map(row => row.join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `FINANCE_EXPORT_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
   // --- Real-time Data Aggregation ---
   
   const financials = useMemo(() => {
@@ -150,10 +170,10 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
             >
                 <Plus size={18} strokeWidth={3}/> 记一笔
             </button>
-            <button className="px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-gray-300 text-xs font-bold flex items-center gap-2 hover:bg-white/10">
-                <Calendar size={14} /> 本月
-            </button>
-            <button className="px-4 py-2.5 bg-gradient-neon-blue text-white rounded-xl text-xs font-bold shadow-glow-blue hover:scale-105 transition-all flex items-center gap-2">
+            <button 
+                onClick={handleExportCSV}
+                className="px-4 py-2.5 bg-gradient-neon-blue text-white rounded-xl text-xs font-bold shadow-glow-blue hover:scale-105 transition-all flex items-center gap-2"
+            >
                 <Download size={14} /> 导出报表
             </button>
         </div>
