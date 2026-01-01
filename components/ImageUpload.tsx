@@ -13,7 +13,10 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = (file: File) => {
-    if (!file.type.startsWith('image/')) return;
+    if (!file.type.startsWith('image/')) {
+        alert('请上传图片文件 (JPG/PNG/WEBP)');
+        return;
+    }
     
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -22,6 +25,14 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files?.[0]) {
+          processFile(e.target.files[0]);
+      }
+      // CRITICAL FIX: Reset value so onChange triggers again for the same file
+      e.target.value = '';
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -47,10 +58,10 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
       setIsSearching(true);
       // Simulate an AI search delay, then fetch a random unsplash image based on keywords
       setTimeout(() => {
-          const keyword = productName.split(' ')[0] || 'product';
-          const randomUrl = `https://source.unsplash.com/random/800x800/?${keyword}&t=${Date.now()}`;
-          // Fallback to a reliable source since source.unsplash can be flaky in some demos
-          const reliableUrl = `https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80&random=${Date.now()}`;
+          const keyword = productName.split(' ')[0] || 'technology';
+          // Using a more reliable image source to avoid broken links
+          const randomId = Math.floor(Math.random() * 1000);
+          const reliableUrl = `https://picsum.photos/seed/${keyword}-${randomId}/800/800`;
           
           onImageChange(reliableUrl);
           setIsSearching(false);
@@ -58,21 +69,29 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
   };
 
   return (
-    <div className="w-full h-full min-h-[300px] flex flex-col">
+    <div className="w-full h-full min-h-[200px] flex flex-col">
+        <input 
+            ref={fileInputRef}
+            type="file" 
+            accept="image/*" 
+            className="hidden" 
+            onChange={handleFileSelect}
+        />
+
         {currentImage ? (
-            <div className="relative w-full h-full rounded-2xl overflow-hidden group border border-white/10 bg-black/40">
+            <div className="relative w-full h-full rounded-2xl overflow-hidden group border border-white/10 bg-black/40 min-h-[200px]">
                 <img src={currentImage} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt="Product" />
                 
                 {/* Overlay Actions */}
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 backdrop-blur-sm">
                     <button 
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                         className="px-4 py-2 bg-white text-black rounded-xl font-bold text-xs flex items-center gap-2 hover:scale-105 transition-all shadow-glow-white"
                     >
                         <Camera size={16} /> 更换图片
                     </button>
                     <button 
-                        onClick={() => onImageChange('')}
+                        onClick={(e) => { e.stopPropagation(); onImageChange(''); }}
                         className="px-4 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-red-500/30 transition-all"
                     >
                         <X size={16} /> 移除
@@ -81,7 +100,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
             </div>
         ) : (
             <div 
-                className={`flex-1 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-6 transition-all duration-300 relative overflow-hidden ${
+                className={`flex-1 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-6 transition-all duration-300 relative overflow-hidden min-h-[200px] ${
                     isDragging 
                     ? 'border-neon-blue bg-neon-blue/10 scale-[0.99]' 
                     : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10'
@@ -90,14 +109,6 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
             >
-                <input 
-                    ref={fileInputRef}
-                    type="file" 
-                    accept="image/*" 
-                    className="hidden" 
-                    onChange={(e) => e.target.files?.[0] && processFile(e.target.files[0])}
-                />
-
                 <div className="w-16 h-16 rounded-full bg-black/30 flex items-center justify-center mb-4 shadow-inner">
                     <Upload size={24} className={isDragging ? 'text-neon-blue animate-bounce' : 'text-gray-500'} />
                 </div>
@@ -107,7 +118,14 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
                     支持 JPG, PNG, WEBP. 建议尺寸 800x800px 以上.
                 </p>
 
-                <div className="flex items-center w-full gap-3">
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-6 py-2 bg-white/10 border border-white/10 rounded-lg text-xs font-bold text-white hover:bg-white/20 transition-all"
+                >
+                    选择本地文件
+                </button>
+
+                <div className="flex items-center w-full gap-3 mt-4 mb-2">
                     <div className="h-px bg-white/10 flex-1"></div>
                     <span className="text-[10px] text-gray-600 font-bold uppercase">OR</span>
                     <div className="h-px bg-white/10 flex-1"></div>
@@ -116,7 +134,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
                 <button 
                     onClick={handleSmartSearch}
                     disabled={isSearching || !productName}
-                    className="mt-6 px-5 py-2.5 bg-neon-purple/10 border border-neon-purple/20 text-neon-purple rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-neon-purple/20 hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="mt-2 px-5 py-2.5 bg-neon-purple/10 border border-neon-purple/20 text-neon-purple rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-neon-purple/20 hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
                     {isSearching ? 'AI 搜索中...' : 'AI 智能匹配素材'}

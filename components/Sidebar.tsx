@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, ShoppingBag, CheckSquare, Sparkles, Aperture, RefreshCw, Server, Users, Wallet, Settings, Radar, MessageSquare } from 'lucide-react';
+import { LayoutGrid, ShoppingBag, CheckSquare, Sparkles, Aperture, RefreshCw, Server, Users, Wallet, Settings, Radar, MessageSquare, Megaphone } from 'lucide-react';
 import { Theme } from '../types';
 
 interface SidebarProps {
@@ -12,8 +12,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentTheme, onThemeChange }) => {
   const menuItems = [
     { id: 'dashboard', label: '总览面板', icon: <LayoutGrid size={20} /> },
-    { id: 'radar', label: '市场雷达', icon: <Radar size={20} /> }, // New
-    { id: 'inbox', label: '全球消息', icon: <MessageSquare size={20} /> }, // New
+    { id: 'marketing', label: '创意工坊', icon: <Megaphone size={20} /> }, // New Module
     { id: 'tasks', label: '任务协作', icon: <CheckSquare size={20} /> },
     { id: 'restock', label: '智能备货', icon: <RefreshCw size={20} /> },
     { id: 'orders', label: '物流追踪', icon: <ShoppingBag size={20} /> },
@@ -33,7 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentThem
          <div>
              <h1 className="font-display font-bold text-[24px] text-white tracking-wide drop-shadow-lg">AERO<span className="text-neon-blue">.OS</span></h1>
              <p className="font-sans text-[10px] text-gray-300 font-medium tracking-widest bg-white/10 px-2 py-0.5 rounded-full inline-block mt-1 backdrop-blur-sm border border-white/5">
-                V.5.4 PRO
+                V.5.6 STUDIO
              </p>
          </div>
       </div>

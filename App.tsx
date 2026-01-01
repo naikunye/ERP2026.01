@@ -9,11 +9,10 @@ import SettingsModule from './components/SettingsModule';
 import InfluencerModule from './components/InfluencerModule';
 import FinanceModule from './components/FinanceModule';
 import TaskModule from './components/TaskModule';
+import MarketingModule from './components/MarketingModule'; 
 import CommandPalette from './components/CommandPalette';
 import Copilot from './components/Copilot';
 import ToastSystem from './components/ToastSystem';
-import MarketRadarModule from './components/MarketRadarModule';
-import GlobalInboxModule from './components/GlobalInboxModule';
 import { Product, ProductStatus, Currency, Shipment, Influencer, Transaction, Theme, InventoryLog, Task, Notification } from './types';
 
 // --- HIGH FIDELITY DEMO DATA (Updated for New Structure) ---
@@ -230,8 +229,6 @@ const App: React.FC = () => {
   ) => {
       setProducts(prev => prev.map(p => {
           if (p.id !== productId) return p;
-          // IMPORTANT: If 'OrderPlaced', we do NOT change physical stock yet, just logging for now.
-          // In a full DB, we would update 'incoming' stock.
           if (type === 'OrderPlaced') return p; 
 
           const newStock = Math.max(0, p.stock + delta);
@@ -347,13 +344,28 @@ const App: React.FC = () => {
            return {
                ...p,
                note: updatedData.note,
-               imageUrl: updatedData.imageUrl || p.imageUrl, 
+               // FIX: Allow image removal by checking if property exists rather than truthiness
+               imageUrl: updatedData.imageUrl !== undefined ? updatedData.imageUrl : p.imageUrl, 
                supplier: updatedData.supplierName,
+               dailySales: updatedData.dailySales,
+               inboundId: updatedData.inboundId,
+               restockDate: updatedData.restockDate,
                financials: {
                    ...p.financials!,
                    costOfGoods: updatedData.unitCost,
                    sellingPrice: updatedData.sellingPrice,
+                   shippingCost: p.financials?.shippingCost || 0,
+                   otherCost: updatedData.fulfillmentFee || 0,
+                   adCost: updatedData.adCostPerUnit || 0,
+                   platformFee: (updatedData.sellingPrice * (updatedData.tiktokCommission || 0)) / 100
                },
+               logistics: {
+                   ...p.logistics!,
+                   method: updatedData.transportMethod,
+                   carrier: updatedData.carrier,
+                   trackingNo: updatedData.trackingNo,
+                   destination: updatedData.destinationWarehouse
+               }
            } as Product;
        }));
        addNotification('success', '配置已保存', `${editingSKU.sku} 详情已更新`);
@@ -387,10 +399,20 @@ const App: React.FC = () => {
   };
 
   const handleImportData = (importedData: Product[]) => {
-      if (!Array.isArray(importedData)) return;
+      if (!Array.isArray(importedData)) {
+          addNotification('error', '导入失败', '文件格式不正确，必须为 JSON 数组');
+          return;
+      }
       setProducts(prev => {
           const prevMap = new Map(prev.map(p => [p.id, p]));
-          importedData.forEach(p => { if (p && p.id) prevMap.set(p.id, p); });
+          importedData.forEach(p => { 
+              if (p && p.name) {
+                  // If ID exists in system, update it. If not, treat as new.
+                  // If import data doesn't have ID, generate one.
+                  const id = p.id || `IMP-${Math.random().toString(36).substr(2,9)}`;
+                  prevMap.set(id, { ...p, id }); 
+              }
+          });
           return Array.from(prevMap.values());
       });
       addNotification('success', '导入完成', `成功同步 ${importedData.length} 条数据`);
@@ -421,8 +443,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard products={products} shipments={shipments} transactions={transactions} influencers={influencers} onChangeView={setActiveView} />;
-      case 'radar': return <MarketRadarModule />; // New
-      case 'inbox': return <GlobalInboxModule />; // New
+      case 'marketing': return <MarketingModule />; 
       case 'tasks': return <TaskModule tasks={tasks} onUpdateTasks={handleUpdateTasks} />;
       case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct(null)} onCreatePO={handleCreatePurchaseOrder} />;
       case 'orders': return <LogisticsModule shipments={shipments} products={products} onAddShipment={handleAddShipment} onUpdateShipment={handleUpdateShipment} />;

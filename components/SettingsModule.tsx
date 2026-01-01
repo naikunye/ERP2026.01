@@ -37,31 +37,62 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   const processFile = (file: File) => {
     setImportStatus('processing');
     setImportMessage('解析文件中...');
+    
+    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+        setImportStatus('error');
+        setImportMessage('请上传 .json 格式文件');
+        return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const json = JSON.parse(e.target?.result as string);
-        const arr = Array.isArray(json) ? json : (json.products || json.items || []);
-        if (arr.length === 0) throw new Error("无有效数据");
+        const text = e.target?.result as string;
+        const json = JSON.parse(text);
         
-        // Simple sanitization
+        // Handle various JSON structures
+        const arr = Array.isArray(json) ? json : (json.products || json.items || []);
+        
+        if (!Array.isArray(arr) || arr.length === 0) {
+            throw new Error("文件未包含有效的数组数据");
+        }
+        
+        // Sanitization
         const sanitized = arr.map((raw: any) => ({
             ...raw,
             id: raw.id || `IMP-${Math.random().toString(36).substr(2,9)}`,
             price: Number(raw.price) || 0,
-            stock: Number(raw.stock) || 0
+            stock: Number(raw.stock) || 0,
+            name: raw.name || 'Unnamed Product',
+            sku: raw.sku || 'UNKNOWN-SKU'
         }));
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`成功导入 ${arr.length} 条资产数据`);
-        setTimeout(() => { setImportStatus('idle'); setImportMessage(''); }, 3000);
+        setImportMessage(`成功导入 ${sanitized.length} 条资产数据`);
+        
+        setTimeout(() => { 
+            setImportStatus('idle'); 
+            setImportMessage(''); 
+        }, 3000);
       } catch (err: any) {
+        console.error("Import Error:", err);
         setImportStatus('error');
-        setImportMessage('JSON 格式错误或文件损坏');
+        setImportMessage('JSON 解析失败或格式错误');
       }
     };
+    reader.onerror = () => {
+        setImportStatus('error');
+        setImportMessage('读取文件失败');
+    }
     reader.readAsText(file);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files?.[0]) {
+          processFile(e.target.files[0]);
+      }
+      e.target.value = ''; // Reset input to allow re-selection
   };
 
   const themes = [
@@ -175,7 +206,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       }}
                       onClick={() => fileInputRef.current?.click()}
                   >
-                      <input ref={fileInputRef} type="file" className="hidden" accept=".json" onChange={(e) => { if (e.target.files?.[0]) processFile(e.target.files[0]); e.target.value = ''; }} />
+                      <input 
+                          ref={fileInputRef} 
+                          type="file" 
+                          className="hidden" 
+                          accept=".json" 
+                          onChange={handleFileSelect} 
+                      />
                       
                       <div className="w-16 h-16 rounded-full bg-neon-purple/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 mb-4">
                           {importStatus === 'success' ? <CheckCircle2 size={32} className="text-neon-green"/> : <Upload size={32} className="text-neon-purple" />}

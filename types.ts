@@ -22,38 +22,6 @@ export interface Notification {
     message: string;
 }
 
-// 竞品情报结构
-export interface Competitor {
-    id: string;
-    asin: string; // or Product ID
-    brand: string;
-    name: string;
-    price: number;
-    priceHistory: { date: string, price: number }[];
-    rating: number;
-    reviewCount: number;
-    imageUrl: string;
-    dailySalesEst: number;
-    keywords: string[]; // Organic keywords
-    lastUpdate: string;
-    status: 'Tracking' | 'Lost' | 'New';
-}
-
-// 全球客服消息结构
-export interface CustomerMessage {
-    id: string;
-    platform: 'Amazon' | 'TikTok' | 'Shopify' | 'Email';
-    customerName: string;
-    customerAvatar?: string;
-    subject: string; // or preview
-    content: string;
-    timestamp: string;
-    status: 'Unread' | 'Replied' | 'Pending';
-    sentiment: 'Positive' | 'Neutral' | 'Negative' | 'Urgent';
-    orderId?: string;
-    aiDraft?: string; // Pre-generated AI reply
-}
-
 // 库存流水记录
 export interface InventoryLog {
     id: string;
@@ -196,4 +164,33 @@ export interface Task {
   assignee: string; 
   dueDate: string;
   tags: string[];
+}
+
+export interface Competitor {
+    id: string;
+    asin: string;
+    brand: string;
+    name: string;
+    price: number;
+    priceHistory: { date: string; price: number }[];
+    rating: number;
+    reviewCount: number;
+    imageUrl: string;
+    dailySalesEst: number;
+    keywords: string[];
+    lastUpdate: string;
+    status: string;
+}
+
+export interface CustomerMessage {
+    id: string;
+    platform: string;
+    customerName: string;
+    subject: string;
+    content: string;
+    timestamp: string;
+    status: string;
+    sentiment: string;
+    orderId?: string;
+    aiDraft?: string;
 }
