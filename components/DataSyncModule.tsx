@@ -88,27 +88,37 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           return;
       }
 
-      // 2. URL Normalization
-      let targetUrl = serverUrl.trim();
-      if (targetUrl.endsWith('/')) targetUrl = targetUrl.slice(0, -1);
-
-      // Auto-prefix logic
-      if (!targetUrl.startsWith('ws://') && !targetUrl.startsWith('wss://')) {
-           // Default to ws:// if it looks like an IP, otherwise wss://
-           const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?$/.test(targetUrl);
-           targetUrl = isIP ? `ws://${targetUrl}` : `wss://${targetUrl}`;
-      }
+      // --- AGGRESSIVE URL SANITIZATION (Fix for wss://http:// issue) ---
+      let rawUrl = serverUrl.trim();
       
-      // Update UI input to match reality
-      setServerUrl(targetUrl);
+      // Remove trailing slash
+      if (rawUrl.endsWith('/')) rawUrl = rawUrl.slice(0, -1);
 
-      // 3. Set UI to "Connecting" BEFORE trying (Vital for user feedback)
+      // Regex to recursively remove ANY protocol prefix at the start
+      // This handles "http://...", "wss://...", and crucially "wss://http://..."
+      let host = rawUrl.replace(/^(?:[a-z0-9]+:\/\/)+/i, '');
+
+      // Determine correct protocol
+      // If it matches an IP pattern (x.x.x.x), FORCE 'ws://' because IPs rarely have SSL.
+      // If it looks like a domain, prefer 'wss://'.
+      const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?$/.test(host);
+      
+      // NOTE: Connecting to 'ws://' (IP) from an 'https://' site (Vercel) will trigger Mixed Content warnings.
+      // You must enable "Insecure Content" in site settings for this to work.
+      const protocol = isIP ? 'ws' : 'wss';
+      
+      const finalTargetUrl = `${protocol}://${host}`;
+      
+      // Immediately update the UI input so the user sees the corrected URL
+      setServerUrl(finalTargetUrl);
+
+      // 3. Set UI to "Connecting"
       setConnectionStatus('connecting');
 
-      // 4. Force a small delay to allow React to render the loading state
+      // 4. Connect with delay
       setTimeout(() => {
-          attemptRealConnection(targetUrl);
-      }, 500);
+          attemptRealConnection(finalTargetUrl);
+      }, 300);
   };
 
   const attemptRealConnection = (url: string) => {
@@ -116,12 +126,12 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           console.log("Attempting WebSocket connection to:", url);
           const ws = new WebSocket(url);
           
-          // Safety timeout: If browser hangs the connection (common in mixed content blocks)
+          // Safety timeout
           const timeoutId = setTimeout(() => {
               if (ws.readyState === WebSocket.CONNECTING) {
                   ws.close();
                   setConnectionStatus('error');
-                  setErrorDetail('连接超时：服务器无响应或被防火墙拦截 (5s)');
+                  setErrorDetail('连接超时：服务器无响应 (Timeout 5s)');
               }
           }, 5000);
 
@@ -148,38 +158,39 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           ws.onerror = (e) => {
               clearTimeout(timeoutId);
               console.error("WS Error Event:", e);
-              setConnectionStatus('error');
-              
-              const isHttps = window.location.protocol === 'https:';
-              const isWs = url.startsWith('ws://');
-              
-              if (isHttps && isWs) {
-                  setErrorDetail('连接失败：浏览器可能拦截了混合内容。请检查地址栏右侧是否有“不安全内容”拦截图标，或使用模拟演示。');
-              } else {
-                  setErrorDetail('连接失败：无法抵达服务器，请检查 IP 和端口是否开放。');
-              }
+              // Error event usually doesn't contain details for security reasons
           };
 
           ws.onclose = (e) => {
               clearTimeout(timeoutId);
-              // Only update status if we were connected or connecting
-              // Use a functional update or ref in a real app to avoid stale closures, 
-              // but here we check the socket instance or rely on user action.
               console.log("WS Closed:", e.code, e.reason);
               setSocket(null);
-              if (e.code !== 1000) { // Abnormal closure
-                 setConnectionStatus((prev) => prev === 'connected' ? 'disconnected' : 'error');
-                 if (e.code === 1006) setErrorDetail('连接意外断开 (Code 1006)');
-              } else {
+
+              if (e.code === 1000) {
                  setConnectionStatus('disconnected');
+              } else {
+                 setConnectionStatus('error');
+                 
+                 // Smart Error Diagnosis
+                 if (e.code === 1006) {
+                     const isHttps = window.location.protocol === 'https:';
+                     const isWs = url.startsWith('ws://');
+                     
+                     if (isHttps && isWs) {
+                         setErrorDetail('连接被阻断 (Code 1006): 您正在 HTTPS 环境下连接非加密 IP。请确保已在浏览器地址栏左侧设置中将“不安全内容”设为“允许”，并刷新页面重试。');
+                     } else {
+                         setErrorDetail('连接意外断开 (Code 1006): 请检查 1.服务器防火墙 2.IP地址是否正确 3.端口是否开放');
+                     }
+                 } else {
+                     setErrorDetail(`连接断开 (Code ${e.code}): ${e.reason || '未知网络错误'}`);
+                 }
               }
           };
 
       } catch (e: any) {
-          // This block catches synchronous errors, like "SecurityError" from strict browsers
           console.error("WS Sync Error:", e);
           setConnectionStatus('error');
-          setErrorDetail(`浏览器安全错误: ${e.message || '禁止连接不安全的目标'}`);
+          setErrorDetail(`初始化错误: ${e.message}`);
       }
   };
 
