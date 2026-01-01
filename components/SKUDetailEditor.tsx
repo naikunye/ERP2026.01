@@ -41,6 +41,7 @@ interface SKUFormData {
   boxWeight: number; // kg
   itemsPerBox: number;
   restockCartons: number;
+  totalRestockUnits: number; // NEW: Manual Override capability
   inboundId: string;
 
   // M4: First Leg Logistics
@@ -78,11 +79,13 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     boxWeight: product.boxWeight || 12,
     itemsPerBox: product.itemsPerBox || 24,
     restockCartons: product.restockCartons || 10,
+    // Initialize Total Units (Standard calc as default)
+    totalRestockUnits: (product.restockCartons || 10) * (product.itemsPerBox || 24),
     inboundId: product.inboundId || `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
     transportMethod: product.logistics?.method || 'Sea',
     carrier: product.logistics?.carrier || '',
     trackingNo: product.logistics?.trackingNo || '',
-    shippingRate: product.logistics?.shippingRate || 1.5, // Correct initialization
+    shippingRate: product.logistics?.shippingRate || 1.5,
     destinationWarehouse: product.logistics?.destination || '',
     sellingPrice: product.financials?.sellingPrice || product.price,
     tiktokCommission: 5, // 5%
@@ -93,15 +96,18 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   // --- Real-time Calculations ---
   const metrics = useMemo(() => {
     // 1. Inventory Analysis
-    const totalRestockUnits = formData.restockCartons * formData.itemsPerBox;
+    // USE THE STATE VALUE for Total Units (allowing manual override)
+    const totalRestockUnits = formData.totalRestockUnits;
     const currentAvailableDays = Math.floor(product.stock / (formData.dailySales || 1));
     
-    // 2. Logistics Calcs
+    // 2. Logistics Calcs (Volume still depends on Cartons)
     const singleBoxVol = (formData.boxLength * formData.boxWidth * formData.boxHeight) / 6000; // Volumetric divisor
     const totalVolWeight = singleBoxVol * formData.restockCartons;
     const totalRealWeight = formData.boxWeight * formData.restockCartons;
     const chargeableWeight = Math.max(totalVolWeight, totalRealWeight);
     const totalShippingCost = chargeableWeight * formData.shippingRate;
+    
+    // Cost allocation uses the Total Units (which might be non-standard)
     const unitShippingCost = totalRestockUnits > 0 ? totalShippingCost / totalRestockUnits : 0;
     
     // 3. Profit Analysis
@@ -128,10 +134,23 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: e.target.type === 'number' ? parseFloat(value) || 0 : value
-    }));
+    const numVal = e.target.type === 'number' ? parseFloat(value) || 0 : value;
+
+    setFormData(prev => {
+        const updates: any = { [name]: numVal };
+        
+        // Smart Linkage: If Cartons or Items/Box change, auto-recalculate Total
+        // But if user manually edits Total later, we respect that.
+        // Re-editing Cartons/Items will "snap" Total back to standard calculation.
+        if (name === 'restockCartons') {
+            updates.totalRestockUnits = (numVal as number) * prev.itemsPerBox;
+        }
+        if (name === 'itemsPerBox') {
+            updates.totalRestockUnits = prev.restockCartons * (numVal as number);
+        }
+
+        return { ...prev, ...updates };
+    });
   };
 
   const handleSave = () => {
@@ -284,13 +303,32 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                          <InputGroup label="单箱重量 (kg)" name="boxWeight" value={formData.boxWeight} onChange={handleChange} />
                          <InputGroup label="单箱数量" name="itemsPerBox" value={formData.itemsPerBox} onChange={handleChange} />
                     </div>
-                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
-                         <InputGroup label="补货箱数" name="restockCartons" value={formData.restockCartons} highlight="text-white bg-white/10 rounded px-2" onChange={handleChange} />
-                         <InputGroup label="入库单号" name="inboundId" value={formData.inboundId} type="text" onChange={handleChange} />
+                    
+                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5 mb-4">
+                         <InputGroup label="补货箱数 (ctns)" name="restockCartons" value={formData.restockCartons} highlight="text-white bg-white/10 rounded px-2" onChange={handleChange} />
+                         
+                         {/* UPDATED: Total Restock Units as Input */}
+                         <div className="space-y-1 w-full">
+                            <label className="text-[10px] text-neon-yellow font-bold uppercase flex items-center gap-1">
+                                总数量 (pcs) <span className="text-[9px] font-normal opacity-70">非标可改</span>
+                            </label>
+                            <input 
+                                type="number" 
+                                name="totalRestockUnits"
+                                value={formData.totalRestockUnits}
+                                onChange={handleChange}
+                                className="w-full h-10 bg-black/40 border border-neon-yellow/30 rounded-lg px-3 text-sm text-neon-yellow font-bold outline-none focus:border-neon-yellow transition-colors"
+                            />
+                        </div>
                     </div>
-                    <div className="mt-4 flex gap-4 text-[10px] font-mono text-gray-500 bg-black/20 p-2 rounded-lg">
-                        <span>总体积: {metrics.cbm.toFixed(2)} m³</span>
-                        <span>总件数: {metrics.totalRestockUnits}</span>
+
+                    <div className="space-y-4">
+                        <InputGroup label="入库单号 (Inbound ID)" name="inboundId" value={formData.inboundId} type="text" onChange={handleChange} />
+                        
+                        <div className="mt-4 flex gap-4 text-[10px] font-mono text-gray-500 bg-black/20 p-2 rounded-lg justify-between">
+                            <span>总体积: {metrics.cbm.toFixed(2)} m³</span>
+                            <span>{formData.totalRestockUnits !== formData.restockCartons * formData.itemsPerBox ? '(非标准装箱)' : '(标准装箱)'}</span>
+                        </div>
                     </div>
                 </section>
 
