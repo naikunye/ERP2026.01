@@ -14,7 +14,7 @@ interface SettingsModuleProps {
 }
 
 // ------------------------------------------------------------------
-// CORE MATCHING ENGINE V4 (Term-First + Exclusion)
+// CORE MATCHING ENGINE V5 (Aggressive Include Matcher)
 // ------------------------------------------------------------------
 const findValue = (obj: any, searchTerms: string[], excludeTerms: string[] = []) => {
     if (!obj) return undefined;
@@ -27,7 +27,6 @@ const findValue = (obj: any, searchTerms: string[], excludeTerms: string[] = [])
     const normalizedExclude = excludeTerms.map(clean);
 
     // PRIORITY LOOP: Iterate through Search Terms FIRST. 
-    // This ensures specific terms (e.g. "purchase_price") are checked before generic ones (e.g. "price").
     for (const term of normalizedSearch) {
         if (!term) continue;
 
@@ -35,15 +34,12 @@ const findValue = (obj: any, searchTerms: string[], excludeTerms: string[] = [])
              const normalizedKey = clean(key);
              
              // 1. CHECK EXCLUSIONS
-             // If key contains a forbidden word (e.g. key="purchase_price" contains "purchase"), skip if we are looking for "selling".
              const isExcluded = normalizedExclude.some(ex => ex && normalizedKey.includes(ex));
              if (isExcluded) continue;
 
              // 2. CHECK MATCH
-             // Logic: Key includes Term (e.g. "领星入库单" includes "lx" or "入库")
              if (normalizedKey.includes(term)) {
                  const val = obj[key];
-                 // Return strictly if value exists (allow 0, but not undefined/null/empty string if expecting string)
                  if (val !== undefined && val !== null && val !== '') return val;
              }
         }
@@ -73,7 +69,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('正在应用 V4 智能匹配算法...');
+    setImportMessage('正在应用 V5 强力匹配算法...');
     
     if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
         setImportStatus('error');
@@ -93,11 +89,11 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         }
         
         // ------------------------------------------------
-        // V4 MAPPING CONFIGURATION
+        // V5 MAPPING CONFIGURATION
         // ------------------------------------------------
         const sanitized: Product[] = arr.map((raw: any) => {
             
-            // Helper: Numerical Parser with Exclusion
+            // Helper: Numerical Parser
             const parseNum = (keys: string[], exclude: string[] = []) => {
                 const val = findValue(raw, keys, exclude);
                 if (val === undefined || val === null) return 0;
@@ -109,32 +105,30 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 return 0;
             };
 
-            // Helper: String Parser with Exclusion
+            // Helper: String Parser (Forces String for IDs)
             const parseStr = (keys: string[], exclude: string[] = []) => {
                 const val = findValue(raw, keys, exclude);
                 return val ? String(val).trim() : '';
             }
 
-            // --- 1. CORE FINANCIALS (with Exclusion to prevent confusion) ---
-            
-            // Cost: Look for 'purchase', 'cost', 'buying'. EXCLUDE 'selling', 'price' (generic), 'retail'.
-            // Note: 'purchase_price' contains 'price', so we don't exclude 'price' here, but we check 'purchase' first.
+            // --- 1. CORE FINANCIALS ---
             const unitCost = parseNum(
                 ['采购单价', '含税单价', '进货价', '成本', 'purchase_price', 'cost_price', 'buying_price', 'unit_cost', 'cost'], 
-                ['销售', 'selling', 'retail', 'market'] // Exclude Selling terms
+                ['销售', 'selling', 'retail', 'market'] 
             );
 
-            // Price: Look for 'selling', 'retail', 'price'. EXCLUDE 'purchase', 'cost', 'buying'.
             const price = parseNum(
                 ['销售价', '售价', '定价', 'selling_price', 'retail_price', 'sale_price', 'price'], 
-                ['采购', '成本', 'cost', 'purchase', 'buying', '进货'] // Exclude Cost terms
+                ['采购', '成本', 'cost', 'purchase', 'buying', '进货'] 
             );
 
-            // --- 2. IDENTITY ---
-            // LX ID: Look for 'lx', '领星', 'inbound', 'shipment'.
+            // --- 2. IDENTITY (Expanded Keywords for Inbound ID) ---
             const inboundId = parseStr(
-                ['lx', '领星', '入库单', '货件', 'shipment_id', 'inbound_id', 'fba_id'],
-                []
+                [
+                    'lx', '领星', '入库', '货件', '单号', 'fba', 'shipment', 'inbound', // High Priority
+                    '批次', 'batch', 'po_no', 'ref', 'reference' // Low Priority
+                ],
+                ['sku', 'tracking', '运单'] // Exclude tracking numbers
             );
 
             const id = parseStr(['id', 'product_id', 'sys_id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
@@ -156,7 +150,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 sku,
                 name,
                 description: raw.description || '',
-                price: price || (unitCost * 3), // Fallback logic
+                price: price || (unitCost * 3), 
                 stock,
                 currency: raw.currency || Currency.USD,
                 status: raw.status || ProductStatus.Draft,
@@ -168,7 +162,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 supplier,
                 note,
                 
-                // Mapped extended fields
                 unitWeight,
                 boxLength: Number(raw.boxLength) || 0,
                 boxWidth: Number(raw.boxWidth) || 0,
@@ -178,7 +171,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 restockCartons,
                 inboundId, 
 
-                // Financials
                 financials: {
                     costOfGoods: unitCost,
                     shippingCost: shippingCost,
@@ -201,7 +193,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条 (已修正价格/成本/LX单号)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条 (LX单号修复版)`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
@@ -381,7 +373,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 5.4.0 (Matcher Logic V4)</p>
+                      <p className="text-xs text-gray-500">Version 5.5.0 (Inbound Fix)</p>
                   </div>
               </div>
               <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors">

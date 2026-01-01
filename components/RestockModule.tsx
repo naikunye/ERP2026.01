@@ -198,9 +198,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       <div className="space-y-3">
           {/* Header Row */}
           <div className="grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12">
-              <div className="col-span-2">SKU 标识 / 备注</div>
+              <div className="col-span-2">SKU / 入库单 / 备注</div>
               <div className="col-span-2">产品详情</div>
-              <div className="col-span-2">物流 & 入库</div>
+              <div className="col-span-2">物流状态</div>
               <div className="col-span-2">库存健康度 (DOI)</div>
               <div className="col-span-1">采购成本</div>
               <div className="col-span-1">利润透视</div>
@@ -247,14 +247,24 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                       {/* Left Accent Bar */}
                       <div className={`absolute left-0 top-0 bottom-0 w-1 ${urgencyColor}`}></div>
 
-                      {/* 1. Identity */}
-                      <div className="col-span-2 p-4 pl-12 border-r border-white/5 h-full flex flex-col justify-center relative">
+                      {/* 1. Identity (Updated: SKU + Inbound ID + Note) */}
+                      <div className="col-span-2 p-4 pl-12 border-r border-white/5 h-full flex flex-col justify-center gap-1.5 relative">
                           <div className="font-mono text-neon-blue font-bold text-sm">
                               {item.sku}
                           </div>
-                          {/* Updated Note Display: Visible directly in list */}
+                          
+                          {/* MOVED INBOUND ID HERE FOR VISIBILITY */}
+                          {item.inboundId ? (
+                              <div className="flex items-center gap-1.5 text-[10px] text-neon-purple bg-neon-purple/5 px-1.5 py-0.5 rounded border border-neon-purple/20 w-fit" title="Inbound ID (入库单号)">
+                                  <Container size={10} />
+                                  <span className="font-mono font-bold tracking-wide">{item.inboundId}</span>
+                              </div>
+                          ) : (
+                              <div className="text-[9px] text-gray-600 border border-dashed border-gray-800 px-1 py-0.5 rounded w-fit">无入库单号</div>
+                          )}
+
                           {item.note && (
-                              <div className="mt-1.5 flex items-start gap-1.5 text-[10px] text-gray-400 bg-white/5 p-1.5 rounded border border-white/5 w-fit">
+                              <div className="flex items-start gap-1.5 text-[10px] text-gray-400 bg-white/5 p-1.5 rounded border border-white/5 w-fit">
                                    <StickyNote size={10} className="text-neon-yellow shrink-0 mt-[1px]" />
                                    <span className="text-gray-300 leading-snug line-clamp-2 break-all" title={item.note}>
                                       {item.note}
@@ -276,7 +286,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           </div>
                       </div>
 
-                      {/* 3. Logistics */}
+                      {/* 3. Logistics (Simplified) */}
                       <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
                           {item.logistics ? (
                               <>
@@ -284,14 +294,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                                     {getLogisticsIcon(item.logistics.method)}
                                     <span className={item.logistics.status === 'In Transit' ? 'text-neon-blue' : ''}>{getStatusCN(item.logistics.status)}</span>
                                 </div>
-                                {item.inboundId ? (
-                                    <div className="flex items-center gap-1.5 text-[10px] text-neon-purple bg-neon-purple/5 px-1.5 py-0.5 rounded border border-neon-purple/10 w-fit">
-                                        <Container size={10} />
-                                        <span className="font-mono">{item.inboundId}</span>
-                                    </div>
-                                ) : <div className="text-[10px] text-gray-600 border border-dashed border-gray-700 px-1 rounded w-fit">无入库单</div>}
                                 <div className="flex items-center gap-2">
-                                    <div className="text-[10px] text-gray-500 font-mono truncate max-w-[100px]">{item.logistics.trackingNo || '无单号'}</div>
+                                    <div className="text-[10px] text-gray-500 font-mono truncate max-w-[100px]">{item.logistics.trackingNo || '无运单号'}</div>
                                     {item.logistics.trackingNo && <a href={trackingUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-500 hover:text-white"><ExternalLink size={10} /></a>}
                                 </div>
                               </>
@@ -307,7 +311,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                                     {daysOfInventory > 365 ? '>1年' : `${daysOfInventory}天可售`}
                                 </div>
                            </div>
-                           {/* Add explicit Restock Cartons display */}
                            <div className="flex items-center justify-between gap-1 text-[10px] text-gray-500">
                                <div className="flex items-center gap-1">
                                    <Activity size={10} /> 日销: <span className="text-white font-mono">{item.dailySales || 0}</span>
@@ -321,7 +324,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                            </div>
                       </div>
 
-                      {/* 5. Procurement Cost (NEW: Explicitly show Unit Cost) */}
+                      {/* 5. Procurement Cost */}
                       <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-1">
                           {hasData ? (
                               <>
