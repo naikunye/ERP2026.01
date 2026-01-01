@@ -14,10 +14,10 @@ interface SettingsModuleProps {
 }
 
 // ------------------------------------------------------------------
-// CORE MATCHING ENGINE V7.0 (Greedy Semantic Match)
+// CORE MATCHING ENGINE V7.2 (Terminology Alignment: Unit Shipping Cost)
 // ------------------------------------------------------------------
 
-// 1. Helper: Normalize keys to remove noise (e.g. "装箱数(pcs)" -> "装箱数pcs")
+// 1. Helper: Normalize keys to remove noise
 const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
 
 // 2. Helper: Extract Number from messy strings (e.g. "¥ 12.5" -> 12.5, "10箱" -> 10)
@@ -34,21 +34,16 @@ const parseCleanNum = (val: any): number => {
     return 0;
 };
 
-// 3. Helper: The Greedy Finder
+// 3. Helper: The Greedy Finder (Header Matching)
 const findValueGreedy = (obj: any, aliases: string[], exclude: string[] = []): any => {
     if (!obj) return undefined;
     const keys = Object.keys(obj);
     
-    // Priority 1: Exact or Contain Match based on alias list order
     for (const alias of aliases) {
         const nAlias = normalize(alias);
         for (const key of keys) {
             const nKey = normalize(key);
-            
-            // Check Exclusions first
             if (exclude.some(ex => nKey.includes(normalize(ex)))) continue;
-
-            // Check Match
             if (nKey.includes(nAlias)) {
                 const val = obj[key];
                 if (val !== undefined && val !== null && val !== '') return val;
@@ -80,7 +75,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('V7 强力引擎解析中: 正在深度挖掘字段...');
+    setImportMessage('V7.2 引擎启动: 正在校准头程运费单价...');
     
     if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
         setImportStatus('error');
@@ -100,16 +95,29 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         }
         
         // ------------------------------------------------
-        // V7.0 MAPPING CONFIGURATION
+        // V7.2 MAPPING CONFIGURATION
         // ------------------------------------------------
         const sanitized: Product[] = arr.map((raw: any) => {
             
-            // --- A. IDENTITY ---
-            // Try very hard to find the Inbound/Shipment ID
-            const inboundId = findValueGreedy(raw, 
+            // --- A. IDENTITY (Deep Scan for Lingxing/Inbound IDs) ---
+            let inboundId = findValueGreedy(raw, 
                 ['lx', 'ib', '入库', '货件', 'fba', 'shipment', 'inbound', '批次', 'batch', 'po_no', '单号'],
                 ['sku', 'tracking', '快递', 'carrier', '配送']
-            ) || '';
+            );
+
+            // Deep content scan fallback
+            if (!inboundId || String(inboundId).length < 5 || String(inboundId).toLowerCase() === 'unknown') {
+                const rawValues = Object.values(raw);
+                for (const v of rawValues) {
+                    if (typeof v === 'string') {
+                        const cleanVal = v.trim().toUpperCase();
+                        if (cleanVal.includes('LX:') || cleanVal.startsWith('IB') || (cleanVal.startsWith('FBA') && cleanVal.length > 8)) {
+                            inboundId = v; 
+                            break;
+                        }
+                    }
+                }
+            }
 
             const id = findValueGreedy(raw, ['product_id', 'sys_id', 'id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
             const sku = findValueGreedy(raw, ['sku', 'msku', '编码', 'item_no', 'model']) || 'UNKNOWN';
@@ -117,9 +125,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const supplier = findValueGreedy(raw, ['supplier', 'vendor', '供应商', '厂家']);
             const note = findValueGreedy(raw, ['note', 'remark', '备注', '说明']);
 
-            // --- B. FINANCIALS (Crucial: Parsing Cost vs Price) ---
+            // --- B. FINANCIALS ---
             const unitCost = parseCleanNum(findValueGreedy(raw, 
-                ['采购单价', '含税单价', '未税', '进货价', '成本', 'purchase', 'cost', 'buying', 'sourcing', '单价', 'price_cost'],
+                ['采购单价', '含税单价', '未税', '进货价', '成本', 'purchase', 'cost', 'buying', 'sourcing', '单价'],
                 ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping', '费率', 'rate']
             ));
 
@@ -128,30 +136,46 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 ['采购', '成本', 'cost', 'purchase', 'buying', '进货', '费率', 'rate']
             ));
 
-            // --- C. LOGISTICS & SPECS ---
-            // Very aggressive shipping matching
+            // --- C. LOGISTICS & SPECS (Updated for "头程运费单价") ---
             let shippingCost = parseCleanNum(findValueGreedy(raw, 
-                ['shippingCost', 'freight', '运费', '头程', '物流费', '海运费', '空运费', '费率', 'rate', 'kg_price', 'shipping', 'logistics'],
+                [
+                    '头程运费单价', '头运费单价', '运费单价', '头程单价', // Highest priority
+                    'shipping_unit_price', 'freight_unit_price',
+                    'shippingCost', 'freight', '运费', '头程', '物流费',
+                    '海运费', '空运费', '费率', 'rate', 'kg_price', '$/kg', 'shipping', 'logistics'
+                ],
                 []
             ));
 
-            // Stock / Quantity
+            // Fallback: Check strictly for keys containing 'rate', '单价' or '$/kg' combined with 'logistics' context
+            if (shippingCost === 0) {
+                 const keys = Object.keys(raw);
+                 for (const k of keys) {
+                     const nk = k.toLowerCase();
+                     if (
+                         (nk.includes('运') || nk.includes('物流') || nk.includes('头程')) && 
+                         (nk.includes('单价') || nk.includes('rate') || nk.includes('/kg'))
+                     ) {
+                         shippingCost = parseCleanNum(raw[k]);
+                         if (shippingCost > 0) break;
+                     }
+                 }
+            }
+
             const stock = parseCleanNum(findValueGreedy(raw, 
                 ['stock', 'qty', 'quantity', '库存', '现有', '总数', 'amount', 'total', 'on_hand', 'available'],
-                ['箱', 'carton', 'box'] // Avoid confusing stock with box count
+                ['箱', 'carton', 'box', '装箱']
             ));
 
             // Boxing Info
-            // Items Per Box (装箱数)
             const itemsPerBox = parseCleanNum(findValueGreedy(raw, 
-                ['itemsPerBox', 'per_box', 'boxing', '装箱数', '每箱', '单箱', 'pcs_per', 'quantity_per'],
+                ['itemsPerBox', 'per_box', 'boxing', '装箱数', '每箱', '单箱', 'pcs_per', 'quantity_per', '装箱'],
                 []
             ));
 
-            // Carton Count (箱数)
             const restockCartons = parseCleanNum(findValueGreedy(raw, 
                 ['restockCartons', 'cartons', 'box_count', '箱数', '件数', 'ctns', 'total_boxes'],
-                ['per', '装箱'] // Avoid "Items Per Box"
+                ['per', '装箱', '每箱'] 
             ));
 
             const unitWeight = parseCleanNum(findValueGreedy(raw, ['unitWeight', 'weight', '重量', 'kg']));
@@ -163,7 +187,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 sku: String(sku),
                 name: String(name),
                 description: raw.description || '',
-                price: price || (unitCost * 3) || 99.99, // Fallback if missing
+                price: price || (unitCost * 3) || 99.99,
                 stock,
                 currency: raw.currency || Currency.USD,
                 status: raw.status || ProductStatus.Draft,
@@ -182,7 +206,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 boxWeight: boxWeight,
                 itemsPerBox,
                 restockCartons,
-                inboundId: String(inboundId), 
+                inboundId: String(inboundId || ''), 
 
                 financials: {
                     costOfGoods: unitCost,
@@ -206,7 +230,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条 (V7 强力匹配: 箱规/运费/成本 已锁定)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条 (头程运费单价/领星单号 已识别)`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
@@ -386,7 +410,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 7.0.0 (Greedy Matcher)</p>
+                      <p className="text-xs text-gray-500">Version 7.2.0 (Shipping Unit Price Fix)</p>
                   </div>
               </div>
               <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors">

@@ -311,7 +311,8 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                          
                          <div className="p-4 bg-neon-yellow/5 border border-neon-yellow/10 rounded-xl space-y-3">
                              <div className="grid grid-cols-2 gap-4">
-                                 <InputGroup label="费率 ($/kg)" name="shippingRate" value={formData.shippingRate} onChange={handleChange} />
+                                 {/* Explicit Label Change */}
+                                 <InputGroup label="头程运费单价 ($/kg)" name="shippingRate" value={formData.shippingRate} onChange={handleChange} />
                                  <div className="space-y-1">
                                     <label className="text-[10px] text-gray-500 font-bold">计费重</label>
                                     <div className="text-sm font-bold text-white font-mono">{metrics.chargeableWeight.toFixed(1)} kg</div>

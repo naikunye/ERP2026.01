@@ -312,10 +312,10 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                               </>
                           ) : <div className="text-[10px] text-gray-600 italic">暂无物流数据</div>}
                           
-                          {/* NEW: Shipping Rate */}
+                          {/* NEW: Shipping Rate Explicit Label */}
                           {shippingCost > 0 && (
                               <div className="text-[10px] text-neon-yellow flex items-center gap-1">
-                                  <Scale size={10}/> 费率: ${shippingCost.toFixed(2)}/kg
+                                  <Scale size={10}/> 头程运费单价: ${shippingCost.toFixed(2)}/kg
                               </div>
                           )}
                       </div>
