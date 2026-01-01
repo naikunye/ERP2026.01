@@ -334,7 +334,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     </h3>
                     <div className="space-y-5">
                          <div className="flex items-center gap-4">
-                              <InputGroup label="销售价 ($)" name="sellingPrice" value={formData.sellingPrice} highlight="text-neon-green text-xl" onChange={handleChange} />
+                              <InputGroup label="销售价 (USD $)" name="sellingPrice" value={formData.sellingPrice} highlight="text-neon-green text-xl" onChange={handleChange} />
                               <button className="h-10 px-3 mt-4 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-bold text-gray-400 flex items-center gap-2">
                                  <Anchor size={14}/> 竞品
                               </button>

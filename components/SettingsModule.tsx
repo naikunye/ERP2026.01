@@ -14,7 +14,7 @@ interface SettingsModuleProps {
 }
 
 // ------------------------------------------------------------------
-// CORE MATCHING ENGINE V6 (Deep Value Detection)
+// CORE MATCHING ENGINE V6.1 (Rate & Unit Support)
 // ------------------------------------------------------------------
 const findValue = (obj: any, searchTerms: string[], excludeTerms: string[] = []) => {
     if (!obj) return undefined;
@@ -62,7 +62,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('启动 V6 深层值检测引擎...');
+    setImportMessage('正在解析：支持费率与多币种识别...');
     
     if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
         setImportStatus('error');
@@ -104,24 +104,25 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             // --- 1. CORE FINANCIALS ---
             const unitCost = parseNum(
                 ['采购单价', '含税单价', '进货价', '成本', 'purchase_price', 'cost_price', 'buying_price', 'unit_cost', 'cost'], 
-                ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping']
+                ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping', '费率', 'rate'] // Exclude Rates
             );
 
             const price = parseNum(
                 ['销售价', '售价', '定价', 'selling_price', 'retail_price', 'sale_price', 'price'], 
-                ['采购', '成本', 'cost', 'purchase', 'buying', '进货'] 
+                ['采购', '成本', 'cost', 'purchase', 'buying', '进货', '费率', 'rate'] // Exclude Rates
             );
 
-            // --- 2. LOGISTICS COST (Enhanced Fallback) ---
+            // --- 2. LOGISTICS COST (Added 'Rate' Support) ---
             let shippingCost = parseNum([
                 'shippingCost', 'freight', '运费', '头程', 
-                '物流单价', '物流费', '物流成本', '海运费', '空运费', '单价', // '单价' added but relies on unitCost logic to exclude '物流'
-                'shipping_price', 'logistics_cost', 'logistics'
+                '物流单价', '物流费', '物流成本', '海运费', '空运费', '单价',
+                'shipping_price', 'logistics_cost', 'logistics',
+                '费率', 'rate', 'kg_price' // Fix: Support "费率 ($/kg)"
             ]);
 
             // Fallback: If 0, scan keys for ANY loosely containing "运" or "物流"
             if (shippingCost === 0) {
-                const looseKey = Object.keys(raw).find(k => (k.includes('运') || k.includes('物流')) && (k.includes('价') || k.includes('费')));
+                const looseKey = Object.keys(raw).find(k => (k.includes('运') || k.includes('物流')) && (k.includes('价') || k.includes('费') || k.includes('率')));
                 if (looseKey) {
                     const val = raw[looseKey];
                     if (typeof val === 'number') shippingCost = val;
@@ -210,7 +211,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条 (V6 深度识别模式)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条 (支持费率识别)`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
@@ -390,7 +391,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 6.0.0 (Deep Scan)</p>
+                      <p className="text-xs text-gray-500">Version 6.1.0 (Rate Support)</p>
                   </div>
               </div>
               <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors">
