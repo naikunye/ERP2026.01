@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Theme, Product } from '../types';
+import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
@@ -50,21 +50,54 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         const text = e.target?.result as string;
         const json = JSON.parse(text);
         
-        // Handle various JSON structures
+        // Handle various JSON structures (array or object with key)
         const arr = Array.isArray(json) ? json : (json.products || json.items || []);
         
         if (!Array.isArray(arr) || arr.length === 0) {
             throw new Error("文件未包含有效的数组数据");
         }
         
-        // Sanitization
-        const sanitized = arr.map((raw: any) => ({
-            ...raw,
+        // Strict Sanitization to prevent crashes
+        const sanitized: Product[] = arr.map((raw: any) => ({
             id: raw.id || `IMP-${Math.random().toString(36).substr(2,9)}`,
-            price: Number(raw.price) || 0,
-            stock: Number(raw.stock) || 0,
+            sku: raw.sku || 'UNKNOWN-SKU',
             name: raw.name || 'Unnamed Product',
-            sku: raw.sku || 'UNKNOWN-SKU'
+            description: raw.description || '',
+            // Ensure numbers are numbers
+            price: typeof raw.price === 'number' ? raw.price : parseFloat(raw.price) || 0,
+            stock: typeof raw.stock === 'number' ? raw.stock : parseFloat(raw.stock) || 0,
+            // Enums with defaults
+            currency: raw.currency || Currency.USD,
+            status: raw.status || ProductStatus.Draft,
+            category: raw.category || 'General',
+            // Arrays
+            marketplaces: Array.isArray(raw.marketplaces) ? raw.marketplaces : [],
+            variants: Array.isArray(raw.variants) ? raw.variants : [],
+            // Strings
+            imageUrl: raw.imageUrl || '',
+            lastUpdated: raw.lastUpdated || new Date().toISOString(),
+            supplier: raw.supplier || '',
+            note: raw.note || '',
+            // Nested Objects (Critical for preventing crash)
+            financials: {
+                costOfGoods: Number(raw.financials?.costOfGoods) || 0,
+                shippingCost: Number(raw.financials?.shippingCost) || 0,
+                otherCost: Number(raw.financials?.otherCost) || 0,
+                sellingPrice: Number(raw.financials?.sellingPrice) || 0,
+                platformFee: Number(raw.financials?.platformFee) || 0,
+                adCost: Number(raw.financials?.adCost) || 0,
+            },
+            logistics: {
+                method: raw.logistics?.method || 'Sea',
+                carrier: raw.logistics?.carrier || '',
+                trackingNo: raw.logistics?.trackingNo || '',
+                status: raw.logistics?.status || 'Pending',
+                origin: raw.logistics?.origin || '',
+                destination: raw.logistics?.destination || ''
+            },
+            // Optional Numbers
+            dailySales: Number(raw.dailySales) || 0,
+            inboundId: raw.inboundId || ''
         }));
 
         onImportData(sanitized);

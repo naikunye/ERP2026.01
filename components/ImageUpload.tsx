@@ -69,7 +69,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
   };
 
   return (
-    <div className="w-full h-full min-h-[200px] flex flex-col">
+    <div className="w-full h-full min-h-[120px] flex flex-col">
         <input 
             ref={fileInputRef}
             type="file" 
@@ -79,7 +79,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
         />
 
         {currentImage ? (
-            <div className="relative w-full h-full rounded-2xl overflow-hidden group border border-white/10 bg-black/40 min-h-[200px]">
+            <div className="relative w-full h-full rounded-2xl overflow-hidden group border border-white/10 bg-black/40 min-h-[120px]">
                 <img src={currentImage} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt="Product" />
                 
                 {/* Overlay Actions */}
@@ -88,7 +88,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
                         onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                         className="px-4 py-2 bg-white text-black rounded-xl font-bold text-xs flex items-center gap-2 hover:scale-105 transition-all shadow-glow-white"
                     >
-                        <Camera size={16} /> 更换图片
+                        <Camera size={16} /> 更换
                     </button>
                     <button 
                         onClick={(e) => { e.stopPropagation(); onImageChange(''); }}
@@ -100,7 +100,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
             </div>
         ) : (
             <div 
-                className={`flex-1 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-6 transition-all duration-300 relative overflow-hidden min-h-[200px] ${
+                className={`flex-1 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-4 transition-all duration-300 relative overflow-hidden min-h-[120px] ${
                     isDragging 
                     ? 'border-neon-blue bg-neon-blue/10 scale-[0.99]' 
                     : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10'
@@ -109,37 +109,29 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ currentImage, onImageChange, 
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
             >
-                <div className="w-16 h-16 rounded-full bg-black/30 flex items-center justify-center mb-4 shadow-inner">
-                    <Upload size={24} className={isDragging ? 'text-neon-blue animate-bounce' : 'text-gray-500'} />
+                <div className="w-12 h-12 rounded-full bg-black/30 flex items-center justify-center mb-3 shadow-inner">
+                    <Upload size={20} className={isDragging ? 'text-neon-blue animate-bounce' : 'text-gray-500'} />
                 </div>
                 
-                <h3 className="text-sm font-bold text-white mb-2">拖拽上传 / 点击选择</h3>
-                <p className="text-xs text-gray-500 text-center mb-6 max-w-[200px]">
-                    支持 JPG, PNG, WEBP. 建议尺寸 800x800px 以上.
-                </p>
-
+                <h3 className="text-xs font-bold text-white mb-1">点击或拖拽上传</h3>
+                
                 <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-6 py-2 bg-white/10 border border-white/10 rounded-lg text-xs font-bold text-white hover:bg-white/20 transition-all"
+                    className="mt-2 px-4 py-1.5 bg-white/10 border border-white/10 rounded-lg text-[10px] font-bold text-white hover:bg-white/20 transition-all"
                 >
-                    选择本地文件
+                    选择文件
                 </button>
 
-                <div className="flex items-center w-full gap-3 mt-4 mb-2">
-                    <div className="h-px bg-white/10 flex-1"></div>
-                    <span className="text-[10px] text-gray-600 font-bold uppercase">OR</span>
-                    <div className="h-px bg-white/10 flex-1"></div>
-                </div>
-
-                <button 
-                    onClick={handleSmartSearch}
-                    disabled={isSearching || !productName}
-                    className="mt-2 px-5 py-2.5 bg-neon-purple/10 border border-neon-purple/20 text-neon-purple rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-neon-purple/20 hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                    {isSearching ? 'AI 搜索中...' : 'AI 智能匹配素材'}
-                </button>
-                {!productName && <p className="text-[9px] text-gray-600 mt-2">需先输入产品名称</p>}
+                {productName && (
+                    <button 
+                        onClick={handleSmartSearch}
+                        disabled={isSearching}
+                        className="mt-2 text-[10px] text-neon-purple flex items-center gap-1 hover:underline disabled:opacity-50"
+                    >
+                        {isSearching ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
+                        AI 自动匹配
+                    </button>
+                )}
             </div>
         )}
     </div>

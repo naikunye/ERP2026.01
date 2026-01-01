@@ -344,7 +344,7 @@ const App: React.FC = () => {
            return {
                ...p,
                note: updatedData.note,
-               // FIX: Allow image removal by checking if property exists rather than truthiness
+               // CRITICAL FIX: Check for undefined specifically to allow empty string updates (deleting image)
                imageUrl: updatedData.imageUrl !== undefined ? updatedData.imageUrl : p.imageUrl, 
                supplier: updatedData.supplierName,
                dailySales: updatedData.dailySales,
@@ -406,7 +406,7 @@ const App: React.FC = () => {
       setProducts(prev => {
           const prevMap = new Map(prev.map(p => [p.id, p]));
           importedData.forEach(p => { 
-              if (p && p.name) {
+              if (p && (p.name || p.sku)) { // Ensure bare minimum validity
                   // If ID exists in system, update it. If not, treat as new.
                   // If import data doesn't have ID, generate one.
                   const id = p.id || `IMP-${Math.random().toString(36).substr(2,9)}`;
