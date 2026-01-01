@@ -13,32 +13,31 @@ interface SettingsModuleProps {
   onImportData: (data: Product[]) => void;
 }
 
-// Enhanced Fuzzy Matcher
+// ------------------------------------------------------------------
+// CORE MATCHING ENGINE (Super Robust)
+// ------------------------------------------------------------------
 const findValue = (obj: any, searchTerms: string[]) => {
     if (!obj) return undefined;
     const objKeys = Object.keys(obj);
     
-    // Strategy 1: Exact Key Match (Fastest)
-    for (const term of searchTerms) {
-        if (obj[term] !== undefined && obj[term] !== null && obj[term] !== '') return obj[term];
-    }
+    // Normalize string: lowercase, remove ALL punctuation/spaces/symbols
+    // e.g. "LX：入库单(2024)" -> "lx入库单2024"
+    const clean = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
 
-    // Strategy 2: Normalized Match (Ignore case, special chars)
-    // AND Strategy 3: Partial Inclusion Match (Critical for "领星入库单号" vs "入库单号")
-    
-    // Normalize Search Terms
-    const normalizedTerms = searchTerms.map(t => t.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, ''));
+    const normalizedTerms = searchTerms.map(t => clean(t));
 
     for (const key of objKeys) {
         const val = obj[key];
         if (val === undefined || val === null || val === '') continue;
 
-        const normalizedKey = key.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+        const normalizedKey = clean(key);
         
         for (const term of normalizedTerms) {
-            // Check if the object key INCLUDES the search term
-            // e.g. objKey: "领星入库单号" (lingxingrukudanhao) includes term: "入库单号" (rukudanhao)
-            if (normalizedKey === term || normalizedKey.includes(term)) {
+            // Logic: 
+            // 1. Exact cleaned match (e.g. "price" == "price")
+            // 2. Key contains Term (e.g. "lx入库单" contains "入库单")
+            // 3. Term contains Key (e.g. "头程运费单价" contains "运费")
+            if (normalizedKey === term || normalizedKey.includes(term) || (term.length > 2 && term.includes(normalizedKey))) {
                 return val;
             }
         }
@@ -69,11 +68,11 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('解析文件中...');
+    setImportMessage('深度解析数据中...');
     
     if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
         setImportStatus('error');
-        setImportMessage('请上传 .json 格式文件');
+        setImportMessage('目前仅支持 .json 文件。请将 Excel 另存为 JSON。');
         return;
     }
 
@@ -84,70 +83,91 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         const json = JSON.parse(text);
         
         // Handle various JSON structures
-        const arr = Array.isArray(json) ? json : (json.products || json.items || []);
+        const arr = Array.isArray(json) ? json : (json.products || json.items || json.data || []);
         
         if (!Array.isArray(arr) || arr.length === 0) {
-            throw new Error("文件未包含有效的数组数据");
+            throw new Error("无有效数据");
         }
         
-        // Strict Sanitization with Expanded Fuzzy Matching
+        // ------------------------------------------------
+        // MAPPING CONFIGURATION
+        // ------------------------------------------------
         const sanitized: Product[] = arr.map((raw: any) => {
             
-            // Helper to parse numbers safely from strings like "¥23.50"
+            // Numerical Parser: Strip currency symbols, handle "100箱"
             const parseNum = (keys: string[]) => {
                 const val = findValue(raw, keys);
                 if (val === undefined || val === null) return 0;
                 if (typeof val === 'number') return val;
                 if (typeof val === 'string') {
-                    // Remove currency symbols and commas
-                    const clean = val.replace(/[$,¥,£, ]/g, '');
-                    return parseFloat(clean) || 0;
+                    // Extract first valid float
+                    const match = val.match(/-?\d+(\.\d+)?/);
+                    return match ? parseFloat(match[0]) : 0;
                 }
                 return 0;
             };
 
-            // --- 1. Basic Info ---
-            const id = findValue(raw, ['id', 'ID', 'product_id', '序号', 'sys_id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
-            const sku = findValue(raw, ['sku', 'SKU', 'sku_code', 'SKU编码', 'MSKU']) || 'UNKNOWN-SKU';
-            const name = findValue(raw, ['name', 'title', 'product_name', '产品名称', '中文名称', '标题']) || 'Unnamed Product';
-            // Expanded for Remarks
-            const note = findValue(raw, ['note', 'remarks', 'remark', '备注', '产品备注', '说明', 'Note', 'Memo']) || '';
-            const supplier = findValue(raw, ['supplier', 'vendor', 'supplier_name', '供应商', '厂家']) || '';
+            // String Parser
+            const parseStr = (keys: string[]) => {
+                const val = findValue(raw, keys);
+                return val ? String(val).trim() : '';
+            }
+
+            // --- 1. ID & SKU ---
+            const id = parseStr(['id', 'product_id', '序号', 'sys_id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
+            const sku = parseStr(['sku', 'sku_code', 'SKU编码', 'MSKU', '产品SKU']) || 'UNKNOWN';
+            const name = parseStr(['name', 'title', 'product_name', '产品名称', '中文名称', '标题']) || 'Unnamed Product';
             
-            // --- 2. Inventory & Sales ---
-            const stock = parseNum(['stock', 'quantity', 'inventory', '库存', '现有库存', 'FBA库存', '可用库存']);
+            // --- 2. 关键核心字段 (User Requested) ---
+            // Unit Cost
+            const unitCost = parseNum([
+                '产品单价', '采购单价', '含税单价', '单价', '成本价', 
+                'unit_cost', 'cost_price', 'purchase_price', 'cost'
+            ]);
+
+            // Cartons
+            const restockCartons = parseNum([
+                '箱子数量', '采购箱数', '箱数', '总箱数', '件数', 
+                'cartons', 'total_cartons', 'box_count', 'ctns'
+            ]);
+
+            // Inbound ID (Specific fix for 'LX：入库单')
+            const inboundId = parseStr([
+                '入库单号', '入库单', 'LX入库单', '领星入库单', '货件编号', '货件ID', 
+                'inbound_id', 'shipment_id', 'fba_id', 'reference_id'
+            ]);
+
+            // Shipping Unit Cost
+            const shippingCost = parseNum([
+                '物流单价', '运费单价', '头程单价', '头程运费/个', '单位运费',
+                'shipping_cost', 'freight_unit', 'unit_shipping'
+            ]);
+
+            // --- 3. Other Specs ---
+            const stock = parseNum(['stock', 'quantity', 'inventory', '库存', '现有库存', 'FBA库存']);
             const price = parseNum(['price', 'selling_price', '销售价', '售价', '定价']);
-            const dailySales = parseNum(['dailySales', 'daily_sales', 'sales_velocity', '日销', '日均销量', '7天销量']);
+            const itemsPerBox = parseNum(['itemsPerBox', '装箱数', '每箱数量', '单箱数量', 'qty_per_box']);
+            const unitWeight = parseNum(['unitWeight', '单品重量', '重量', 'weight', 'kg']);
+            const supplier = parseStr(['supplier', '供应商', '厂家', 'vendor']);
+            const note = parseStr(['note', '备注', '产品备注', '说明', 'remarks']);
 
-            // --- 3. Procurement (The tricky ones) ---
-            // "unitCost" matches: "采购单价", "最新采购单价", "含税单价", "PurchasePrice"
-            const unitCost = parseNum(['unitCost', 'cost', 'purchase_price', 'cost_price', '采购单价', '单价', '含税单价', '进货价']);
-            
-            // "inboundId" matches: "领星入库单号", "入库单号", "货件编号", "ShipmentID", "FBA号"
-            const inboundId = findValue(raw, ['inboundId', 'inbound_id', 'shipment_id', '入库单号', '货件编号', '货件ID', 'FBA单号']);
-
-            // --- 4. Physical Specs ---
-            const restockCartons = parseNum(['restockCartons', 'cartons', 'box_count', '采购箱数', '箱数', '件数']);
-            const itemsPerBox = parseNum(['itemsPerBox', 'per_box', 'boxing_qty', '装箱数', '每箱数量', '装箱量']);
-            const unitWeight = parseNum(['unitWeight', 'weight', 'weight_kg', '单品重量', '重量', '毛重']);
-
-            // --- 5. Reconstruction ---
+            // --- 4. Object Reconstruction ---
             return {
                 id,
                 sku,
                 name,
                 description: raw.description || '',
-                price,
+                price: price || (unitCost * 3), // Fallback if no selling price
                 stock,
                 currency: raw.currency || Currency.USD,
                 status: raw.status || ProductStatus.Draft,
                 category: raw.category || 'General',
                 marketplaces: Array.isArray(raw.marketplaces) ? raw.marketplaces : [],
-                variants: Array.isArray(raw.variants) ? raw.variants : [],
+                variants: [],
                 imageUrl: raw.imageUrl || '',
                 lastUpdated: new Date().toISOString(),
                 supplier,
-                note: typeof note === 'object' ? JSON.stringify(note) : String(note), // Ensure string
+                note,
                 
                 // Mapped extended fields
                 unitWeight,
@@ -157,41 +177,41 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 boxWeight: Number(raw.boxWeight) || 0,
                 itemsPerBox,
                 restockCartons,
-                inboundId: inboundId ? String(inboundId) : '',
+                inboundId, // This should now catch 'LX：入库单'
 
-                // Financials reconstruction
+                // Financials
                 financials: {
-                    costOfGoods: unitCost, // Mapped above
-                    shippingCost: parseNum(['shippingCost', 'shipping', 'head_freight', '头程运费', '运费']),
-                    otherCost: parseNum(['otherCost', 'fulfillment', 'fba_fee', '杂费', '操作费']),
+                    costOfGoods: unitCost,     // *** CRITICAL FIX ***
+                    shippingCost: shippingCost, // *** CRITICAL FIX ***
+                    otherCost: parseNum(['otherCost', '杂费', '操作费']),
                     sellingPrice: price, 
-                    platformFee: parseNum(['platformFee', 'referral_fee', 'commission', '佣金']),
-                    adCost: parseNum(['adCost', 'cpa', 'ad_spend', '广告费']),
+                    platformFee: parseNum(['platformFee', '佣金']),
+                    adCost: parseNum(['adCost', '广告费']),
                 },
                 logistics: {
                     method: raw.logistics?.method || 'Sea',
                     carrier: raw.logistics?.carrier || '',
                     trackingNo: raw.logistics?.trackingNo || '',
-                    status: raw.logistics?.status || 'Pending',
-                    origin: raw.logistics?.origin || '',
-                    destination: raw.logistics?.destination || ''
+                    status: 'Pending',
+                    origin: '',
+                    destination: ''
                 },
-                dailySales
+                dailySales: parseNum(['dailySales', '日销', '日均销量'])
             };
         });
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`成功导入 ${sanitized.length} 条资产数据`);
+        setImportMessage(`成功导入 ${sanitized.length} 条数据 (已更新价格/箱数/入库单)`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
             setImportMessage(''); 
-        }, 3000);
+        }, 4000);
       } catch (err: any) {
         console.error("Import Error:", err);
         setImportStatus('error');
-        setImportMessage('JSON 解析失败或格式错误');
+        setImportMessage('JSON 解析失败，请检查文件格式');
       }
     };
     reader.onerror = () => {
@@ -205,7 +225,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       if (e.target.files?.[0]) {
           processFile(e.target.files[0]);
       }
-      e.target.value = ''; // Reset input to allow re-selection
+      e.target.value = '';
   };
 
   const themes = [
@@ -366,7 +386,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 5.3.2 (Build 20241030)</p>
+                      <p className="text-xs text-gray-500">Version 5.4.0 (Logic Fix)</p>
                   </div>
               </div>
               <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors">
