@@ -3,7 +3,7 @@ import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
   Wifi, Activity, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw, Zap, ShieldAlert,
-  PlayCircle, HelpCircle
+  PlayCircle, HelpCircle, AlertTriangle, ExternalLink
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -12,10 +12,11 @@ interface DataSyncModuleProps {
 }
 
 const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportData }) => {
-  // Real Connection State
-  const [serverUrl, setServerUrl] = useState('');
+  // 1. 设置默认值为您的腾讯云 IP
+  const [serverUrl, setServerUrl] = useState('ws://119.28.72.106:8090');
+  
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error' | 'simulating'>('disconnected');
-  const [errorDetail, setErrorDetail] = useState('');
+  const [errorDetail, setErrorDetail] = useState<React.ReactNode>('');
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [wsMessageCount, setWsMessageCount] = useState(0);
   const [simulationInterval, setSimulationInterval] = useState<any>(null);
@@ -26,7 +27,6 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Clean up socket on unmount
   useEffect(() => {
       return () => {
           if (socket) socket.close();
@@ -34,7 +34,6 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       };
   }, []);
 
-  // --- 1. ROBUST DATA SANITIZATION ---
   const sanitizeProduct = (raw: any): Product => {
       const id = raw.id || raw._id || `IMPORTED-${Math.random().toString(36).substr(2, 9)}`;
       return {
@@ -75,120 +74,97 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       };
   };
 
-  // --- 2. INTELLIGENT WEBSOCKET LOGIC ---
   const handleConnect = () => {
-      // 1. Clean up old connections
+      // Clean up previous
       if (socket) socket.close();
       if (simulationInterval) clearInterval(simulationInterval);
-      setErrorDetail('');
-
-      let rawUrl = serverUrl.trim();
-      if (!rawUrl) {
-          setConnectionStatus('error');
-          setErrorDetail('请输入服务器地址');
-          return;
-      }
       
-      // Remove trailing slash
-      if (rawUrl.endsWith('/')) rawUrl = rawUrl.slice(0, -1);
-
-      // --- LOGIC UPDATE: Trust User Input First ---
-      // Only auto-add protocol if missing. Do NOT overwrite what the user typed.
-      let finalTargetUrl = rawUrl;
-      const hasProtocol = /^(ws|wss):\/\//i.test(rawUrl);
-
-      if (!hasProtocol) {
-          // Fallback logic: If no protocol, guess based on content
-          // If using a domain, prefer wss://. If IP, default to ws:// (but user can override by typing it)
-          const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?$/.test(rawUrl);
-          finalTargetUrl = isIP ? `ws://${rawUrl}` : `wss://${rawUrl}`;
-      } else {
-          // Fix the specific "wss://http://" double protocol error if user pasted it wrong
-          finalTargetUrl = finalTargetUrl.replace(/^(ws|wss):\/\/http:\/\//i, '$1://');
-      }
-
-      // Update UI to match what we are actually connecting to
-      setServerUrl(finalTargetUrl);
-
-      // 3. Set UI to "Connecting"
+      setErrorDetail('');
       setConnectionStatus('connecting');
 
-      // 4. Connect with delay
-      setTimeout(() => {
-          attemptRealConnection(finalTargetUrl);
-      }, 300);
-  };
-
-  const attemptRealConnection = (url: string) => {
-      try {
-          console.log("Attempting WebSocket connection to:", url);
-          const ws = new WebSocket(url);
-          
-          // Safety timeout
-          const timeoutId = setTimeout(() => {
-              if (ws.readyState === WebSocket.CONNECTING) {
-                  ws.close();
-                  setConnectionStatus('error');
-                  setErrorDetail('连接超时 (5s)：请检查服务器防火墙或公网 IP 可达性。');
-              }
-          }, 5000);
-
-          ws.onopen = () => {
-              clearTimeout(timeoutId);
-              setConnectionStatus('connected');
-              setSocket(ws);
-              setErrorDetail('');
-              console.log("WebSocket Connected Successfully");
-          };
-
-          ws.onmessage = (event) => {
-              setWsMessageCount(prev => prev + 1);
-              try {
-                  const payload = JSON.parse(event.data);
-                  const rawData = Array.isArray(payload) ? payload : (payload.data || payload.products || []);
-                  if (Array.isArray(rawData) && rawData.length > 0) {
-                      const cleanData = rawData.map(sanitizeProduct);
-                      onImportData(cleanData);
-                  }
-              } catch (e) { /* ignore non-json */ }
-          };
-
-          ws.onerror = (e) => {
-              // Note: WebSocket API does not expose the error detail for privacy/security reasons.
-              // We have to infer the error based on context.
-              console.error("WS Error Event:", e);
-          };
-
-          ws.onclose = (e) => {
-              clearTimeout(timeoutId);
-              console.log("WS Closed:", e.code, e.reason);
-              setSocket(null);
-
-              if (e.code === 1000) {
-                 setConnectionStatus('disconnected');
-              } else {
-                 setConnectionStatus('error');
-                 
-                 const isHttps = window.location.protocol === 'https:';
-                 const isWs = url.startsWith('ws://');
-
-                 if (e.code === 1006) {
-                     if (isHttps && isWs) {
-                         setErrorDetail('安全阻断 (Mixed Content): 当前页面为 HTTPS，浏览器拒绝连接不安全的 ws:// IP。建议：1.使用 wss:// 协议（需服务器配置 SSL）；2.使用 Ngrok 将本地端口映射为 HTTPS 域名。');
-                     } else {
-                         setErrorDetail('连接断开 (Code 1006): 服务器拒绝连接。请检查: 1.IP/端口正确 2.服务器端未报错 3.防火墙已放行。');
-                     }
-                 } else {
-                     setErrorDetail(`连接异常 (Code ${e.code}): ${e.reason || '网络中断或协议不匹配'}`);
-                 }
-              }
-          };
-
-      } catch (e: any) {
-          console.error("WS Sync Error:", e);
-          setConnectionStatus('error');
-          setErrorDetail(`初始化错误: ${e.message}`);
+      // 1. 获取用户输入，不做任何智能修改，完全信任用户
+      let targetUrl = serverUrl.trim();
+      
+      // 简单补全协议，如果用户完全没写
+      if (!targetUrl.startsWith('ws://') && !targetUrl.startsWith('wss://')) {
+          targetUrl = `ws://${targetUrl}`;
+          setServerUrl(targetUrl); // 回填到输入框
       }
+
+      console.log(`[Connecting] Target: ${targetUrl}`);
+
+      setTimeout(() => {
+        try {
+            const ws = new WebSocket(targetUrl);
+            
+            ws.onopen = () => {
+                setConnectionStatus('connected');
+                setSocket(ws);
+                setErrorDetail('');
+                console.log("[Success] WebSocket Connected");
+            };
+
+            ws.onmessage = (event) => {
+                setWsMessageCount(prev => prev + 1);
+                try {
+                    const payload = JSON.parse(event.data);
+                    const rawData = Array.isArray(payload) ? payload : (payload.data || payload.products || []);
+                    if (Array.isArray(rawData)) {
+                        onImportData(rawData.map(sanitizeProduct));
+                    }
+                } catch (e) { console.warn("Invalid JSON", e); }
+            };
+
+            ws.onerror = (e) => {
+                console.error("WS Error", e);
+                // onclose will handle the state update
+            };
+
+            ws.onclose = (e) => {
+                console.log(`[Closed] Code: ${e.code}, Reason: ${e.reason}`);
+                setSocket(null);
+                setConnectionStatus('error');
+
+                // --- 核心诊断逻辑 ---
+                if (e.code === 1006) {
+                    const isPageHttps = window.location.protocol === 'https:';
+                    const isTargetUnsecure = targetUrl.startsWith('ws://');
+
+                    if (isPageHttps && isTargetUnsecure) {
+                        // 这是最常见的 Vercel (HTTPS) -> IP (WS) 阻断
+                        setErrorDetail(
+                            <div className="space-y-3 mt-2">
+                                <div className="font-bold text-neon-pink flex items-center gap-2 text-sm">
+                                    <ShieldAlert size={16}/> 浏览器安全阻断 (Code 1006)
+                                </div>
+                                <div className="text-xs text-gray-300 leading-relaxed">
+                                    当前网页是安全链接 (HTTPS)，但您尝试连接的服务器是不安全的 (ws://)。浏览器默认已拦截此请求。
+                                </div>
+                                <div className="bg-white/10 p-4 rounded-lg border border-white/20 text-xs text-white">
+                                    <strong>如何解决 (即使之前开过，请再次检查):</strong>
+                                    <ol className="list-decimal list-inside mt-2 space-y-2 text-gray-300">
+                                        <li>点击浏览器地址栏最左侧的 <Lock size={12} className="inline text-neon-blue"/> <b>锁图标</b> 或 <b>设置图标</b>。</li>
+                                        <li>点击 <b>网站设置 (Site Settings)</b>。</li>
+                                        <li>向下滚动找到 <b>不安全内容 (Insecure Content)</b>。</li>
+                                        <li>强制将其设置为 <span className="text-neon-green font-bold border border-neon-green/30 px-1 rounded">允许 (Allow)</span>。</li>
+                                        <li>回到本页面，刷新后重新连接。</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        );
+                    } else {
+                        // 其他网络错误
+                        setErrorDetail(`连接失败 (Code 1006): 无法连接到 ${targetUrl}。请检查服务器防火墙是否放行了 8090 端口，或 IP 是否正确。`);
+                    }
+                } else {
+                    setErrorDetail(`连接断开 (Code ${e.code}): ${e.reason || '网络中断'}`);
+                }
+            };
+        } catch (err: any) {
+            setConnectionStatus('error');
+            setErrorDetail(`初始化异常: ${err.message}`);
+        }
+      }, 500); // Small delay to show UI state
   };
 
   const handleDisconnect = () => {
@@ -198,18 +174,16 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       setSocket(null);
   };
 
-  // --- 2.5 SIMULATION MODE ---
+  // Simulation Logic
   const handleSimulate = () => {
       handleDisconnect();
       setTimeout(() => {
         setConnectionStatus('simulating');
         setErrorDetail('');
-        
         let counter = 0;
         const interval = setInterval(() => {
             setWsMessageCount(prev => prev + 1);
             counter++;
-            // Simulate receiving a stock update for a random product
             if (currentData.length > 0) {
                 const randomIdx = Math.floor(Math.random() * currentData.length);
                 const p = currentData[randomIdx];
@@ -221,12 +195,12 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                 };
                 onImportData([updatedP]);
             }
-        }, 1500); // Fast updates
+        }, 1500);
         setSimulationInterval(interval);
       }, 100);
   };
 
-  // --- 3. RECURSIVE DEEP SCAN IMPORT ---
+  // File Import Logic
   const handleExport = () => {
     const dataStr = JSON.stringify(currentData, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -241,84 +215,21 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('启动深度递归扫描...');
-
+    setImportMessage('解析文件中...');
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const content = e.target?.result as string;
-        if (!content) throw new Error("文件内容为空");
-
-        let json;
-        try {
-            json = JSON.parse(content);
-        } catch (e) {
-            throw new Error("JSON 语法错误，无法解析");
-        }
-        
-        // --- POWERFUL RECURSIVE SEARCH ---
-        // Looks for ANY array where the items look like products (have id, sku, or name)
-        const findProductArray = (obj: any, depth = 0): any[] => {
-            if (depth > 8) return []; // Prevent infinite recursion
-            
-            // 1. Is this node an array?
-            if (Array.isArray(obj)) {
-                 // 1a. Is it empty? Return it, maybe it's valid but empty.
-                 if (obj.length === 0) return obj;
-                 
-                 // 1b. Does it contain objects?
-                 const sample = obj[0];
-                 if (typeof sample === 'object' && sample !== null) {
-                     // 1c. Do they look like products? (Loose check)
-                     if ('id' in sample || 'sku' in sample || 'name' in sample || 'title' in sample || 'price' in sample) {
-                         return obj;
-                     }
-                 }
-                 return []; // Array of primitives or unrelated objects
-            }
-            
-            // 2. Is this node an object?
-            if (typeof obj === 'object' && obj !== null) {
-                // Search all keys
-                for (const key of Object.keys(obj)) {
-                    const result = findProductArray(obj[key], depth + 1);
-                    if (result.length > 0) return result;
-                }
-            }
-            
-            return [];
-        };
-
-        let productsToImport = findProductArray(json);
-
-        // Fallback: Check if the root object itself is a single product
-        if (productsToImport.length === 0 && typeof json === 'object' && json !== null) {
-            if (json.id || json.sku || json.name) {
-                productsToImport = [json];
-            }
-        }
-
-        if (productsToImport.length === 0) {
-            throw new Error("未在文件中找到有效的商品数据数组");
-        }
-
-        // Apply Sanitization
-        const validProducts = productsToImport.map(sanitizeProduct);
-        onImportData(validProducts);
-        
+        const json = JSON.parse(e.target?.result as string);
+        const arr = Array.isArray(json) ? json : (json.products || []);
+        if (arr.length === 0) throw new Error("无有效数据");
+        onImportData(arr.map(sanitizeProduct));
         setImportStatus('success');
-        setImportMessage(`扫描完成：成功提取 ${validProducts.length} 条数据`);
+        setImportMessage(`成功导入 ${arr.length} 条`);
         setTimeout(() => { setImportStatus('idle'); setImportMessage(''); }, 3000);
-
       } catch (err: any) {
-        console.error("Import Error:", err);
         setImportStatus('error');
-        setImportMessage(err.message || '文件解析失败');
+        setImportMessage('格式错误');
       }
-    };
-    reader.onerror = () => {
-        setImportStatus('error');
-        setImportMessage('无法读取文件');
     };
     reader.readAsText(file);
   };
@@ -336,49 +247,45 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
-          {/* Left: Smart Server Config */}
+          {/* Left: Connection Panel */}
           <div className="space-y-6">
-              <section className="glass-card p-8 h-full relative overflow-hidden flex flex-col group border-neon-blue/30">
+              <section className={`glass-card p-8 h-full relative overflow-hidden flex flex-col group border-neon-blue/30 transition-colors ${connectionStatus === 'error' ? 'border-red-500/50' : ''}`}>
                   <div className="absolute top-0 right-0 p-8 opacity-20"><Cloud size={120} className="text-neon-blue" /></div>
                   
                   <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
                       <Server className="text-neon-blue" size={20} /> 
-                      私有云连接 (WebSocket)
+                      直连腾讯云 (Direct IP)
                   </h2>
                   <p className="text-sm text-gray-400 max-w-sm mb-6">
-                      支持标准 WebSocket 协议。注意：在 HTTPS 环境下连接纯 IP (ws://) 可能会被浏览器安全策略阻断。
+                      使用原生 WebSocket 协议连接。
                   </p>
 
                   <div className="space-y-4 relative z-10">
                       <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase">Server URL</label>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">WebSocket Server URL</label>
                           <div className="relative">
                               <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
                               <input 
                                 value={serverUrl}
                                 onChange={(e) => setServerUrl(e.target.value)}
-                                placeholder="119.28.72.106:8090"
+                                placeholder="ws://119.28.xx.xx:8090"
                                 disabled={connectionStatus === 'connected' || connectionStatus === 'simulating'}
                                 className="w-full h-12 pl-12 pr-4 bg-black/40 border border-white/10 rounded-xl text-sm text-white focus:border-neon-blue outline-none font-mono placeholder-gray-600"
                               />
                           </div>
-                          <div className="flex items-center gap-2 mt-1">
-                              <ShieldAlert size={10} className="text-gray-500" />
-                              <span className="text-[10px] text-gray-500">提示：如果您已在浏览器开启“允许不安全内容”，请尝试手动输入 <b>ws://</b> 前缀。</span>
-                          </div>
                       </div>
                       
-                      <div className="pt-4 flex flex-col gap-3">
+                      <div className="pt-2 flex flex-col gap-3">
                           {connectionStatus === 'connected' || connectionStatus === 'simulating' ? (
                               <button onClick={handleDisconnect} className="w-full py-3 bg-red-500/20 text-red-500 border border-red-500/50 rounded-xl font-bold text-sm hover:bg-red-500 hover:text-white transition-all">
-                                  {connectionStatus === 'simulating' ? '停止模拟' : '断开连接'}
+                                  断开连接
                               </button>
                           ) : (
                               <div className="grid grid-cols-2 gap-3">
                                   <button 
                                     onClick={handleConnect}
                                     disabled={connectionStatus === 'connecting'}
-                                    className="col-span-1 py-3 bg-gradient-neon-blue text-white rounded-xl font-bold text-sm shadow-glow-blue hover:scale-[1.02] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                    className="col-span-1 py-3 bg-gradient-neon-blue text-white rounded-xl font-bold text-sm hover:scale-[1.02] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                                   >
                                       {connectionStatus === 'connecting' ? <Loader2 className="animate-spin" size={18}/> : <Wifi size={18} />}
                                       {connectionStatus === 'connecting' ? '连接中...' : '建立连接'}
@@ -393,37 +300,23 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                           )}
                       </div>
 
-                      {/* Status Feedback Area */}
-                      <div className="min-h-[60px]">
+                      {/* Diagnostic / Status Area */}
+                      <div className="min-h-[80px]">
                           {connectionStatus === 'error' && (
-                              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs flex items-start gap-2 animate-fade-in">
-                                  <AlertCircle size={14} className="mt-0.5 shrink-0" /> 
-                                  <div>
-                                      <div className="font-bold mb-1">连接受阻</div>
-                                      <div className="opacity-80 leading-relaxed">{errorDetail}</div>
-                                  </div>
+                              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-xs animate-fade-in relative z-20">
+                                  {errorDetail}
                               </div>
                           )}
                           {connectionStatus === 'connected' && (
-                              <div className="space-y-2 animate-fade-in">
-                                  <div className="p-3 bg-neon-green/10 border border-neon-green/20 rounded-lg text-neon-green text-xs flex items-center gap-2">
-                                      <Activity size={14} /> WebSocket 通道已建立
-                                  </div>
-                                  <div className="flex justify-between text-[10px] text-gray-500 font-mono px-1">
-                                      <span>STATUS: ONLINE</span>
-                                      <span>RX: {wsMessageCount} packets</span>
-                                  </div>
+                              <div className="p-3 bg-neon-green/10 border border-neon-green/20 rounded-lg text-neon-green text-xs flex items-center gap-2 animate-fade-in">
+                                  <Activity size={14} className="animate-pulse" /> 
+                                  连接成功 | 已接收 {wsMessageCount} 条数据包
                               </div>
                           )}
                           {connectionStatus === 'simulating' && (
-                              <div className="space-y-2 animate-fade-in">
-                                  <div className="p-3 bg-neon-purple/10 border border-neon-purple/20 rounded-lg text-neon-purple text-xs flex items-center gap-2">
-                                      <Zap size={14} className="animate-pulse" /> 正在模拟服务器数据推送...
-                                  </div>
-                                  <div className="flex justify-between text-[10px] text-gray-500 font-mono px-1">
-                                      <span>MODE: SIMULATION</span>
-                                      <span>MOCK RX: {wsMessageCount}</span>
-                                  </div>
+                              <div className="p-3 bg-neon-purple/10 border border-neon-purple/20 rounded-lg text-neon-purple text-xs flex items-center gap-2 animate-fade-in">
+                                  <Zap size={14} className="animate-pulse" /> 
+                                  正在生成模拟数据... ({wsMessageCount})
                               </div>
                           )}
                       </div>
@@ -431,15 +324,13 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
               </section>
           </div>
 
-          {/* Right: Robust Import */}
+          {/* Right: File Import (Backup) */}
           <div className="space-y-6">
                <section className="glass-card p-8 h-full flex flex-col">
                    <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
-                      <Database className="text-neon-purple" size={20} /> 
-                      本地数据导入 (Deep Scan)
+                      <Database className="text-neon-purple" size={20} /> 本地导入
                    </h2>
                    
-                   {/* Import Zone */}
                    <div 
                       className={`flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-8 transition-all duration-300 relative cursor-pointer group ${
                           importDragActive ? 'border-neon-purple bg-neon-purple/10' : 'border-white/20 bg-black/20 hover:border-white/40 hover:bg-white/5'
@@ -455,57 +346,32 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                       onClick={() => fileInputRef.current?.click()}
                    >
                         <input 
-                            ref={fileInputRef}
-                            type="file" 
-                            className="hidden" 
-                            accept=".json" 
+                            ref={fileInputRef} type="file" className="hidden" accept=".json" 
                             onChange={(e) => {
                                 if (e.target.files && e.target.files[0]) processFile(e.target.files[0]);
-                                e.target.value = ''; // Reset to allow re-selection
+                                e.target.value = '';
                             }}
                         />
 
                         {importStatus === 'processing' ? (
-                            <div className="flex flex-col items-center">
-                                <Loader2 size={40} className="text-neon-purple animate-spin mb-2" />
-                                <div className="text-xs text-gray-400">{importMessage}</div>
-                            </div>
+                            <Loader2 size={40} className="text-neon-purple animate-spin" />
                         ) : importStatus === 'success' ? (
-                            <div className="text-center animate-scale-in">
+                            <div className="text-center">
                                 <CheckCircle2 size={40} className="text-neon-green mx-auto mb-2" />
-                                <div className="text-xs text-gray-400">{importMessage}</div>
+                                <div className="text-xs text-neon-green">{importMessage}</div>
                             </div>
                         ) : (
                             <>
-                                {importStatus === 'error' && (
-                                    <div className="absolute top-4 left-4 right-4 text-center text-xs text-red-400 bg-red-500/10 border border-red-500/20 p-2 rounded-lg flex items-center justify-center gap-1">
-                                        <AlertCircle size={12} /> {importMessage}
-                                    </div>
-                                )}
-                                <div className="p-4 rounded-full bg-white/5 group-hover:bg-neon-purple/20 transition-colors mb-4 text-gray-400 group-hover:text-neon-purple">
-                                    <Upload size={32} />
-                                </div>
-                                <div className="font-bold text-white group-hover:text-neon-purple transition-colors">点击或拖拽 JSON</div>
-                                <div className="text-[10px] text-gray-500 mt-2">支持深度遍历嵌套数组结构</div>
+                                <Upload size={32} className="text-gray-400 group-hover:text-neon-purple mb-4 transition-colors" />
+                                <div className="font-bold text-white">点击上传 JSON</div>
                             </>
                         )}
                    </div>
-
-                   <div className="mt-6 pt-6 border-t border-white/10 flex items-center justify-between">
-                       <div className="text-xs text-gray-500">
-                           <div className="font-bold uppercase">数据概览</div>
-                           <div className="text-white flex items-center gap-2">
-                               <Database size={12}/> {currentData.length} SKU
-                           </div>
-                       </div>
-                       <div className="flex gap-2">
-                           <button onClick={() => window.location.reload()} className="p-3 rounded-xl border border-white/20 hover:bg-white/10 text-white transition-all" title="强制刷新">
-                               <RefreshCw size={16} />
-                           </button>
-                           <button onClick={handleExport} className="px-6 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white text-sm font-bold flex items-center gap-2 transition-all">
-                               <Download size={16} /> 导出备份
-                           </button>
-                       </div>
+                   
+                   <div className="mt-4 flex justify-end">
+                       <button onClick={handleExport} className="text-xs text-gray-400 hover:text-white flex items-center gap-2">
+                           <Download size={14} /> 备份当前数据
+                       </button>
                    </div>
                </section>
           </div>
