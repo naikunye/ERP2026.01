@@ -3,7 +3,7 @@ import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
   Wifi, Activity, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw, Zap, ShieldAlert,
-  PlayCircle
+  PlayCircle, HelpCircle
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -82,34 +82,32 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       if (simulationInterval) clearInterval(simulationInterval);
       setErrorDetail('');
 
-      if (!serverUrl) {
+      let rawUrl = serverUrl.trim();
+      if (!rawUrl) {
           setConnectionStatus('error');
           setErrorDetail('请输入服务器地址');
           return;
       }
-
-      // --- AGGRESSIVE URL SANITIZATION (Fix for wss://http:// issue) ---
-      let rawUrl = serverUrl.trim();
       
       // Remove trailing slash
       if (rawUrl.endsWith('/')) rawUrl = rawUrl.slice(0, -1);
 
-      // Regex to recursively remove ANY protocol prefix at the start
-      // This handles "http://...", "wss://...", and crucially "wss://http://..."
-      let host = rawUrl.replace(/^(?:[a-z0-9]+:\/\/)+/i, '');
+      // --- LOGIC UPDATE: Trust User Input First ---
+      // Only auto-add protocol if missing. Do NOT overwrite what the user typed.
+      let finalTargetUrl = rawUrl;
+      const hasProtocol = /^(ws|wss):\/\//i.test(rawUrl);
 
-      // Determine correct protocol
-      // If it matches an IP pattern (x.x.x.x), FORCE 'ws://' because IPs rarely have SSL.
-      // If it looks like a domain, prefer 'wss://'.
-      const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?$/.test(host);
-      
-      // NOTE: Connecting to 'ws://' (IP) from an 'https://' site (Vercel) will trigger Mixed Content warnings.
-      // You must enable "Insecure Content" in site settings for this to work.
-      const protocol = isIP ? 'ws' : 'wss';
-      
-      const finalTargetUrl = `${protocol}://${host}`;
-      
-      // Immediately update the UI input so the user sees the corrected URL
+      if (!hasProtocol) {
+          // Fallback logic: If no protocol, guess based on content
+          // If using a domain, prefer wss://. If IP, default to ws:// (but user can override by typing it)
+          const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?$/.test(rawUrl);
+          finalTargetUrl = isIP ? `ws://${rawUrl}` : `wss://${rawUrl}`;
+      } else {
+          // Fix the specific "wss://http://" double protocol error if user pasted it wrong
+          finalTargetUrl = finalTargetUrl.replace(/^(ws|wss):\/\/http:\/\//i, '$1://');
+      }
+
+      // Update UI to match what we are actually connecting to
       setServerUrl(finalTargetUrl);
 
       // 3. Set UI to "Connecting"
@@ -131,7 +129,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
               if (ws.readyState === WebSocket.CONNECTING) {
                   ws.close();
                   setConnectionStatus('error');
-                  setErrorDetail('连接超时：服务器无响应 (Timeout 5s)');
+                  setErrorDetail('连接超时 (5s)：请检查服务器防火墙或公网 IP 可达性。');
               }
           }, 5000);
 
@@ -156,9 +154,9 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           };
 
           ws.onerror = (e) => {
-              clearTimeout(timeoutId);
+              // Note: WebSocket API does not expose the error detail for privacy/security reasons.
+              // We have to infer the error based on context.
               console.error("WS Error Event:", e);
-              // Error event usually doesn't contain details for security reasons
           };
 
           ws.onclose = (e) => {
@@ -171,18 +169,17 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
               } else {
                  setConnectionStatus('error');
                  
-                 // Smart Error Diagnosis
+                 const isHttps = window.location.protocol === 'https:';
+                 const isWs = url.startsWith('ws://');
+
                  if (e.code === 1006) {
-                     const isHttps = window.location.protocol === 'https:';
-                     const isWs = url.startsWith('ws://');
-                     
                      if (isHttps && isWs) {
-                         setErrorDetail('连接被阻断 (Code 1006): 您正在 HTTPS 环境下连接非加密 IP。请确保已在浏览器地址栏左侧设置中将“不安全内容”设为“允许”，并刷新页面重试。');
+                         setErrorDetail('安全阻断 (Mixed Content): 当前页面为 HTTPS，浏览器拒绝连接不安全的 ws:// IP。建议：1.使用 wss:// 协议（需服务器配置 SSL）；2.使用 Ngrok 将本地端口映射为 HTTPS 域名。');
                      } else {
-                         setErrorDetail('连接意外断开 (Code 1006): 请检查 1.服务器防火墙 2.IP地址是否正确 3.端口是否开放');
+                         setErrorDetail('连接断开 (Code 1006): 服务器拒绝连接。请检查: 1.IP/端口正确 2.服务器端未报错 3.防火墙已放行。');
                      }
                  } else {
-                     setErrorDetail(`连接断开 (Code ${e.code}): ${e.reason || '未知网络错误'}`);
+                     setErrorDetail(`连接异常 (Code ${e.code}): ${e.reason || '网络中断或协议不匹配'}`);
                  }
               }
           };
@@ -349,7 +346,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                       私有云连接 (WebSocket)
                   </h2>
                   <p className="text-sm text-gray-400 max-w-sm mb-6">
-                      支持 ws:// (本地/IP) 和 wss:// (安全域名)。请确保已在浏览器设置中允许连接不安全内容。
+                      支持标准 WebSocket 协议。注意：在 HTTPS 环境下连接纯 IP (ws://) 可能会被浏览器安全策略阻断。
                   </p>
 
                   <div className="space-y-4 relative z-10">
@@ -364,6 +361,10 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                                 disabled={connectionStatus === 'connected' || connectionStatus === 'simulating'}
                                 className="w-full h-12 pl-12 pr-4 bg-black/40 border border-white/10 rounded-xl text-sm text-white focus:border-neon-blue outline-none font-mono placeholder-gray-600"
                               />
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                              <ShieldAlert size={10} className="text-gray-500" />
+                              <span className="text-[10px] text-gray-500">提示：如果您已在浏览器开启“允许不安全内容”，请尝试手动输入 <b>ws://</b> 前缀。</span>
                           </div>
                       </div>
                       
