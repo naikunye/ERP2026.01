@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, ArrowRight, LayoutGrid, RefreshCw, ShoppingBag, 
-  Users, Wallet, CheckSquare, Server, Plus, Box, FileText, X
+  Users, Wallet, CheckSquare, Server, Plus, Box, FileText, X, Settings
 } from 'lucide-react';
 import { Product } from '../types';
 
@@ -60,6 +60,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChan
     { id: 'nav-orders', label: '前往 物流追踪 (Orders)', icon: <ShoppingBag size={14}/>, action: () => onChangeView('orders'), group: 'Navigation' },
     { id: 'nav-inf', label: '前往 达人矩阵 (Influencers)', icon: <Users size={14}/>, action: () => onChangeView('influencers'), group: 'Navigation' },
     { id: 'nav-fin', label: '前往 财务中枢 (Finance)', icon: <Wallet size={14}/>, action: () => onChangeView('finance'), group: 'Navigation' },
+    { id: 'nav-settings', label: '前往 系统设置 (Settings)', icon: <Settings size={14}/>, action: () => onChangeView('settings'), group: 'Navigation' },
     { id: 'act-new', label: '新建 SKU 资产', icon: <Plus size={14}/>, action: () => { onChangeView('restock'); setTimeout(onAddNewProduct, 100); }, group: 'Actions' },
   ];
 

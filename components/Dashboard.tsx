@@ -171,9 +171,6 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
            </h1>
         </div>
         <div className="flex gap-3">
-            <button onClick={() => onChangeView('datasync')} className="h-10 px-4 rounded-xl border border-white/10 bg-black/20 text-gray-400 hover:text-white hover:border-white/30 text-xs font-bold flex items-center gap-2 backdrop-blur-md transition-all">
-                <Globe size={16} /> 数据源同步
-            </button>
             <button className="h-10 px-4 rounded-xl bg-white text-black text-xs font-bold hover:scale-105 shadow-glow-white transition-all flex items-center gap-2">
                 <Zap size={16} fill="black" /> 生成简报
             </button>

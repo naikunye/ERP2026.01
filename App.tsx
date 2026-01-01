@@ -5,7 +5,7 @@ import ProductEditor from './components/ProductEditor';
 import RestockModule from './components/RestockModule';
 import SKUDetailEditor from './components/SKUDetailEditor';
 import LogisticsModule from './components/LogisticsModule';
-import DataSyncModule from './components/DataSyncModule';
+import SettingsModule from './components/SettingsModule';
 import InfluencerModule from './components/InfluencerModule';
 import FinanceModule from './components/FinanceModule';
 import TaskModule from './components/TaskModule';
@@ -396,7 +396,8 @@ const App: React.FC = () => {
       case 'orders': return <LogisticsModule shipments={shipments} products={products} onAddShipment={handleAddShipment} onUpdateShipment={handleUpdateShipment} />;
       case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} />;
       case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
-      case 'datasync': return <DataSyncModule currentData={products} onImportData={handleImportData} />;
+      // Replaced 'datasync' with 'settings'
+      case 'settings': return <SettingsModule currentTheme={currentTheme} onThemeChange={setCurrentTheme} currentData={products} onImportData={handleImportData} />;
       default: return null;
     }
   };

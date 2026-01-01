@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, ShoppingBag, CheckSquare, Sparkles, Aperture, RefreshCw, Server, Users, Wallet, Sun, Moon, Zap } from 'lucide-react';
+import { LayoutGrid, ShoppingBag, CheckSquare, Sparkles, Aperture, RefreshCw, Server, Users, Wallet, Settings } from 'lucide-react';
 import { Theme } from '../types';
 
 interface SidebarProps {
@@ -17,7 +17,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentThem
     { id: 'orders', label: '物流追踪', icon: <ShoppingBag size={20} /> },
     { id: 'influencers', label: '达人矩阵', icon: <Users size={20} /> },
     { id: 'finance', label: '财务中枢', icon: <Wallet size={20} /> },
-    { id: 'datasync', label: '云端中枢', icon: <Server size={20} /> }, 
   ];
 
   return (
@@ -37,32 +36,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentThem
          </div>
       </div>
 
-      {/* Theme Switcher - Compact Row */}
-      <div className="bg-white/5 p-1 rounded-xl flex mb-8 border border-white/10">
-          <button 
-             onClick={() => onThemeChange('neon')}
-             title="Neon Glass"
-             className={`flex-1 py-1.5 rounded-lg flex items-center justify-center transition-all ${currentTheme === 'neon' ? 'bg-black text-neon-blue shadow-glow-blue' : 'text-gray-500 hover:text-white'}`}
-          >
-             <Zap size={14} />
-          </button>
-          <button 
-             onClick={() => onThemeChange('ivory')}
-             title="Ivory Air"
-             className={`flex-1 py-1.5 rounded-lg flex items-center justify-center transition-all ${currentTheme === 'ivory' ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
-          >
-             <Sun size={14} />
-          </button>
-          <button 
-             onClick={() => onThemeChange('midnight')}
-             title="Midnight Pro"
-             className={`flex-1 py-1.5 rounded-lg flex items-center justify-center transition-all ${currentTheme === 'midnight' ? 'bg-[#0F172A] text-neon-purple border border-neon-purple/30' : 'text-gray-500 hover:text-white'}`}
-          >
-             <Moon size={14} />
-          </button>
-      </div>
-
-      <div className="flex-1 space-y-4 overflow-y-auto custom-scrollbar px-6 py-4 -mx-6">
+      {/* Main Menu */}
+      <div className="flex-1 space-y-2 overflow-y-auto custom-scrollbar px-6 py-4 -mx-6">
         {menuItems.map((item) => (
           <button
             key={item.id}
@@ -79,6 +54,21 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentThem
             <span className="relative z-10 font-sans tracking-wide">{item.label}</span>
           </button>
         ))}
+      </div>
+
+      {/* Settings Item (Bottom) */}
+      <div className="mt-2 pt-2 border-t border-white/10">
+          <button
+            onClick={() => onChangeView('settings')}
+            className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-[15px] font-medium transition-all duration-300 relative group overflow-visible ${
+              activeView === 'settings'
+                ? 'bg-white/10 text-white' 
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Settings size={20} className={activeView === 'settings' ? 'text-neon-purple animate-spin-slow' : ''} />
+            <span className="font-sans tracking-wide">系统设置</span>
+          </button>
       </div>
 
       {/* AI Status Card - Floating Neon */}
