@@ -1,4 +1,5 @@
 
+
 export enum ProductStatus {
   Draft = 'Draft',
   Active = 'Active',
@@ -122,7 +123,7 @@ export interface Shipment {
   destination: string;
   etd: string; 
   eta: string; 
-  status: 'Pending' | 'In Transit' | 'Customs' | 'Out for Delivery' | 'Delivered' | 'Exception';
+  status: 'Pending' | 'In Production' | 'In Transit' | 'Customs' | 'Out for Delivery' | 'Delivered' | 'Exception';
   progress: number; 
   weight: number; 
   cartons: number;

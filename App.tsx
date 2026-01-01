@@ -278,6 +278,51 @@ const App: React.FC = () => {
       addNotification('success', '状态更新', `运单 ${updatedShipment.trackingNo} 状态已更新`);
   };
 
+  // --- SYNC FEATURE: Restock -> Logistics ---
+  const handleSyncToLogistics = (product: Product) => {
+      if (!product.logistics?.trackingNo) {
+          addNotification('error', '同步失败', '该 SKU 暂无物流单号，请先编辑填写');
+          return;
+      }
+
+      // Check for duplicate tracking number
+      const exists = shipments.find(s => s.trackingNo === product.logistics?.trackingNo);
+      if (exists) {
+          addNotification('warning', '重复同步', '该运单号已存在于物流模块中');
+          return;
+      }
+
+      // Calculate Total Qty (Logic: Cartons * ItemsPerBox, or stock as fallback)
+      // Note: In SKUDetailEditor, we added totalRestockUnits, but that's local state. 
+      // If persisted, use it. Otherwise calc.
+      const calcQty = (product.restockCartons || 0) * (product.itemsPerBox || 0);
+      const finalQty = calcQty > 0 ? calcQty : (product.stock || 0);
+
+      const newShipment: Shipment = {
+          id: `SH-SYNC-${Date.now()}`,
+          trackingNo: product.logistics.trackingNo,
+          carrier: product.logistics.carrier || 'Unknown Carrier',
+          method: product.logistics.method || 'Sea',
+          origin: product.supplier || 'China Warehouse',
+          destination: product.logistics.destination || 'FBA / Overseas',
+          etd: new Date().toISOString().split('T')[0], // Default to today
+          eta: '', // TBD
+          status: product.logistics.status || 'Pending',
+          progress: 0,
+          weight: (product.restockCartons || 0) * (product.boxWeight || 0),
+          cartons: product.restockCartons || 0,
+          items: [{
+              skuId: product.id,
+              skuCode: product.sku,
+              quantity: finalQty
+          }],
+          lastUpdate: new Date().toISOString()
+      };
+
+      setShipments(prev => [newShipment, ...prev]);
+      addNotification('success', '同步成功', `运单 ${newShipment.trackingNo} 已推送到物流追踪模块`);
+  };
+
   // --- PROCUREMENT WORKFLOW (New Feature) ---
   const handleCreatePurchaseOrder = (poItems: { skuId: string, quantity: number, cost: number }[], supplierName: string) => {
       const poId = `PO-${new Date().getFullYear()}${Math.floor(Math.random()*10000)}`;
@@ -461,7 +506,7 @@ const App: React.FC = () => {
       case 'dashboard': return <Dashboard products={products} shipments={shipments} transactions={transactions} influencers={influencers} onChangeView={setActiveView} />;
       case 'marketing': return <MarketingModule />; 
       case 'tasks': return <TaskModule tasks={tasks} onUpdateTasks={handleUpdateTasks} />;
-      case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct(null)} onCreatePO={handleCreatePurchaseOrder} />;
+      case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct(null)} onCreatePO={handleCreatePurchaseOrder} onSyncToLogistics={handleSyncToLogistics} />;
       case 'orders': return <LogisticsModule shipments={shipments} products={products} onAddShipment={handleAddShipment} onUpdateShipment={handleUpdateShipment} />;
       case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} />;
       case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;

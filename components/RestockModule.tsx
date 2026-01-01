@@ -3,7 +3,7 @@ import { Product } from '../types';
 import { 
   Search, Plus, Filter, Factory, Truck, Plane, Ship, 
   DollarSign, Calendar, Package, Edit3, Copy, Trash2, StickyNote, Wallet, ExternalLink,
-  Activity, AlertTriangle, TrendingUp, BarChart, Container, CheckSquare, Square, ShoppingCart, ArrowRight, Scale
+  Activity, AlertTriangle, TrendingUp, BarChart, Container, CheckSquare, Square, ShoppingCart, ArrowRight, Scale, ArrowRightCircle
 } from 'lucide-react';
 
 interface RestockModuleProps {
@@ -13,9 +13,10 @@ interface RestockModuleProps {
   onDeleteSKU?: (productId: string) => void;
   onAddNew?: () => void;
   onCreatePO?: (items: { skuId: string, quantity: number, cost: number }[], supplier: string) => void;
+  onSyncToLogistics?: (product: Product) => void; // NEW PROP
 }
 
-const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCloneSKU, onDeleteSKU, onAddNew, onCreatePO }) => {
+const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCloneSKU, onDeleteSKU, onAddNew, onCreatePO, onSyncToLogistics }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isPOModalOpen, setIsPOModalOpen] = useState(false);
@@ -98,7 +99,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           case 'Delivered': return '已送达';
           case 'In Production': return '生产中';
           case 'Customs': return '清关中';
-          case 'Pending': return '待发货'; // UPDATED
+          case 'Pending': return '待发货'; 
           case 'Out for Delivery': return '派送中';
           case 'Exception': return '异常';
           default: return status;
@@ -323,8 +324,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           </div>
                       </div>
 
-                      {/* 3. Logistics (Simplified) + Rate */}
-                      <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
+                      {/* 3. Logistics (Simplified) + Rate + SYNC BTN */}
+                      <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2 relative">
                           {item.logistics ? (
                               <>
                                 <div className="flex items-center gap-2 text-white font-bold text-xs">
@@ -332,8 +333,24 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                                     <span className={item.logistics.status === 'In Transit' ? 'text-neon-blue' : ''}>{getStatusCN(item.logistics.status)}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <div className="text-[10px] text-gray-500 font-mono truncate max-w-[100px]">{item.logistics.trackingNo || '无运单号'}</div>
-                                    {item.logistics.trackingNo && <a href={trackingUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-500 hover:text-white"><ExternalLink size={10} /></a>}
+                                    <div className="text-[10px] text-gray-500 font-mono truncate max-w-[80px]" title={item.logistics.trackingNo}>{item.logistics.trackingNo || '无运单号'}</div>
+                                    {item.logistics.trackingNo && (
+                                        <div className="flex gap-1">
+                                            <a href={trackingUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-500 hover:text-white" title="查询轨迹">
+                                                <ExternalLink size={10} />
+                                            </a>
+                                            {/* NEW: Sync Button */}
+                                            {onSyncToLogistics && (
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); onSyncToLogistics(item); }}
+                                                    className="text-neon-green hover:text-white animate-pulse hover:animate-none transition-colors"
+                                                    title="一键同步到物流追踪 (Push to Logistics)"
+                                                >
+                                                    <ArrowRightCircle size={10} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                               </>
                           ) : <div className="text-[10px] text-gray-600 italic">暂无物流数据</div>}
