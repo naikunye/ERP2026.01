@@ -77,7 +77,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
 
   // --- 2. INTELLIGENT WEBSOCKET LOGIC ---
   const handleConnect = () => {
-      // Clear previous states
+      // 1. Clean up old connections
       if (socket) socket.close();
       if (simulationInterval) clearInterval(simulationInterval);
       setErrorDetail('');
@@ -88,51 +88,49 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           return;
       }
 
-      // 1. Intelligent Protocol Correction
+      // 2. URL Normalization
       let targetUrl = serverUrl.trim();
       if (targetUrl.endsWith('/')) targetUrl = targetUrl.slice(0, -1);
 
-      // Auto-detect IP vs Domain to guess protocol
-      const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?$/.test(targetUrl.replace('http://', '').replace('https://', '').replace('ws://', '').replace('wss://', '').split('/')[0]);
+      // Auto-prefix logic
+      if (!targetUrl.startsWith('ws://') && !targetUrl.startsWith('wss://')) {
+           // Default to ws:// if it looks like an IP, otherwise wss://
+           const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?$/.test(targetUrl);
+           targetUrl = isIP ? `ws://${targetUrl}` : `wss://${targetUrl}`;
+      }
       
-      if (targetUrl.startsWith('http://')) targetUrl = targetUrl.replace('http://', 'ws://');
-      else if (targetUrl.startsWith('https://')) targetUrl = targetUrl.replace('https://', 'wss://');
-      else if (!targetUrl.startsWith('ws://') && !targetUrl.startsWith('wss://')) {
-          targetUrl = isIP ? `ws://${targetUrl}` : `wss://${targetUrl}`;
-      }
+      // Update UI input to match reality
+      setServerUrl(targetUrl);
 
-      setServerUrl(targetUrl); // Update UI to show what we are actually connecting to
-
-      // 2. BLOCKING SECURITY CHECK (The "No Reaction" Fix)
-      const isCurrentPageHttps = window.location.protocol === 'https:';
-      const isTargetInsecure = targetUrl.startsWith('ws://');
-
-      if (isCurrentPageHttps && isTargetInsecure) {
-          setConnectionStatus('error');
-          setErrorDetail('安全阻断：HTTPS 网页无法连接非加密 (ws://) IP。请使用 wss:// 域名，或在本地 localhost 运行此网页。');
-          return; // STOP HERE
-      }
-
+      // 3. Set UI to "Connecting" BEFORE trying (Vital for user feedback)
       setConnectionStatus('connecting');
 
+      // 4. Force a small delay to allow React to render the loading state
+      setTimeout(() => {
+          attemptRealConnection(targetUrl);
+      }, 500);
+  };
+
+  const attemptRealConnection = (url: string) => {
       try {
-          const ws = new WebSocket(targetUrl);
+          console.log("Attempting WebSocket connection to:", url);
+          const ws = new WebSocket(url);
           
-          // Force timeout if browser hangs on connection (common with firewall issues)
+          // Safety timeout: If browser hangs the connection (common in mixed content blocks)
           const timeoutId = setTimeout(() => {
-              if (ws.readyState !== WebSocket.OPEN) {
+              if (ws.readyState === WebSocket.CONNECTING) {
                   ws.close();
                   setConnectionStatus('error');
-                  setErrorDetail('连接超时：服务器无响应，请检查防火墙或端口。');
+                  setErrorDetail('连接超时：服务器无响应或被防火墙拦截 (5s)');
               }
-          }, 6000);
+          }, 5000);
 
           ws.onopen = () => {
               clearTimeout(timeoutId);
               setConnectionStatus('connected');
               setSocket(ws);
               setErrorDetail('');
-              console.log("WebSocket Connected");
+              console.log("WebSocket Connected Successfully");
           };
 
           ws.onmessage = (event) => {
@@ -149,23 +147,39 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
 
           ws.onerror = (e) => {
               clearTimeout(timeoutId);
-              console.error("WS Error", e);
+              console.error("WS Error Event:", e);
               setConnectionStatus('error');
-              // If it failed fast, it's likely a network error or mixed content (if bypass check failed)
-              setErrorDetail('连接断开：请检查服务器地址是否正确，或是否需要 VPN。');
+              
+              const isHttps = window.location.protocol === 'https:';
+              const isWs = url.startsWith('ws://');
+              
+              if (isHttps && isWs) {
+                  setErrorDetail('连接失败：浏览器可能拦截了混合内容。请检查地址栏右侧是否有“不安全内容”拦截图标，或使用模拟演示。');
+              } else {
+                  setErrorDetail('连接失败：无法抵达服务器，请检查 IP 和端口是否开放。');
+              }
           };
 
-          ws.onclose = () => {
+          ws.onclose = (e) => {
               clearTimeout(timeoutId);
-              if (connectionStatus === 'connected') { // Only show disconnected if it was connected
-                  setConnectionStatus('disconnected');
-              }
+              // Only update status if we were connected or connecting
+              // Use a functional update or ref in a real app to avoid stale closures, 
+              // but here we check the socket instance or rely on user action.
+              console.log("WS Closed:", e.code, e.reason);
               setSocket(null);
+              if (e.code !== 1000) { // Abnormal closure
+                 setConnectionStatus((prev) => prev === 'connected' ? 'disconnected' : 'error');
+                 if (e.code === 1006) setErrorDetail('连接意外断开 (Code 1006)');
+              } else {
+                 setConnectionStatus('disconnected');
+              }
           };
 
       } catch (e: any) {
+          // This block catches synchronous errors, like "SecurityError" from strict browsers
+          console.error("WS Sync Error:", e);
           setConnectionStatus('error');
-          setErrorDetail('初始化失败：URL 格式错误');
+          setErrorDetail(`浏览器安全错误: ${e.message || '禁止连接不安全的目标'}`);
       }
   };
 
@@ -178,27 +192,30 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
 
   // --- 2.5 SIMULATION MODE ---
   const handleSimulate = () => {
-      if (simulationInterval) clearInterval(simulationInterval);
-      setConnectionStatus('simulating');
-      setErrorDetail('');
-      
-      let counter = 0;
-      const interval = setInterval(() => {
-          setWsMessageCount(prev => prev + 1);
-          counter++;
-          // Simulate receiving a stock update for a random product
-          if (currentData.length > 0) {
-              const randomIdx = Math.floor(Math.random() * currentData.length);
-              const p = currentData[randomIdx];
-              const updatedP = { 
-                  ...p, 
-                  stock: Math.max(0, p.stock + Math.floor(Math.random() * 10) - 5),
-                  lastUpdated: new Date().toISOString()
-              };
-              onImportData([updatedP]); // Reuse import logic to update state
-          }
-      }, 2000); // Update every 2 seconds
-      setSimulationInterval(interval);
+      handleDisconnect();
+      setTimeout(() => {
+        setConnectionStatus('simulating');
+        setErrorDetail('');
+        
+        let counter = 0;
+        const interval = setInterval(() => {
+            setWsMessageCount(prev => prev + 1);
+            counter++;
+            // Simulate receiving a stock update for a random product
+            if (currentData.length > 0) {
+                const randomIdx = Math.floor(Math.random() * currentData.length);
+                const p = currentData[randomIdx];
+                const updatedP = { 
+                    ...p, 
+                    stock: Math.max(0, p.stock + Math.floor(Math.random() * 20) - 10),
+                    dailySales: Math.floor(Math.random() * 50),
+                    lastUpdated: new Date().toISOString()
+                };
+                onImportData([updatedP]);
+            }
+        }, 1500); // Fast updates
+        setSimulationInterval(interval);
+      }, 100);
   };
 
   // --- 3. RECURSIVE DEEP SCAN IMPORT ---
@@ -216,54 +233,84 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('深度扫描中...');
+    setImportMessage('启动深度递归扫描...');
 
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        if (!content) throw new Error("空文件");
+        if (!content) throw new Error("文件内容为空");
 
-        const json = JSON.parse(content);
+        let json;
+        try {
+            json = JSON.parse(content);
+        } catch (e) {
+            throw new Error("JSON 语法错误，无法解析");
+        }
         
-        // RECURSIVE SEARCH for the first valid array of objects
-        const findArray = (obj: any, depth = 0): any[] => {
-            if (depth > 5) return []; // Max depth limit
+        // --- POWERFUL RECURSIVE SEARCH ---
+        // Looks for ANY array where the items look like products (have id, sku, or name)
+        const findProductArray = (obj: any, depth = 0): any[] => {
+            if (depth > 8) return []; // Prevent infinite recursion
+            
+            // 1. Is this node an array?
             if (Array.isArray(obj)) {
-                 // Check if it looks like product data (has id or name or sku)
-                 if (obj.length > 0 && (obj[0].id || obj[0].name || obj[0].sku || obj[0].title)) return obj;
-                 if (obj.length === 0) return obj; // Empty array, might be valid but empty
+                 // 1a. Is it empty? Return it, maybe it's valid but empty.
+                 if (obj.length === 0) return obj;
+                 
+                 // 1b. Does it contain objects?
+                 const sample = obj[0];
+                 if (typeof sample === 'object' && sample !== null) {
+                     // 1c. Do they look like products? (Loose check)
+                     if ('id' in sample || 'sku' in sample || 'name' in sample || 'title' in sample || 'price' in sample) {
+                         return obj;
+                     }
+                 }
+                 return []; // Array of primitives or unrelated objects
             }
+            
+            // 2. Is this node an object?
             if (typeof obj === 'object' && obj !== null) {
+                // Search all keys
                 for (const key of Object.keys(obj)) {
-                    const result = findArray(obj[key], depth + 1);
+                    const result = findProductArray(obj[key], depth + 1);
                     if (result.length > 0) return result;
                 }
             }
+            
             return [];
         };
 
-        let productsToImport = findArray(json);
+        let productsToImport = findProductArray(json);
 
-        // Fallback: if single object
-        if (productsToImport.length === 0 && typeof json === 'object' && (json.id || json.name)) {
-            productsToImport = [json];
+        // Fallback: Check if the root object itself is a single product
+        if (productsToImport.length === 0 && typeof json === 'object' && json !== null) {
+            if (json.id || json.sku || json.name) {
+                productsToImport = [json];
+            }
         }
 
-        if (productsToImport.length === 0) throw new Error("未找到有效数据数组");
+        if (productsToImport.length === 0) {
+            throw new Error("未在文件中找到有效的商品数据数组");
+        }
 
+        // Apply Sanitization
         const validProducts = productsToImport.map(sanitizeProduct);
         onImportData(validProducts);
         
         setImportStatus('success');
-        setImportMessage(`成功导入 ${validProducts.length} 条数据`);
+        setImportMessage(`扫描完成：成功提取 ${validProducts.length} 条数据`);
         setTimeout(() => { setImportStatus('idle'); setImportMessage(''); }, 3000);
 
       } catch (err: any) {
-        console.error(err);
+        console.error("Import Error:", err);
         setImportStatus('error');
-        setImportMessage('数据解析失败：格式不兼容');
+        setImportMessage(err.message || '文件解析失败');
       }
+    };
+    reader.onerror = () => {
+        setImportStatus('error');
+        setImportMessage('无法读取文件');
     };
     reader.readAsText(file);
   };
@@ -291,7 +338,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                       私有云连接 (WebSocket)
                   </h2>
                   <p className="text-sm text-gray-400 max-w-sm mb-6">
-                      连接 WebSocket 服务器以实现实时库存同步。
+                      支持 ws:// (本地/IP) 和 wss:// (安全域名)。请确保已在浏览器设置中允许连接不安全内容。
                   </p>
 
                   <div className="space-y-4 relative z-10">
@@ -377,7 +424,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                <section className="glass-card p-8 h-full flex flex-col">
                    <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
                       <Database className="text-neon-purple" size={20} /> 
-                      本地数据导入 (Smart Import)
+                      本地数据导入 (Deep Scan)
                    </h2>
                    
                    {/* Import Zone */}
@@ -427,7 +474,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                                     <Upload size={32} />
                                 </div>
                                 <div className="font-bold text-white group-hover:text-neon-purple transition-colors">点击或拖拽 JSON</div>
-                                <div className="text-[10px] text-gray-500 mt-2">支持任意层级的数组 (Deep Scan)</div>
+                                <div className="text-[10px] text-gray-500 mt-2">支持深度遍历嵌套数组结构</div>
                             </>
                         )}
                    </div>
