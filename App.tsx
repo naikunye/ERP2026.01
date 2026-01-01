@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import ProductEditor from './components/ProductEditor';
@@ -10,8 +10,9 @@ import InfluencerModule from './components/InfluencerModule';
 import FinanceModule from './components/FinanceModule';
 import TaskModule from './components/TaskModule';
 import MarketingModule from './components/MarketingModule'; 
-import MarketRadarModule from './components/MarketRadarModule'; // Import
-import GlobalInboxModule from './components/GlobalInboxModule'; // Import
+import MarketRadarModule from './components/MarketRadarModule'; 
+import GlobalInboxModule from './components/GlobalInboxModule'; 
+import AnalyticsModule from './components/AnalyticsModule'; // Import
 import CommandPalette from './components/CommandPalette';
 import Copilot from './components/Copilot';
 import ToastSystem from './components/ToastSystem';
@@ -265,6 +266,15 @@ const App: React.FC = () => {
       setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
+  // --- DYNAMIC BADGE CALCULATION ---
+  const sidebarBadges = useMemo(() => {
+      return {
+          inbox: messages.filter(m => m.status === 'Unread').length,
+          tasks: tasks.filter(t => t.status === 'Todo').length,
+          orders: shipments.filter(s => s.status === 'Exception').length,
+      };
+  }, [messages, tasks, shipments]);
+
   // --- CORE BUSINESS LOGIC CONTROLLER ---
 
   const handleInventoryTransaction = (
@@ -408,7 +418,7 @@ const App: React.FC = () => {
           addNotification('success', '拼柜成功', `SKU ${product.sku} 已追加到运单 ${trackingNo}`);
 
       } else {
-          const newShip: Shipment = {
+          const newShipment: Shipment = {
               id: `SH-SYNC-${Date.now()}`,
               trackingNo: trackingNo,
               carrier: logInfo.carrier || 'Unknown',
@@ -428,7 +438,7 @@ const App: React.FC = () => {
               }],
               lastUpdate: new Date().toISOString()
           };
-          setShipments(prev => [newShip, ...prev]);
+          setShipments(prev => [newShipment, ...prev]);
           addNotification('success', '同步成功', `新运单 ${trackingNo} 已创建`);
       }
 
@@ -673,6 +683,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard products={products} shipments={shipments} transactions={transactions} influencers={influencers} onChangeView={setActiveView} onNotify={addNotification} />;
+      case 'analytics': return <AnalyticsModule transactions={transactions} />; // Connected Real Data
       case 'marketing': return <MarketingModule />; 
       case 'tasks': return <TaskModule tasks={tasks} onUpdateTasks={handleUpdateTasks} />;
       case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct(null)} onCreatePO={handleCreatePurchaseOrder} onSyncToLogistics={handleSyncToLogistics} />;
@@ -680,8 +691,8 @@ const App: React.FC = () => {
       case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} onNotify={addNotification} />;
       case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
       case 'settings': return <SettingsModule currentTheme={currentTheme} onThemeChange={setCurrentTheme} currentData={products} onImportData={handleImportData} onNotify={addNotification} onResetData={handleResetData} />;
-      case 'market_radar': return <MarketRadarModule competitors={competitors} onAddCompetitor={handleAddCompetitor} />; // New View
-      case 'inbox': return <GlobalInboxModule messages={messages} onReplyMessage={handleReplyMessage} />; // New View
+      case 'market_radar': return <MarketRadarModule competitors={competitors} onAddCompetitor={handleAddCompetitor} />; 
+      case 'inbox': return <GlobalInboxModule messages={messages} onReplyMessage={handleReplyMessage} />; 
       default: return null;
     }
   };
@@ -707,7 +718,9 @@ const App: React.FC = () => {
             stats: { 
                 products: products.length, 
                 shipments: shipments.length, 
-                activeInfluencers: influencers.filter(i=>i.status==='Content Live').length 
+                activeInfluencers: influencers.filter(i=>i.status==='Content Live').length,
+                pendingTasks: tasks.filter(t => t.status === 'Todo').length,
+                unreadMessages: messages.filter(m => m.status === 'Unread').length
             },
             activeContextItem: editingSKU ? { type: 'SKU_Detail', ...editingSKU } : (editingProduct ? { type: 'Product_Edit', ...editingProduct } : null)
          }} 
@@ -718,6 +731,7 @@ const App: React.FC = () => {
         onChangeView={setActiveView} 
         currentTheme={currentTheme}
         onThemeChange={setCurrentTheme}
+        badges={sidebarBadges} // Pass dynamic badges
       />
       
       <main className="ml-[320px] h-screen overflow-y-auto no-scrollbar pr-6">

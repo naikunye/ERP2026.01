@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, ShoppingBag, CheckSquare, Sparkles, Aperture, RefreshCw, Server, Users, Wallet, Settings, Radar, MessageSquare, Megaphone } from 'lucide-react';
+import { LayoutGrid, ShoppingBag, CheckSquare, Sparkles, Aperture, RefreshCw, Server, Users, Wallet, Settings, Radar, MessageSquare, Megaphone, BarChart2 } from 'lucide-react';
 import { Theme } from '../types';
 
 interface SidebarProps {
@@ -7,13 +7,17 @@ interface SidebarProps {
   onChangeView: (view: string) => void;
   currentTheme: Theme;
   onThemeChange: (theme: Theme) => void;
+  badges?: { [key: string]: number }; // New Prop for dynamic counts
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentTheme, onThemeChange }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentTheme, onThemeChange, badges = {} }) => {
   const menuItems = [
     { id: 'dashboard', label: '总览面板', icon: <LayoutGrid size={20} /> },
-    { id: 'marketing', label: '创意工坊', icon: <Megaphone size={20} /> }, // New Module
+    { id: 'analytics', label: '数据罗盘', icon: <BarChart2 size={20} /> }, // New
+    { id: 'marketing', label: '创意工坊', icon: <Megaphone size={20} /> },
+    { id: 'inbox', label: '消息中心', icon: <MessageSquare size={20} /> },
     { id: 'tasks', label: '任务协作', icon: <CheckSquare size={20} /> },
+    { id: 'market_radar', label: '市场雷达', icon: <Radar size={20} /> },
     { id: 'restock', label: '智能备货', icon: <RefreshCw size={20} /> },
     { id: 'orders', label: '物流追踪', icon: <ShoppingBag size={20} /> },
     { id: 'influencers', label: '达人矩阵', icon: <Users size={20} /> },
@@ -32,27 +36,40 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentThem
          <div>
              <h1 className="font-display font-bold text-[24px] text-white tracking-wide drop-shadow-lg">AERO<span className="text-neon-blue">.OS</span></h1>
              <p className="font-sans text-[10px] text-gray-300 font-medium tracking-widest bg-white/10 px-2 py-0.5 rounded-full inline-block mt-1 backdrop-blur-sm border border-white/5">
-                V.5.6 STUDIO
+                V.5.8 ULTIMATE
              </p>
          </div>
       </div>
 
       {/* Main Menu */}
-      <div className="flex-1 space-y-2 overflow-y-auto custom-scrollbar px-6 py-4 -mx-6">
+      <div className="flex-1 space-y-1 overflow-y-auto custom-scrollbar px-6 py-2 -mx-6">
         {menuItems.map((item) => (
           <button
             key={item.id}
             onClick={() => onChangeView(item.id)}
-            className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-[15px] font-medium transition-all duration-300 relative group overflow-visible ${
+            className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-[14px] font-medium transition-all duration-300 relative group overflow-visible ${
               activeView === item.id
-                ? 'bg-gradient-neon-blue shadow-glow-blue text-white scale-105' 
+                ? 'bg-gradient-neon-blue shadow-glow-blue text-white scale-105 z-10' 
                 : 'text-gray-400 hover:text-white hover:bg-white/10'
             }`}
           >
             <span className={`relative z-10 transition-transform ${activeView === item.id ? 'scale-110' : 'group-hover:scale-110'}`}>
               {item.icon}
             </span>
-            <span className="relative z-10 font-sans tracking-wide">{item.label}</span>
+            <span className="relative z-10 font-sans tracking-wide flex-1 text-left">{item.label}</span>
+            
+            {/* Dynamic Badge */}
+            {badges[item.id] > 0 && (
+                <span className={`relative z-10 px-1.5 py-0.5 rounded-md text-[10px] font-bold leading-none animate-scale-in ${
+                    activeView === item.id 
+                    ? 'bg-white text-neon-blue' 
+                    : item.id === 'orders' ? 'bg-neon-pink text-white shadow-glow-pink'
+                    : item.id === 'tasks' ? 'bg-neon-yellow text-black'
+                    : 'bg-neon-purple text-white'
+                }`}>
+                    {badges[item.id] > 99 ? '99+' : badges[item.id]}
+                </span>
+            )}
           </button>
         ))}
       </div>
@@ -61,7 +78,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentThem
       <div className="mt-2 pt-2 border-t border-white/10">
           <button
             onClick={() => onChangeView('settings')}
-            className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-[15px] font-medium transition-all duration-300 relative group overflow-visible ${
+            className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-[14px] font-medium transition-all duration-300 relative group overflow-visible ${
               activeView === 'settings'
                 ? 'bg-white/10 text-white' 
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -72,20 +89,20 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentThem
           </button>
       </div>
 
-      {/* AI Status Card - Floating Neon */}
-      <div className="mt-4 mb-6">
-          <div className="relative rounded-2xl bg-gradient-to-br from-[#1a1a2e] to-black border border-white/10 p-5 group cursor-pointer overflow-hidden shadow-lg hover:shadow-glow-purple transition-all">
+      {/* AI Status Card */}
+      <div className="mt-4 mb-2">
+          <div className="relative rounded-2xl bg-gradient-to-br from-[#1a1a2e] to-black border border-white/10 p-4 group cursor-pointer overflow-hidden shadow-lg hover:shadow-glow-purple transition-all">
              <div className="absolute inset-0 bg-gradient-neon-purple opacity-10 group-hover:opacity-20 transition-opacity"></div>
              
-             <div className="relative z-10 flex items-center gap-4">
-                 <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-neon-purple border border-white/10 shadow-[0_0_15px_rgba(184,41,255,0.3)]">
-                    <Sparkles size={20} className="animate-pulse" />
+             <div className="relative z-10 flex items-center gap-3">
+                 <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-neon-purple border border-white/10 shadow-[0_0_15px_rgba(184,41,255,0.3)]">
+                    <Sparkles size={16} className="animate-pulse" />
                  </div>
                  <div className="flex-1">
-                     <div className="text-[14px] font-bold text-white font-display tracking-wide">Gemini 核心</div>
-                     <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1.5 mt-0.5">
+                     <div className="text-[12px] font-bold text-white font-display tracking-wide">Gemini 核心</div>
+                     <div className="text-[9px] text-gray-400 font-mono flex items-center gap-1.5 mt-0.5">
                         <span className="w-1.5 h-1.5 bg-neon-green rounded-full animate-pulse"></span>
-                        神经链接已激活
+                        神经链路正常
                      </div>
                  </div>
              </div>
@@ -93,14 +110,14 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onChangeView, currentThem
       </div>
 
       {/* User Profile */}
-      <div className="border-t border-white/10 pt-6 flex items-center gap-4 cursor-pointer group px-2">
+      <div className="pt-2 flex items-center gap-3 cursor-pointer group px-2">
          <div className="relative">
              <div className="absolute -inset-0.5 bg-gradient-neon-pink rounded-full blur opacity-70 group-hover:opacity-100 transition-opacity"></div>
-             <img src="https://ui-avatars.com/api/?name=Admin&background=000&color=fff" className="relative w-10 h-10 rounded-full object-cover border-2 border-black" alt="User" />
+             <img src="https://ui-avatars.com/api/?name=Admin&background=000&color=fff" className="relative w-8 h-8 rounded-full object-cover border-2 border-black" alt="User" />
          </div>
          <div className="flex-1">
-            <div className="text-[14px] font-bold text-white group-hover:text-neon-pink transition-colors font-display tracking-wide">超级管理员</div>
-            <div className="text-[10px] text-gray-500 font-mono">L9 最高权限</div>
+            <div className="text-[12px] font-bold text-white group-hover:text-neon-pink transition-colors font-display tracking-wide">超级管理员</div>
+            <div className="text-[9px] text-gray-500 font-mono">L9 最高权限</div>
          </div>
       </div>
     </div>
