@@ -3,7 +3,7 @@ import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
   Wifi, Activity, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw, Zap, ShieldAlert,
-  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu, Copy, Check, Layout, MousePointerClick
+  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu, Copy, Check, Layout, MousePointerClick, Settings
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -100,18 +100,16 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       setErrorCode(0);
       
       try {
-          // Create an AbortController for timeout
+          // Normalize URL (remove trailing slash)
+          const cleanUrl = serverUrl.replace(/\/$/, '');
+          
           const controller = new AbortController();
-          const id = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+          const id = setTimeout(() => controller.abort(), 5000);
 
-          // CRITICAL FIX: DO NOT send 'Content-Type': 'application/json' for GET requests.
-          // Sending custom headers triggers a CORS Preflight (OPTIONS) request.
-          // Many HTTP/HTTPS mixed scenarios block OPTIONS requests aggressively.
-          // By removing headers, this becomes a "Simple Request" which is more likely to succeed.
-          const response = await fetch(`${serverUrl}/api/collections/products/records?perPage=200`, {
+          // Simple Request (No headers)
+          const response = await fetch(`${cleanUrl}/api/collections/products/records?perPage=200`, {
               method: 'GET',
               signal: controller.signal
-              // No headers!
           });
           
           clearTimeout(id);
@@ -141,10 +139,11 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           const isHttps = window.location.protocol === 'https:';
           const isTargetHttp = serverUrl.startsWith('http://');
           
-          if (err.name === 'AbortError') {
+          if (err.message === '404_COLLECTION') {
+              setErrorCode('404_COLLECTION');
+          } else if (err.name === 'AbortError') {
               setErrorCode('TIMEOUT');
-          } else if (isHttps && isTargetHttp) {
-              // Even if allowed in settings, fetch can still fail opaquely
+          } else if (isHttps && isTargetHttp && !err.message.startsWith('HTTP_')) {
               setErrorCode('MIXED_CONTENT');
           } else {
               setErrorCode(err.message || 'UNKNOWN');
@@ -351,68 +350,131 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
 
                       {/* --- Advanced Diagnostic / Error Area --- */}
                       {connectionStatus === 'error' && (
-                          <div className="mt-4 p-0 bg-black/60 border border-red-500/30 rounded-xl overflow-hidden animate-fade-in">
-                                <div className="bg-red-500/10 px-4 py-3 border-b border-red-500/20 flex justify-between items-center">
-                                    <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
-                                        <ShieldAlert size={14} /> 
-                                        {protocol === 'pocketbase' ? '同步失败 (Sync Failed)' : '连接失败 (Socket Error)'}
+                          <>
+                          {errorCode === '404_COLLECTION' ? (
+                            <div className="mt-4 bg-neon-blue/5 border border-neon-blue/20 rounded-xl overflow-hidden animate-fade-in">
+                                <div className="p-5 border-b border-neon-blue/10 flex items-start gap-4">
+                                    <div className="w-10 h-10 rounded-lg bg-neon-blue/10 flex items-center justify-center text-neon-blue shrink-0">
+                                        <Database size={20} />
                                     </div>
-                                    <div className="text-[10px] font-mono opacity-70">{errorCode}</div>
+                                    <div>
+                                        <h3 className="text-base font-bold text-white mb-1">数据库初始化向导</h3>
+                                        <p className="text-xs text-gray-400">
+                                            服务器连接正常 ({serverUrl})，但未检测到 <code className="text-neon-blue bg-neon-blue/10 px-1 rounded">products</code> 数据表。
+                                        </p>
+                                    </div>
                                 </div>
                                 
-                                <div className="p-5 space-y-4 text-xs">
-                                    {errorCode === 'MIXED_CONTENT' && (
-                                        <div className="text-gray-300">
-                                            <p className="font-bold text-white mb-2">连接被阻断 (Connection Blocked)</p>
-                                            <p className="mb-2">我们删除了所有请求头以尝试穿透，但浏览器依然阻断了请求。</p>
-                                            
-                                            <div className="bg-white/10 p-4 rounded-xl border border-white/10 mb-3">
-                                                <div className="font-bold text-white mb-2 flex items-center gap-2">
-                                                    <MousePointerClick size={16} className="text-neon-blue"/>
-                                                    验证服务器状态：
-                                                </div>
-                                                <p className="mb-2 text-gray-400">请点击下方链接。如果能在新窗口看到 JSON 数据，说明服务器是好的，纯粹是浏览器安全限制。</p>
-                                                <a 
-                                                    href={`${serverUrl}/api/collections/products/records?perPage=200`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-2 text-neon-blue font-bold underline hover:text-white"
-                                                >
-                                                    打开 API 测试链接 <ExternalLink size={12}/>
-                                                </a>
-                                            </div>
+                                <div className="p-5 bg-black/20 space-y-4">
+                                     <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-widest">
+                                        <Settings size={12} /> 修复步骤
+                                     </div>
+                                     
+                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                         <a 
+                                            href={`${serverUrl.replace(/\/$/, '')}/_/`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="flex flex-col gap-2 p-4 rounded-lg bg-white/5 border border-white/5 hover:bg-neon-blue/10 hover:border-neon-blue/30 transition-all group text-left"
+                                         >
+                                             <div className="flex items-center gap-2 text-white font-bold text-sm">
+                                                 <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-xs">1</span>
+                                                 进入后台
+                                                 <ExternalLink size={12} className="opacity-50 group-hover:opacity-100"/>
+                                             </div>
+                                             <p className="text-[10px] text-gray-500">点击打开 PocketBase Admin 面板并登录。</p>
+                                         </a>
 
-                                            <p className="text-gray-500 italic">如果上方链接也打不开，请检查服务器防火墙 IP 白名单。</p>
-                                        </div>
-                                    )}
+                                         <div className="flex flex-col gap-2 p-4 rounded-lg bg-white/5 border border-white/5 text-left opacity-80">
+                                             <div className="flex items-center gap-2 text-white font-bold text-sm">
+                                                 <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-xs">2</span>
+                                                 创建表 (Collection)
+                                             </div>
+                                             <p className="text-[10px] text-gray-500">
+                                                 点击 <strong>New Collection</strong> <br/>
+                                                 Name 输入: <code className="text-neon-blue">products</code> <br/>
+                                                 点击 <strong>Create</strong>
+                                             </p>
+                                         </div>
+                                     </div>
 
-                                    {errorCode === 'TIMEOUT' && (
-                                        <div className="text-gray-300">
-                                            <p className="font-bold text-white mb-2">请求超时 (Timeout)</p>
-                                            <p>服务器在 5 秒内没有响应。请检查 IP 是否正确，或服务器是否卡死。</p>
-                                        </div>
-                                    )}
-
-                                    {errorCode === '404_COLLECTION' && (
-                                        <div className="text-gray-300">
-                                            <p className="font-bold text-white mb-2">未找到数据表 (Collection Not Found)</p>
-                                            <p className="mb-3">成功连接到了 PocketBase，但未找到 <code className="text-neon-pink">products</code> 表。</p>
-                                            <div className="bg-white/10 p-3 rounded border border-white/10">
-                                                <div className="font-bold mb-1">请在 PocketBase 后台操作：</div>
-                                                <ol className="list-decimal list-inside space-y-1 text-gray-400">
-                                                    <li>点击 <strong>New Collection</strong></li>
-                                                    <li>名称填写: <span className="text-neon-blue select-all">products</span> (必须全小写)</li>
-                                                    <li>点击 Create</li>
-                                                </ol>
-                                            </div>
-                                        </div>
-                                    )}
-                                    
-                                    {typeof errorCode === 'string' && errorCode.startsWith('HTTP_') && (
-                                        <p className="text-gray-300">服务器返回了错误状态码。请检查 PocketBase 日志。</p>
-                                    )}
+                                     <div className="pt-2">
+                                         <button 
+                                            onClick={handleConnect}
+                                            className="w-full py-3 bg-gradient-neon-blue text-black rounded-xl font-bold text-sm shadow-glow-blue hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+                                         >
+                                             <RefreshCw size={16} className={connectionStatus === 'connecting' ? 'animate-spin' : ''} />
+                                             我已创建，重新检测
+                                         </button>
+                                     </div>
                                 </div>
-                          </div>
+                            </div>
+                          ) : (
+                              <div className="mt-4 p-0 bg-black/60 border border-red-500/30 rounded-xl overflow-hidden animate-fade-in">
+                                    <div className="bg-red-500/10 px-4 py-3 border-b border-red-500/20 flex justify-between items-center">
+                                        <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
+                                            <ShieldAlert size={14} /> 
+                                            {protocol === 'pocketbase' ? '同步失败 (Sync Failed)' : '连接失败 (Socket Error)'}
+                                        </div>
+                                        <div className="text-[10px] font-mono opacity-70">{errorCode}</div>
+                                    </div>
+                                    
+                                    <div className="p-5 space-y-4 text-xs">
+                                        {errorCode === 'MIXED_CONTENT' && (
+                                            <div className="text-gray-300">
+                                                <p className="font-bold text-white mb-2">连接被阻断 (Connection Blocked)</p>
+                                                <p className="mb-2">我们删除了所有请求头以尝试穿透，但浏览器依然阻断了请求。</p>
+                                                
+                                                <div className="bg-white/10 p-4 rounded-xl border border-white/10 mb-3">
+                                                    <div className="font-bold text-white mb-2 flex items-center gap-2">
+                                                        <MousePointerClick size={16} className="text-neon-blue"/>
+                                                        验证服务器状态：
+                                                    </div>
+                                                    <p className="mb-2 text-gray-400">请点击下方链接。如果能在新窗口看到 JSON 数据，说明服务器是好的，纯粹是浏览器安全限制。</p>
+                                                    <a 
+                                                        href={`${serverUrl.replace(/\/$/, '')}/api/collections/products/records?perPage=200`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-2 text-neon-blue font-bold underline hover:text-white"
+                                                    >
+                                                        打开 API 测试链接 <ExternalLink size={12}/>
+                                                    </a>
+                                                </div>
+
+                                                <p className="text-gray-500 italic">如果上方链接也打不开，请检查服务器防火墙 IP 白名单。</p>
+                                            </div>
+                                        )}
+
+                                        {errorCode === 'TIMEOUT' && (
+                                            <div className="text-gray-300">
+                                                <p className="font-bold text-white mb-2">请求超时 (Timeout)</p>
+                                                <p>服务器在 5 秒内没有响应。请检查 IP 是否正确，或服务器是否卡死。</p>
+                                            </div>
+                                        )}
+
+                                        {errorCode === '403_PERMISSION' && (
+                                            <div className="text-gray-300">
+                                                <p className="font-bold text-white mb-2">权限被拒绝 (API Rules)</p>
+                                                <p className="mb-3">找到了 products 表，但 API 权限是锁定的。</p>
+                                                <div className="bg-white/10 p-3 rounded border border-white/10">
+                                                    <div className="font-bold mb-1">请在 PocketBase 后台操作：</div>
+                                                    <ol className="list-decimal list-inside space-y-1 text-gray-400">
+                                                        <li>在 PocketBase 后台点击 <strong>products</strong> 表</li>
+                                                        <li>点击右上角 <strong>Settings (齿轮)</strong> &gt; <strong>API Rules</strong></li>
+                                                        <li>将 <strong>List/Search</strong> 规则留空 (默认是 Admin only)</li>
+                                                        <li>或者填入 <code className="text-neon-green">""</code> (空字符串) 以完全公开</li>
+                                                    </ol>
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {typeof errorCode === 'string' && errorCode.startsWith('HTTP_') && (
+                                            <p className="text-gray-300">服务器返回了错误状态码。请检查 PocketBase 日志。</p>
+                                        )}
+                                    </div>
+                              </div>
+                          )}
+                          </>
                       )}
 
                       {/* Status Success */}
