@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Shipment, Product } from '../types';
+import { Shipment, Product, ShipmentItem } from '../types';
 import { 
   Truck, Plane, Ship, Navigation, Search, Plus, MapPin, 
   Anchor, Package, Calendar, Clock, ArrowRight, Container, 
   Scale, Ruler, Box, ExternalLink, Activity, AlertCircle, CheckCircle2,
-  Edit2, Save, X, Trash2, CheckSquare, Square, ShieldCheck, FileText, UserCheck, Timer
+  Edit2, Save, X, Trash2, CheckSquare, Square, ShieldCheck, FileText, UserCheck, Timer, MinusCircle
 } from 'lucide-react';
 
 interface LogisticsModuleProps {
@@ -28,7 +28,12 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'ADD' | 'EDIT'>('ADD');
+  
+  // Enhanced Form State
   const [form, setForm] = useState<Partial<Shipment>>({});
+  // Specialized state for managing shipment items (SKU + Qty)
+  const [shipmentItems, setShipmentItems] = useState<ShipmentItem[]>([]);
+  const [searchSkuTerm, setSearchSkuTerm] = useState('');
 
   // Initialize Modal for Adding
   const openAddModal = () => {
@@ -42,39 +47,78 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
           progress: 0,
           weight: 0,
           cartons: 0,
-          skuIds: [],
           customsStatus: 'Pending'
       });
+      setShipmentItems([]);
       setIsModalOpen(true);
   };
 
   // Initialize Modal for Editing
   const openEditModal = (shipment: Shipment) => {
       setModalMode('EDIT');
-      setForm({ ...shipment, skuIds: shipment.skuIds || [] });
+      setForm({ ...shipment });
+      // Legacy support: if items doesn't exist but skuIds does (old data), convert it
+      if (shipment.items && shipment.items.length > 0) {
+          setShipmentItems([...shipment.items]);
+      } else if ((shipment as any).skuIds) {
+          // Migration for old mocks
+          const oldIds = (shipment as any).skuIds as string[];
+          setShipmentItems(oldIds.map(id => ({ skuId: id, skuCode: 'LEGACY', quantity: 1 })));
+      } else {
+          setShipmentItems([]);
+      }
       setIsModalOpen(true);
   };
 
-  const handleToggleSku = (sku: string) => {
-      setForm(prev => {
-          const currentSkus = prev.skuIds || [];
-          if (currentSkus.includes(sku)) {
-              return { ...prev, skuIds: currentSkus.filter(id => id !== sku) };
-          } else {
-              return { ...prev, skuIds: [...currentSkus, sku] };
-          }
-      });
+  const handleAddItem = (product: Product) => {
+      // Check if already added
+      if (shipmentItems.find(i => i.skuId === product.id)) return;
+      
+      setShipmentItems(prev => [...prev, {
+          skuId: product.id,
+          skuCode: product.sku,
+          quantity: 1 // Default quantity
+      }]);
   };
 
+  const handleUpdateItemQty = (skuId: string, qty: number) => {
+      setShipmentItems(prev => prev.map(item => 
+          item.skuId === skuId ? { ...item, quantity: Math.max(1, qty) } : item
+      ));
+  };
+
+  const handleRemoveItem = (skuId: string) => {
+      setShipmentItems(prev => prev.filter(item => item.skuId !== skuId));
+  };
+
+  // Auto-calculate Weight Estimation based on items (Mock logic: 0.5kg per item avg)
+  useEffect(() => {
+      if (shipmentItems.length > 0) {
+          const estimatedWeight = shipmentItems.reduce((acc, item) => acc + (item.quantity * 0.5), 0);
+          setForm(prev => ({ ...prev, weight: estimatedWeight }));
+      }
+  }, [shipmentItems]);
+
   const handleSave = () => {
-      if(!form.trackingNo) return; 
+      if(!form.trackingNo) {
+          alert("请输入运单号 (Tracking No is required)");
+          return;
+      }
+      if(shipmentItems.length === 0) {
+          alert("请至少添加一个商品 (Add at least one product)");
+          return;
+      }
 
       const now = new Date().toISOString();
+      const payload: any = {
+          ...form,
+          items: shipmentItems, // Attach items
+          lastUpdate: now
+      };
       
       if (modalMode === 'ADD') {
           const newShip: Shipment = {
               id: crypto.randomUUID(),
-              trackingNo: form.trackingNo,
               carrier: form.carrier || 'Unknown',
               method: form.method || 'Sea',
               origin: form.origin || '',
@@ -83,19 +127,18 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
               eta: form.eta || '',
               status: form.status || 'Pending',
               progress: form.progress || 0,
-              weight: form.weight || 0,
               cartons: form.cartons || 0,
-              skuIds: form.skuIds || [],
               riskReason: '',
               // Enhanced fields
               vesselName: form.vesselName,
               containerNo: form.containerNo,
-              customsStatus: form.customsStatus || 'Pending'
+              customsStatus: form.customsStatus || 'Pending',
+              ...payload
           } as Shipment;
           onAddShipment(newShip);
           setSelectedShipmentId(newShip.id);
       } else {
-          onUpdateShipment(form as Shipment);
+          onUpdateShipment(payload as Shipment);
       }
       setIsModalOpen(false);
   };
@@ -114,113 +157,10 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
       s.trackingNo.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- TOP TIER TIMELINE GENERATOR (CHINESE) ---
-  const getDetailedTimeline = (s: Shipment) => {
-      const events = [];
-      const today = new Date().toISOString().split('T')[0];
-
-      // 1. Origin Events
-      events.push({ 
-          title: '运单已创建', 
-          desc: '系统已接收订单信息，开始处理', 
-          date: s.etd, 
-          status: 'completed', 
-          icon: <FileText size={14}/> 
-      });
-
-      if (s.progress > 10) {
-          events.push({ 
-              title: '货物入仓', 
-              desc: `已送达 ${s.origin.split(',')[0]} 始发仓库`, 
-              date: s.etd, 
-              status: 'completed', 
-              icon: <Package size={14}/> 
-          });
-      }
-
-      // 2. Export Customs
-      if (s.progress > 20) {
-          events.push({ 
-              title: '出口清关完成', 
-              desc: '海关放行，等待装载', 
-              date: s.etd, // Simplified date logic
-              status: 'completed', 
-              icon: <ShieldCheck size={14} className="text-neon-green"/> 
-          });
-      }
-
-      // 3. Departure
-      if (s.progress > 30) {
-          events.push({ 
-              title: `已离开 ${s.origin.split(',')[0]}`, 
-              desc: s.vesselName ? `船名/航班: ${s.vesselName}` : '航班/航次已离港', 
-              date: s.etd, 
-              status: 'completed', 
-              icon: s.method === 'Sea' ? <Anchor size={14}/> : <Plane size={14}/>
-          });
-      }
-
-      // 4. In Transit / Arrival
-      if (s.progress > 60) {
-          events.push({ 
-              title: `抵达 ${s.destination.split(',')[0]}`, 
-              desc: '抵达目的港/机场', 
-              date: s.eta, 
-              status: 'completed', 
-              icon: <MapPin size={14}/> 
-          });
-      } else if (s.status === 'In Transit') {
-          events.push({ 
-              title: '运输途中', 
-              desc: '正前往目的地', 
-              date: '实时', 
-              status: 'active', 
-              icon: <Activity size={14} className="animate-pulse text-neon-blue"/> 
-          });
-      }
-
-      // 5. Import Customs
-      if (s.progress > 80) {
-          const customsStatus = s.customsStatus || 'Pending';
-          const isHeld = customsStatus === 'Held' || customsStatus === 'Inspection';
-          // Map EN status to CN display
-          let cnStatus = '待清关';
-          if (customsStatus === 'Cleared') cnStatus = '已放行';
-          if (customsStatus === 'Inspection') cnStatus = '查验中';
-          if (customsStatus === 'Held') cnStatus = '海关扣留';
-
-          events.push({ 
-              title: `进口清关: ${cnStatus}`, 
-              desc: isHeld ? '货物被海关查验或扣留' : '清关完成，准备提货', 
-              date: s.eta, 
-              status: isHeld ? 'exception' : 'completed', 
-              icon: isHeld ? <AlertCircle size={14} className="text-neon-pink"/> : <ShieldCheck size={14} className="text-neon-green"/> 
-          });
-      }
-
-      // 6. Delivery
-      if (s.status === 'Delivered') {
-          events.push({ 
-              title: '已送达', 
-              desc: s.podName ? `签收人: ${s.podName}` : '已送达收货人', 
-              date: s.podTime || s.eta, 
-              status: 'completed', 
-              icon: <CheckCircle2 size={14} className="text-neon-green"/> 
-          });
-      } else if (s.status === 'Out for Delivery') {
-           events.push({ 
-              title: '派送中', 
-              desc: '快递员正在派送途中', 
-              date: today, 
-              status: 'active', 
-              icon: <Truck size={14} className="animate-bounce"/> 
-          });
-      }
-
-      return events;
-  };
-
-  const timelineEvents = selectedShipment ? getDetailedTimeline(selectedShipment) : [];
+  const filteredProducts = products.filter(p => 
+      p.sku.toLowerCase().includes(searchSkuTerm.toLowerCase()) || 
+      p.name.toLowerCase().includes(searchSkuTerm.toLowerCase())
+  );
 
   return (
     <div className="h-full w-full flex flex-col pb-6 animate-fade-in overflow-hidden relative">
@@ -242,7 +182,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
         <div className="flex gap-3">
              <button 
                 onClick={openAddModal}
-                className="h-10 px-4 bg-white/5 border border-white/10 hover:bg-neon-purple hover:border-neon-purple hover:text-white text-gray-400 rounded-xl font-bold text-xs transition-all flex items-center gap-2"
+                className="h-10 px-4 bg-gradient-neon-blue text-black shadow-glow-blue hover:scale-105 rounded-xl font-bold text-xs transition-all flex items-center gap-2"
              >
                  <Plus size={16} /> 录入运单
              </button>
@@ -252,13 +192,13 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
       {/* Add/Edit Modal */}
       {isModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
-              <div className="w-full max-w-4xl glass-card border border-white/20 shadow-2xl overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
+              <div className="w-full max-w-5xl glass-card border border-white/20 shadow-2xl overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
                   
                   {/* Modal Header */}
                   <div className="px-8 py-5 border-b border-white/10 bg-white/5 flex justify-between items-center">
                       <h3 className="text-lg font-bold text-white flex items-center gap-2">
                           {modalMode === 'ADD' ? <Plus size={20}/> : <Edit2 size={20}/>}
-                          {modalMode === 'ADD' ? '录入新运单' : '编辑运单详情'}
+                          {modalMode === 'ADD' ? '录入新运单 (Create Shipment)' : '编辑运单详情 (Edit Shipment)'}
                       </h3>
                       <button onClick={() => setIsModalOpen(false)} className="hover:text-neon-pink text-white transition-colors">
                           <X size={20} />
@@ -268,27 +208,27 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                   {/* Modal Body */}
                   <div className="flex-1 overflow-y-auto custom-scrollbar flex">
                       
-                      {/* Left: Form Fields */}
-                      <div className="w-1/2 p-8 space-y-6 border-r border-white/10">
+                      {/* Left: Shipment Info */}
+                      <div className="w-[55%] p-8 space-y-6 border-r border-white/10">
+                          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">核心信息</h4>
                           
-                          {/* Section 1: Core Info */}
                           <div className="grid grid-cols-2 gap-6">
                               <div className="space-y-1">
-                                  <label className="text-[10px] text-gray-500 font-bold uppercase">运单号 (Tracking No)</label>
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">运单号 *</label>
                                   <input 
                                       value={form.trackingNo || ''}
                                       onChange={(e) => setForm(p => ({...p, trackingNo: e.target.value}))}
                                       className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none font-mono"
-                                      placeholder="例如: MSN..."
+                                      placeholder="MSN..."
                                   />
                               </div>
                               <div className="space-y-1">
-                                  <label className="text-[10px] text-gray-500 font-bold uppercase">承运商 (Carrier)</label>
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">承运商</label>
                                   <input 
                                       value={form.carrier || ''}
                                       onChange={(e) => setForm(p => ({...p, carrier: e.target.value}))}
                                       className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                                      placeholder="例如: Matson, DHL..."
+                                      placeholder="DHL, Matson..."
                                   />
                               </div>
                           </div>
@@ -307,7 +247,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                   </select>
                               </div>
                               <div className="space-y-1">
-                                  <label className="text-[10px] text-gray-500 font-bold uppercase">当前状态</label>
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">状态</label>
                                   <select 
                                       value={form.status}
                                       onChange={(e) => setForm(p => ({...p, status: e.target.value as any}))}
@@ -323,56 +263,20 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                   </select>
                               </div>
                               <div className="space-y-1">
-                                  <label className="text-[10px] text-gray-500 font-bold uppercase">进度 (%)</label>
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">箱数</label>
                                   <input 
                                       type="number"
-                                      min="0" max="100"
-                                      value={form.progress || 0}
-                                      onChange={(e) => setForm(p => ({...p, progress: parseInt(e.target.value)}))}
+                                      value={form.cartons || 0}
+                                      onChange={(e) => setForm(p => ({...p, cartons: parseInt(e.target.value)}))}
                                       className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
                                   />
                               </div>
                           </div>
 
-                           {/* Section 1.5: Detailed Info (New) */}
-                          <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-1">
-                                  <label className="text-[10px] text-gray-500 font-bold uppercase">船名/航班 (Vessel)</label>
-                                  <input 
-                                      value={form.vesselName || ''}
-                                      onChange={(e) => setForm(p => ({...p, vesselName: e.target.value}))}
-                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                                  />
-                              </div>
-                              <div className="space-y-1">
-                                  <label className="text-[10px] text-gray-500 font-bold uppercase">柜号 (Container No)</label>
-                                  <input 
-                                      value={form.containerNo || ''}
-                                      onChange={(e) => setForm(p => ({...p, containerNo: e.target.value}))}
-                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none font-mono"
-                                  />
-                              </div>
-                          </div>
-
-                           <div className="space-y-1">
-                                <label className="text-[10px] text-gray-500 font-bold uppercase">清关状态 (Customs)</label>
-                                <select 
-                                    value={form.customsStatus || 'Pending'}
-                                    onChange={(e) => setForm(p => ({...p, customsStatus: e.target.value as any}))}
-                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                                >
-                                    <option value="Pending">待申报 (Pending)</option>
-                                    <option value="Cleared">已放行 (Cleared)</option>
-                                    <option value="Inspection">查验中 (Inspection)</option>
-                                    <option value="Held">扣留 (Held)</option>
-                                </select>
-                            </div>
-
-                          {/* Section 2: Route */}
                           <div className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-1">
-                                        <label className="text-[10px] text-gray-500 font-bold uppercase">出发地 (Origin)</label>
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase">出发地</label>
                                         <input 
                                             value={form.origin || ''}
                                             onChange={(e) => setForm(p => ({...p, origin: e.target.value}))}
@@ -380,7 +284,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                         />
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-[10px] text-gray-500 font-bold uppercase">目的地 (Destination)</label>
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase">目的地</label>
                                         <input 
                                             value={form.destination || ''}
                                             onChange={(e) => setForm(p => ({...p, destination: e.target.value}))}
@@ -409,75 +313,101 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                     </div>
                               </div>
                           </div>
-
-                          {/* Section 3: Cargo */}
-                          <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-1">
-                                  <label className="text-[10px] text-gray-500 font-bold uppercase">毛重 (kg)</label>
-                                  <input 
-                                      type="number"
-                                      value={form.weight || 0}
-                                      onChange={(e) => setForm(p => ({...p, weight: parseFloat(e.target.value)}))}
-                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                                  />
-                              </div>
-                              <div className="space-y-1">
-                                  <label className="text-[10px] text-gray-500 font-bold uppercase">箱数 (Cartons)</label>
-                                  <input 
-                                      type="number"
-                                      value={form.cartons || 0}
-                                      onChange={(e) => setForm(p => ({...p, cartons: parseInt(e.target.value)}))}
-                                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
-                                  />
-                              </div>
-                          </div>
                       </div>
 
-                      {/* Right: SKU Selection */}
-                      <div className="w-1/2 p-8 bg-black/10">
-                           <label className="text-[12px] text-neon-blue font-bold uppercase mb-4 block flex items-center gap-2">
-                               <Container size={14}/> 关联装载商品 (Cargo Content)
-                           </label>
-                           <div className="space-y-2 overflow-y-auto max-h-[400px] custom-scrollbar pr-2">
-                               {products.map(product => {
-                                   const isSelected = form.skuIds?.includes(product.id);
-                                   return (
-                                       <div 
-                                          key={product.id}
-                                          onClick={() => handleToggleSku(product.id)}
-                                          className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                                              isSelected 
-                                              ? 'bg-neon-blue/10 border-neon-blue text-white' 
-                                              : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-400'
-                                          }`}
-                                       >
-                                           <div className={`shrink-0 ${isSelected ? 'text-neon-blue' : 'text-gray-600'}`}>
-                                               {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                      {/* Right: SKU Selection (Refactored) */}
+                      <div className="w-[45%] p-8 bg-black/10 flex flex-col">
+                           <div className="flex justify-between items-center mb-4">
+                               <h4 className="text-xs font-bold text-neon-blue uppercase tracking-widest flex items-center gap-2">
+                                   <Container size={14}/> 装箱清单 (Cargo Manifest)
+                               </h4>
+                               <div className="text-[10px] text-gray-400">总重估算: {form.weight} kg</div>
+                           </div>
+
+                           {/* SKU Search */}
+                           <div className="relative mb-4">
+                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+                               <input 
+                                   value={searchSkuTerm}
+                                   onChange={(e) => setSearchSkuTerm(e.target.value)}
+                                   className="w-full h-10 pl-9 pr-4 bg-white/5 border border-white/10 rounded-lg text-xs text-white focus:border-neon-blue outline-none"
+                                   placeholder="搜索 SKU 添加商品..."
+                               />
+                               {/* Dropdown Results */}
+                               {searchSkuTerm && (
+                                   <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a20] border border-white/10 rounded-lg shadow-xl max-h-[200px] overflow-y-auto z-50">
+                                       {filteredProducts.map(p => (
+                                           <div 
+                                               key={p.id}
+                                               onClick={() => { handleAddItem(p); setSearchSkuTerm(''); }}
+                                               className="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer border-b border-white/5 last:border-0"
+                                           >
+                                               <img src={p.imageUrl} className="w-8 h-8 rounded object-cover" />
+                                               <div className="flex-1">
+                                                   <div className="text-xs font-bold text-white">{p.sku}</div>
+                                                   <div className="text-[10px] text-gray-500 truncate">{p.name}</div>
+                                               </div>
+                                               <div className="text-[10px] text-gray-400">Stock: {p.stock}</div>
                                            </div>
-                                           <img src={product.imageUrl} className="w-10 h-10 rounded-md object-cover bg-black/50" />
-                                           <div className="flex-1 min-w-0">
-                                               <div className="text-xs font-bold truncate">{product.sku}</div>
-                                               <div className="text-[10px] opacity-70 truncate">{product.name}</div>
+                                       ))}
+                                   </div>
+                               )}
+                           </div>
+
+                           {/* Selected Items List */}
+                           <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar bg-black/20 rounded-xl p-2 border border-white/5">
+                               {shipmentItems.length === 0 ? (
+                                   <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-2">
+                                       <Box size={24} className="opacity-30"/>
+                                       <span className="text-xs">请添加发货商品</span>
+                                   </div>
+                               ) : (
+                                   shipmentItems.map(item => {
+                                       const product = products.find(p => p.id === item.skuId);
+                                       return (
+                                           <div key={item.skuId} className="flex items-center gap-3 p-3 bg-white/5 rounded-lg border border-white/5 group">
+                                               {product && <img src={product.imageUrl} className="w-10 h-10 rounded object-cover" />}
+                                               <div className="flex-1 min-w-0">
+                                                   <div className="text-xs font-bold text-white truncate">{product?.sku || item.skuCode}</div>
+                                                   <div className="text-[10px] text-gray-500 truncate">{product?.name}</div>
+                                               </div>
+                                               <div className="flex flex-col items-end gap-1">
+                                                   <span className="text-[9px] text-gray-500 uppercase">Qty</span>
+                                                   <input 
+                                                       type="number"
+                                                       value={item.quantity}
+                                                       onChange={(e) => handleUpdateItemQty(item.skuId, parseInt(e.target.value))}
+                                                       className="w-16 h-7 bg-black/30 border border-white/10 rounded px-2 text-xs text-white text-right focus:border-neon-blue outline-none"
+                                                   />
+                                               </div>
+                                               <button onClick={() => handleRemoveItem(item.skuId)} className="text-gray-500 hover:text-red-500 p-1">
+                                                   <MinusCircle size={16} />
+                                               </button>
                                            </div>
-                                       </div>
-                                   )
-                               })}
+                                       )
+                                   })
+                               )}
                            </div>
                       </div>
                   </div>
                   
                   {/* Footer */}
-                  <div className="p-6 border-t border-white/10 bg-white/5 flex justify-end gap-3">
-                      <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-lg border border-white/10 text-gray-400 hover:text-white font-bold text-sm">取消</button>
-                      <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-neon-purple text-white font-bold text-sm shadow-glow-purple hover:scale-105 transition-transform flex items-center gap-2">
-                          <Save size={16}/> 保存
-                      </button>
+                  <div className="p-6 border-t border-white/10 bg-white/5 flex justify-between items-center">
+                      <div className="text-xs text-gray-400">
+                          <span className="text-neon-yellow">注意:</span> 保存后将自动扣除本地库存并生成财务运费记录。
+                      </div>
+                      <div className="flex gap-3">
+                          <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-lg border border-white/10 text-gray-400 hover:text-white font-bold text-sm">取消</button>
+                          <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-neon-purple text-white font-bold text-sm shadow-glow-purple hover:scale-105 transition-transform flex items-center gap-2">
+                              <Save size={16}/> 确认发货
+                          </button>
+                      </div>
                   </div>
               </div>
           </div>
       )}
 
-      {/* 2. Main Content: Split View */}
+      {/* Main Content: Split View (Unchanged from visual perspective, but using new types) */}
       <div className="flex-1 flex gap-6 overflow-hidden min-h-0">
           
           {/* LEFT: Shipment List */}
@@ -541,11 +471,6 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
           <div className="flex-1 glass-card border-white/10 flex flex-col relative overflow-hidden bg-[#0a0a12]">
               {selectedShipment ? (
                   <>
-                    {/* Background Map Effect */}
-                    <div className="absolute inset-0 z-0 opacity-20 pointer-events-none" style={{
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%2329D9FF' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E")`
-                    }}></div>
-
                     {/* Header Info */}
                     <div className="p-8 border-b border-white/10 relative z-10">
                         <div className="flex justify-between items-start mb-6">
@@ -557,13 +482,12 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                     <h2 className="text-4xl font-display font-bold text-white tracking-tight">{selectedShipment.trackingNo}</h2>
                                     {selectedShipment.vesselName && (
                                         <div className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-bold text-gray-300 flex items-center gap-2">
-                                            <Ship size={12}/> {selectedShipment.vesselName} {selectedShipment.voyageNo}
+                                            <Ship size={12}/> {selectedShipment.vesselName}
                                         </div>
                                     )}
                                 </div>
                              </div>
                              <div className="flex gap-2">
-                                <button className="p-2 hover:bg-white/10 rounded-lg text-neon-blue transition-colors border border-white/5"><ExternalLink size={18} /></button>
                                 <button 
                                     onClick={() => openEditModal(selectedShipment)}
                                     className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-xs font-bold text-white hover:bg-white/10 flex items-center gap-2 transition-all"
@@ -590,10 +514,10 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                 statusColor="text-white"
                             />
                             <StatCard 
-                                label="签收状态" 
-                                value={selectedShipment.podName ? '已签收' : '未签收'} 
-                                icon={<UserCheck size={16}/>}
-                                statusColor={selectedShipment.podName ? 'text-neon-green' : 'text-gray-500'}
+                                label="总箱数" 
+                                value={selectedShipment.cartons.toString()} 
+                                icon={<Box size={16}/>}
+                                statusColor="text-white"
                             />
                              <StatCard 
                                 label="承运商" 
@@ -604,118 +528,36 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                         </div>
                     </div>
 
-                    {/* Progress & Visual Nodes */}
-                    <div className="px-12 py-8 relative z-10 border-b border-white/10">
-                         <div className="flex items-center justify-between relative">
-                             {/* Line */}
-                             <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-white/10 z-0"></div>
-                             <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-gradient-to-r from-neon-blue to-neon-purple z-0 shadow-[0_0_10px_#29D9FF]" style={{ width: `${selectedShipment.progress}%` }}></div>
-
-                             {/* Nodes (Chinese) */}
-                             <Node label="已订舱" active={true} icon={<FileText size={14}/>} />
-                             <Node label="已揽收" active={selectedShipment.progress > 10} icon={<Package size={14}/>} />
-                             <Node label="出口清关" active={selectedShipment.progress > 20} icon={<ShieldCheck size={14}/>} />
-                             <Node label="运输中" active={selectedShipment.progress > 40} icon={<Ship size={14}/>} />
-                             <Node label="进口清关" active={selectedShipment.progress > 80} icon={<ShieldCheck size={14}/>} />
-                             <Node label="已送达" active={selectedShipment.progress >= 100} icon={<CheckCircle2 size={14}/>} />
-                         </div>
-                    </div>
-
-                    {/* Bottom Split: Details & Timeline */}
-                    <div className="flex-1 flex relative z-10 bg-black/20 backdrop-blur-md">
-                        
-                        {/* Data Grid */}
-                        <div className="w-1/2 p-8 border-r border-white/10 space-y-8 overflow-y-auto custom-scrollbar">
-                             <div>
-                                 <h3 className="text-[12px] font-bold text-neon-blue uppercase tracking-widest mb-4 flex items-center gap-2">
-                                     <Container size={14} /> 舱单与关务详情 (Manifest & Customs)
-                                 </h3>
-                                 <div className="grid grid-cols-2 gap-4">
-                                     <DataPoint label="柜号 (Container)" value={selectedShipment.containerNo || '-'} icon={<Box size={14}/>} />
-                                     <DataPoint label="封条号 (Seal)" value={selectedShipment.sealNo || '-'} icon={<ShieldCheck size={14}/>} />
-                                     <DataPoint label="毛重 (Gross)" value={`${selectedShipment.weight} kg`} icon={<Scale size={14}/>} />
-                                     <DataPoint label="体积 (Volume)" value={`${(selectedShipment.weight / 167).toFixed(2)} CBM`} icon={<Ruler size={14}/>} />
-                                     <DataPoint label="服务类型" value="FCL / 港到门" />
-                                     <DataPoint label="报关单号" value={selectedShipment.customsStatus === 'Cleared' ? 'Rel. 772910' : '-'} />
-                                 </div>
-                             </div>
-
-                             {selectedShipment.podName && (
-                                <div className="p-4 bg-neon-green/10 border border-neon-green/20 rounded-xl">
-                                    <div className="text-[10px] text-neon-green font-bold uppercase mb-2 flex items-center gap-2">
-                                        <CheckCircle2 size={12} /> 签收证明 (POD)
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <div>
-                                            <div className="text-sm text-white font-bold">{selectedShipment.podName}</div>
-                                            <div className="text-[10px] text-gray-400">{selectedShipment.podTime}</div>
-                                        </div>
-                                        <div className="h-8 w-24 bg-white/10 rounded flex items-center justify-center text-[10px] text-gray-500 font-mono italic border border-white/10">
-                                            电子签名
-                                        </div>
-                                    </div>
-                                </div>
-                             )}
-                             
-                             {/* Connected SKU Display */}
-                             <div>
-                                 <h3 className="text-[12px] font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
-                                     <Package size={14} /> 关联商品 ({selectedShipment.skuIds?.length || 0})
-                                 </h3>
-                                 <div className="space-y-2">
-                                     {selectedShipment.skuIds && selectedShipment.skuIds.length > 0 ? (
-                                         selectedShipment.skuIds.map(skuId => {
-                                             const p = products.find(prod => prod.id === skuId);
-                                             return p ? (
-                                                 <div key={p.id} className="flex items-center gap-3 bg-white/5 p-2 rounded-lg border border-white/5">
-                                                     <img src={p.imageUrl} className="w-8 h-8 rounded object-cover" />
-                                                     <div className="min-w-0">
-                                                         <div className="text-xs font-bold text-white truncate">{p.sku}</div>
-                                                         <div className="text-[10px] text-gray-500 truncate">{p.name}</div>
-                                                     </div>
-                                                 </div>
-                                             ) : null;
-                                         })
-                                     ) : (
-                                         <div className="text-[10px] text-gray-500 italic">未关联 SKU</div>
-                                     )}
-                                 </div>
-                             </div>
-                        </div>
-
-                        {/* Enhanced Vertical Timeline */}
-                        <div className="w-1/2 p-8 overflow-y-auto custom-scrollbar">
-                             <h3 className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-                                 <Clock size={14} /> 节点动态 (Milestones)
-                             </h3>
-                             <div className="space-y-0 relative border-l-2 border-white/10 ml-2">
-                                 {timelineEvents.map((event, i) => (
-                                     <div key={i} className="pl-6 pb-8 relative group">
-                                         {/* Dot */}
-                                         <div className={`absolute -left-[7px] top-1 w-3.5 h-3.5 rounded-full border-2 transition-all z-10 ${
-                                             event.status === 'completed' ? 'bg-neon-green border-neon-green shadow-[0_0_10px_rgba(0,255,157,0.5)]' : 
-                                             event.status === 'active' ? 'bg-neon-blue border-neon-blue animate-pulse' :
-                                             event.status === 'exception' ? 'bg-neon-pink border-neon-pink' :
-                                             'bg-black border-gray-700'
-                                         }`}></div>
-                                         
-                                         <div className="flex justify-between items-start">
-                                             <div className="flex-1 pr-4">
-                                                 <div className={`font-bold text-sm mb-0.5 ${event.status === 'completed' ? 'text-white' : event.status === 'active' ? 'text-neon-blue' : event.status === 'exception' ? 'text-neon-pink' : 'text-gray-500'}`}>
-                                                     {event.title}
-                                                 </div>
-                                                 <div className="text-xs text-gray-500 leading-snug">{event.desc}</div>
+                    {/* Content List */}
+                    <div className="flex-1 p-8 bg-black/20 overflow-y-auto custom-scrollbar">
+                         <h3 className="text-[12px] font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
+                             <Package size={14} /> 包含商品 ({selectedShipment.items?.length || 0})
+                         </h3>
+                         <div className="grid grid-cols-2 gap-3">
+                             {selectedShipment.items && selectedShipment.items.length > 0 ? (
+                                 selectedShipment.items.map((item, idx) => {
+                                     // Try to find product for image/name
+                                     const p = products.find(prod => prod.id === item.skuId);
+                                     return (
+                                         <div key={idx} className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/5">
+                                             <img src={p?.imageUrl || ''} className="w-12 h-12 rounded-lg object-cover bg-black/50" />
+                                             <div className="min-w-0 flex-1">
+                                                 <div className="text-xs font-bold text-white truncate">{p?.sku || item.skuCode}</div>
+                                                 <div className="text-[10px] text-gray-500 truncate">{p?.name || 'Unknown Product'}</div>
                                              </div>
-                                             <div className="text-right shrink-0">
-                                                 <div className="text-[10px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded border border-white/10">
-                                                     {event.date}
-                                                 </div>
+                                             <div className="text-right">
+                                                 <div className="text-[10px] text-gray-500 uppercase">Qty</div>
+                                                 <div className="text-sm font-bold text-neon-blue">{item.quantity}</div>
                                              </div>
                                          </div>
-                                     </div>
-                                 ))}
-                             </div>
-                        </div>
+                                     );
+                                 })
+                             ) : (
+                                 <div className="col-span-2 text-center text-gray-500 py-8 italic border border-dashed border-white/10 rounded-xl">
+                                     暂无商品明细 (Legacy Data)
+                                 </div>
+                             )}
+                         </div>
                     </div>
                   </>
               ) : (
@@ -731,15 +573,6 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
 };
 
 // Sub-components
-const Node = ({ label, active, icon }: any) => (
-    <div className={`relative z-10 flex flex-col items-center gap-3 transition-all duration-500 ${active ? 'opacity-100' : 'opacity-30 grayscale'}`}>
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 shadow-lg transition-all ${active ? 'bg-black border-neon-blue text-neon-blue shadow-[0_0_10px_rgba(41,217,255,0.4)]' : 'bg-black/50 border-white/10 text-gray-500'}`}>
-            {icon}
-        </div>
-        <div className={`text-[10px] font-bold uppercase tracking-wide ${active ? 'text-white' : 'text-gray-500'}`}>{label}</div>
-    </div>
-);
-
 const StatCard = ({ label, value, icon, statusColor }: any) => (
     <div className="bg-white/5 p-4 rounded-xl border border-white/5 hover:border-white/10 transition-colors">
         <div className="text-[10px] text-gray-500 mb-2 flex items-center gap-1.5 uppercase font-bold">
@@ -748,18 +581,5 @@ const StatCard = ({ label, value, icon, statusColor }: any) => (
         <div className={`text-lg font-bold font-display truncate ${statusColor}`}>{value}</div>
     </div>
 );
-
-const DataPoint = ({ label, value, icon }: any) => (
-    <div className="bg-white/5 p-3 rounded-lg border border-white/5 hover:border-white/10 transition-colors flex justify-between items-center">
-        <div className="text-[10px] text-gray-500 flex items-center gap-1.5">
-            {icon} {label}
-        </div>
-        <div className="text-xs font-bold text-white font-mono">{value}</div>
-    </div>
-);
-
-const FileCheck = ({size}: any) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
-)
 
 export default LogisticsModule;

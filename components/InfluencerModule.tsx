@@ -23,6 +23,9 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState<Partial<Influencer>>({});
 
+  // DnD State
+  const [draggedItem, setDraggedItem] = useState<string | null>(null);
+
   const filteredList = influencers.filter(inf => 
       (filterPlatform === 'All' || inf.platform === filterPlatform) &&
       (inf.name.toLowerCase().includes(searchTerm.toLowerCase()) || inf.handle.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -110,10 +113,28 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
   // KANBAN: Stages
   const stages = ['Contacted', 'Negotiating', 'Sample Sent', 'Content Live', 'Paid'];
 
-  const handleMoveStatus = (inf: Influencer, newStatus: string) => {
-      if (onUpdateInfluencer) {
-          onUpdateInfluencer({ ...inf, status: newStatus as any });
+  // DnD Handlers
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+      setDraggedItem(id);
+      e.dataTransfer.setData("infId", id);
+      e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+      e.preventDefault(); // Necessary to allow dropping
+      e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent, targetStage: string) => {
+      e.preventDefault();
+      const id = e.dataTransfer.getData("infId");
+      if (!id || !onUpdateInfluencer) return;
+
+      const item = influencers.find(i => i.id === id);
+      if (item && item.status !== targetStage) {
+          onUpdateInfluencer({ ...item, status: targetStage as any });
       }
+      setDraggedItem(null);
   };
 
   return (
@@ -201,9 +222,14 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
                   {stages.map(stage => {
                       const stageItems = filteredList.filter(i => i.status === stage);
                       return (
-                          <div key={stage} className="w-[300px] flex flex-col h-full bg-white/5 rounded-xl border border-white/5">
+                          <div 
+                            key={stage} 
+                            className="w-[300px] flex flex-col h-full bg-white/5 rounded-xl border border-white/5 transition-colors"
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, stage)}
+                          >
                               {/* Stage Header */}
-                              <div className="p-4 border-b border-white/5 flex justify-between items-center sticky top-0 bg-white/5 backdrop-blur-md rounded-t-xl z-10">
+                              <div className="p-4 border-b border-white/5 flex justify-between items-center sticky top-0 bg-white/5 backdrop-blur-md rounded-t-xl z-10 pointer-events-none">
                                   <div className="text-sm font-bold text-white flex items-center gap-2">
                                       <div className={`w-2 h-2 rounded-full ${stage === 'Content Live' ? 'bg-neon-green' : 'bg-gray-400'}`}></div>
                                       {stage}
@@ -216,46 +242,33 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
                                   {stageItems.map(inf => (
                                       <div 
                                         key={inf.id} 
-                                        className="bg-black/20 p-3 rounded-lg border border-white/5 hover:border-neon-pink/50 cursor-grab active:cursor-grabbing group relative"
+                                        className={`bg-black/20 p-3 rounded-lg border border-white/5 hover:border-neon-pink/50 cursor-grab active:cursor-grabbing group relative transition-opacity ${draggedItem === inf.id ? 'opacity-50' : 'opacity-100'}`}
                                         draggable
-                                        onDragStart={(e) => {
-                                            e.dataTransfer.setData("infId", inf.id);
-                                        }}
-                                        onDragOver={(e) => e.preventDefault()}
-                                        onDrop={(e) => {
-                                            e.preventDefault();
-                                            // Handle drop in parent container
-                                        }}
+                                        onDragStart={(e) => handleDragStart(e, inf.id)}
+                                        onClick={() => handleOpenEdit(inf)}
                                       >
-                                          <div className="flex items-center gap-3 mb-2">
+                                          <div className="flex items-center gap-3 mb-2 pointer-events-none">
                                               <img src={inf.avatarUrl} className="w-8 h-8 rounded-full border border-white/10" />
                                               <div className="min-w-0">
                                                   <div className="font-bold text-white text-xs truncate">{inf.name}</div>
                                                   <div className="text-[10px] text-gray-500 truncate">{inf.handle}</div>
                                               </div>
                                           </div>
-                                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5">
+                                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5 pointer-events-none">
                                               <div className="text-[10px] text-gray-400 flex items-center gap-1">
                                                   {getPlatformIcon(inf.platform)} {inf.platform}
                                               </div>
-                                              <button onClick={() => handleOpenEdit(inf)} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-white">
+                                              <div className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-white">
                                                   <Edit2 size={12} />
-                                              </button>
-                                          </div>
-                                          
-                                          {/* Simple Dropdown for Moving (Simulation of Drag Drop) */}
-                                          <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                              <select 
-                                                value={inf.status}
-                                                onChange={(e) => handleMoveStatus(inf, e.target.value)}
-                                                className="bg-black text-white text-[10px] border border-white/20 rounded cursor-pointer"
-                                                onClick={(e) => e.stopPropagation()}
-                                              >
-                                                  {stages.map(s => <option key={s} value={s}>{s}</option>)}
-                                              </select>
+                                              </div>
                                           </div>
                                       </div>
                                   ))}
+                                  {stageItems.length === 0 && (
+                                      <div className="h-20 border-2 border-dashed border-white/5 rounded-lg flex items-center justify-center text-[10px] text-gray-600 pointer-events-none">
+                                          空 (Drop Here)
+                                      </div>
+                                  )}
                               </div>
                           </div>
                       )
@@ -349,12 +362,10 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
       </div>
       )}
 
-      {/* Add/Edit Modal (Same as before but ensures reuse) */}
+      {/* Add/Edit Modal */}
       {isModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
               <div className="w-full max-w-2xl glass-card border border-white/20 shadow-2xl overflow-hidden animate-scale-in">
-                  
-                  {/* Modal Header */}
                   <div className="px-8 py-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
                       <h3 className="text-lg font-bold text-white flex items-center gap-2">
                           {editMode ? <Edit2 size={18} /> : <Plus size={18} />}
@@ -364,12 +375,8 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
                           <X size={20} />
                       </button>
                   </div>
-
-                  {/* Modal Body */}
                   <div className="p-8 overflow-y-auto max-h-[70vh] custom-scrollbar space-y-6">
-                      
                       <div className="flex gap-6">
-                          {/* Avatar */}
                           <div className="flex flex-col items-center gap-3">
                               <div className="w-24 h-24 rounded-full bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden relative group">
                                   {form.avatarUrl ? <img src={form.avatarUrl} className="w-full h-full object-cover" alt="" /> : <Users size={30} className="text-gray-600"/>}
@@ -379,8 +386,6 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
                               </div>
                               <div className="text-[10px] text-gray-500 uppercase font-bold">Profile Pic</div>
                           </div>
-
-                          {/* Basic Info */}
                           <div className="flex-1 space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                   <div className="space-y-1">
@@ -428,7 +433,6 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
                           </div>
                       </div>
                       
-                      {/* ... (rest of form fields same as before) ... */}
                       <div className="grid grid-cols-3 gap-4">
                            <div className="space-y-1">
                                 <label className="text-[10px] text-gray-500 font-bold uppercase flex items-center gap-1"><MapPin size={10}/> 地区</label>
@@ -458,7 +462,6 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
                            </div>
                       </div>
 
-                       {/* Performance & Cost */}
                       <div className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-4">
                           <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-white/5 pb-2">合作与绩效数据</h4>
                           <div className="grid grid-cols-2 gap-4">
@@ -484,7 +487,6 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
                       </div>
                   </div>
 
-                  {/* Footer */}
                   <div className="p-6 border-t border-white/10 bg-white/5 flex justify-between items-center">
                       <div>
                           {editMode && (

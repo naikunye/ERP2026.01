@@ -11,14 +11,14 @@ interface CommandPaletteProps {
   onChangeView: (view: string) => void;
   products: Product[];
   onAddNewProduct: () => void;
+  onOpenProduct?: (product: Product) => void;
 }
 
-const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChangeView, products, onAddNewProduct }) => {
+const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChangeView, products, onAddNewProduct, onOpenProduct }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Focus input when opened
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -27,7 +27,6 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChan
     }
   }, [isOpen]);
 
-  // Handle keyboard navigation
   useEffect(() => {
     if (!isOpen) return;
     
@@ -64,15 +63,17 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChan
     { id: 'act-new', label: '新建 SKU 资产', icon: <Plus size={14}/>, action: () => { onChangeView('restock'); setTimeout(onAddNewProduct, 100); }, group: 'Actions' },
   ];
 
-  // Search Products logic
   const productItems = products
     .filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.sku.toLowerCase().includes(query.toLowerCase()))
     .slice(0, 5)
     .map(p => ({
         id: `prod-${p.id}`,
-        label: `查看资产: ${p.sku} - ${p.name}`,
+        label: `编辑资产: ${p.sku} - ${p.name}`,
         icon: <Box size={14}/>,
-        action: () => { onChangeView('restock'); /* Ideally trigger edit modal here too */ },
+        action: () => { 
+            if (onOpenProduct) onOpenProduct(p);
+            // Also switch view context if needed, but keeping modal open is priority
+        },
         group: 'Assets'
     }));
 
@@ -88,7 +89,6 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChan
     <div className="fixed inset-0 z-[999] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-2xl flex flex-col glass-card border-white/20 shadow-2xl overflow-hidden animate-scale-in">
         
-        {/* Search Input */}
         <div className="flex items-center px-4 border-b border-white/10 h-14">
           <Search className="text-gray-400 mr-3" size={20} />
           <input 
@@ -103,7 +103,6 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChan
           </div>
         </div>
 
-        {/* Results List */}
         <div className="max-h-[60vh] overflow-y-auto custom-scrollbar p-2">
            {filteredItems.length === 0 ? (
                <div className="p-8 text-center text-gray-500 text-sm">无匹配结果</div>
@@ -148,13 +147,12 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChan
            )}
         </div>
 
-        {/* Footer */}
         <div className="px-4 py-2 bg-white/5 border-t border-white/5 flex justify-between items-center text-[10px] text-gray-500">
              <div className="flex gap-4">
                  <span className="flex items-center gap-1"><span className="bg-white/10 px-1 rounded">↑</span> <span className="bg-white/10 px-1 rounded">↓</span> 导航</span>
                  <span className="flex items-center gap-1"><span className="bg-white/10 px-1 rounded">↵</span> 确认</span>
              </div>
-             <div>Aero Command Nexus v2.0</div>
+             <div>Aero Command Nexus v2.1</div>
         </div>
 
       </div>

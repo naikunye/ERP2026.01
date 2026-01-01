@@ -14,6 +14,17 @@ export enum Currency {
 
 export type Theme = 'neon' | 'ivory' | 'midnight' | 'sunset' | 'forest' | 'nebula';
 
+// 库存流水记录 (核心实战功能)
+export interface InventoryLog {
+    id: string;
+    productId: string;
+    type: 'Inbound' | 'Outbound' | 'Adjustment';
+    quantity: number; // 正数增加，负数减少
+    reason: string; // e.g., "PO-20231001 采购入库", "SH-001 发货扣减"
+    timestamp: string;
+    operator: string;
+}
+
 // 核心物流数据结构
 export interface LogisticsInfo {
   method: 'Air' | 'Sea' | 'Rail';
@@ -51,9 +62,9 @@ export interface Product {
   sku: string;
   name: string;
   description: string;
-  price: number; // 这里通常指售价，但在 financials 里有更详细的定义
+  price: number;
   currency: Currency;
-  stock: number;
+  stock: number; // 当前可用库存
   category: string;
   status: ProductStatus;
   imageUrl: string;
@@ -81,6 +92,13 @@ export interface Product {
   marketingHook?: string;
 }
 
+// 货件内容详情 (实战级：必须包含数量)
+export interface ShipmentItem {
+    skuId: string;
+    skuCode: string; // Snapshot for display
+    quantity: number;
+}
+
 export interface Shipment {
   id: string;
   trackingNo: string;
@@ -95,8 +113,9 @@ export interface Shipment {
   weight: number; 
   cartons: number;
   riskReason?: string;
-  // 关联的 SKU IDs
-  skuIds: string[]; 
+  
+  // 关联的 SKU 详情 (不再是简单的 ID 数组)
+  items: ShipmentItem[]; 
   
   // Advanced Logistics Fields
   vesselName?: string;
@@ -105,33 +124,33 @@ export interface Shipment {
   sealNo?: string;
   customsStatus?: 'Cleared' | 'Held' | 'Inspection' | 'Pending';
   customsBroker?: string;
-  podName?: string; // Proof of Delivery signature
+  podName?: string; 
   podTime?: string;
-  lastUpdate?: string; // Last event timestamp
+  lastUpdate?: string; 
 }
 
 export interface Influencer {
     id: string;
     name: string;
-    handle: string; // e.g., @username
+    handle: string; 
     platform: 'TikTok' | 'Instagram' | 'YouTube';
     followers: number;
-    engagementRate: number; // %
+    engagementRate: number; 
     region: string;
     category: string;
     status: 'Contacted' | 'Sample Sent' | 'Content Live' | 'Paid' | 'Negotiating';
     avatarUrl: string;
-    cost: number; // Collaboration fee
-    gmv: number; // Generated Sales
+    cost: number; 
+    gmv: number; 
     roi: number;
-    sampleSku: string; // SKU sent
+    sampleSku: string; 
 }
 
 export interface Transaction {
     id: string;
     date: string;
     type: 'Revenue' | 'Expense';
-    category: string; // Changed from strict union to string for flexibility
+    category: string; 
     amount: number;
     description: string;
     status: 'Cleared' | 'Pending';
@@ -143,20 +162,7 @@ export interface Task {
   desc: string;
   priority: 'High' | 'Medium' | 'Low';
   status: 'Todo' | 'In Progress' | 'Review' | 'Done';
-  assignee: string; // Avatar URL or Initials
+  assignee: string; 
   dueDate: string;
   tags: string[];
-}
-
-export interface DashboardStats {
-  totalRevenue: number;
-  activeProducts: number;
-  pendingOrders: number;
-  globalReach: number;
-}
-
-export interface ChartDataPoint {
-  name: string;
-  value: number;
-  sales: number;
 }

@@ -6,62 +6,16 @@ import {
   ArrowRight, Layout
 } from 'lucide-react';
 
-const INITIAL_TASKS: Task[] = [
-  {
-    id: 'T-101',
-    title: '审核 Q4 备货计划',
-    desc: '根据 AI 预测数据，审核主要 SKU 的补货建议量。',
-    priority: 'High',
-    status: 'Todo',
-    assignee: 'https://ui-avatars.com/api/?name=Admin&background=random',
-    dueDate: '2023-11-20',
-    tags: ['Inventory', 'Audit']
-  },
-  {
-    id: 'T-102',
-    title: '联系 Matson 确认船期',
-    desc: '运单 SH-001 出现延误预警，需确认靠港时间。',
-    priority: 'High',
-    status: 'In Progress',
-    assignee: 'https://ui-avatars.com/api/?name=Logistics&background=random',
-    dueDate: 'Today',
-    tags: ['Logistics', 'Urgent']
-  },
-  {
-    id: 'T-103',
-    title: 'TikTok 达人样品寄送',
-    desc: '向 @jessicamania 寄送新款降噪耳机样品。',
-    priority: 'Medium',
-    status: 'In Progress',
-    assignee: 'https://ui-avatars.com/api/?name=Marketing&background=random',
-    dueDate: '2023-11-22',
-    tags: ['Influencer', 'Sample']
-  },
-  {
-    id: 'T-104',
-    title: '月度财务报表归档',
-    desc: '导出 10 月份所有收支明细并发送给财务。',
-    priority: 'Low',
-    status: 'Done',
-    assignee: 'https://ui-avatars.com/api/?name=Finance&background=random',
-    dueDate: '2023-11-15',
-    tags: ['Finance', 'Report']
-  },
-   {
-    id: 'T-105',
-    title: '更新亚马逊 Listing 图片',
-    desc: '替换 AERO-ANC-PRO 的主图为圣诞主题。',
-    priority: 'Medium',
-    status: 'Todo',
-    assignee: 'https://ui-avatars.com/api/?name=Design&background=random',
-    dueDate: '2023-12-01',
-    tags: ['Content', 'Amazon']
-  }
-];
+interface TaskModuleProps {
+    tasks: Task[];
+    onUpdateTasks: (tasks: Task[]) => void;
+}
 
-const TaskModule: React.FC = () => {
-  const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
+const TaskModule: React.FC<TaskModuleProps> = ({ tasks, onUpdateTasks }) => {
   const [filter, setFilter] = useState('All');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDesc, setNewTaskDesc] = useState('');
 
   const getPriorityColor = (p: string) => {
       switch(p) {
@@ -78,11 +32,36 @@ const TaskModule: React.FC = () => {
   ];
 
   const moveTask = (taskId: string, newStatus: any) => {
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+      const updated = tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t);
+      onUpdateTasks(updated);
+  };
+
+  const handleAddTask = () => {
+      if (!newTaskTitle) return;
+      const newTask: Task = {
+          id: `T-${Date.now()}`,
+          title: newTaskTitle,
+          desc: newTaskDesc || '无详细描述',
+          priority: 'Medium',
+          status: 'Todo',
+          assignee: 'https://ui-avatars.com/api/?name=User&background=random',
+          dueDate: new Date().toISOString().split('T')[0],
+          tags: ['General']
+      };
+      onUpdateTasks([newTask, ...tasks]);
+      setIsModalOpen(false);
+      setNewTaskTitle('');
+      setNewTaskDesc('');
+  };
+
+  const handleDeleteTask = (id: string) => {
+      if (window.confirm('确认删除此任务？')) {
+          onUpdateTasks(tasks.filter(t => t.id !== id));
+      }
   };
 
   return (
-    <div className="space-y-6 animate-fade-in w-full pb-20 h-full flex flex-col">
+    <div className="space-y-6 animate-fade-in w-full pb-20 h-full flex flex-col relative">
       
       {/* Header */}
       <div className="flex justify-between items-end border-b border-white/10 pb-6 shrink-0">
@@ -101,18 +80,46 @@ const TaskModule: React.FC = () => {
                       className="h-10 pl-9 pr-4 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:border-neon-yellow outline-none w-48"
                   />
              </div>
-             <button className="h-10 px-4 bg-gradient-neon-yellow text-black rounded-xl font-bold text-xs shadow-glow-yellow hover:scale-105 transition-all flex items-center gap-2">
+             <button 
+                onClick={() => setIsModalOpen(true)}
+                className="h-10 px-4 bg-gradient-neon-yellow text-black rounded-xl font-bold text-xs shadow-glow-yellow hover:scale-105 transition-all flex items-center gap-2"
+             >
                  <Plus size={16} strokeWidth={3} /> 新建任务
              </button>
         </div>
       </div>
+
+      {/* Simple Add Task Modal Overlay */}
+      {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+              <div className="glass-card w-full max-w-md p-6 space-y-4">
+                  <h3 className="text-lg font-bold text-white">创建新任务</h3>
+                  <input 
+                      value={newTaskTitle}
+                      onChange={(e) => setNewTaskTitle(e.target.value)}
+                      placeholder="任务标题..."
+                      className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-yellow outline-none"
+                      autoFocus
+                  />
+                  <textarea 
+                      value={newTaskDesc}
+                      onChange={(e) => setNewTaskDesc(e.target.value)}
+                      placeholder="任务描述..."
+                      className="w-full h-24 bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white focus:border-neon-yellow outline-none resize-none"
+                  />
+                  <div className="flex justify-end gap-2 pt-2">
+                      <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-400 hover:text-white text-xs font-bold">取消</button>
+                      <button onClick={handleAddTask} className="px-4 py-2 bg-neon-yellow text-black rounded-lg text-xs font-bold">确认创建</button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Kanban Board */}
       <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
           <div className="flex gap-6 h-full min-w-full">
               {columns.map(col => {
                   const colTasks = tasks.filter(t => 
-                    (filter === 'All' || true) && // Placeholder filter logic
                     (col.id === 'Done' ? t.status === 'Done' : (col.id === 'In Progress' ? t.status === 'In Progress' || t.status === 'Review' : t.status === 'Todo'))
                   );
 
@@ -134,6 +141,7 @@ const TaskModule: React.FC = () => {
                                   <div 
                                     key={task.id} 
                                     className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/20 hover:bg-white/10 transition-all group relative cursor-pointer"
+                                    onDoubleClick={() => handleDeleteTask(task.id)}
                                   >
                                       {/* Priority & Tags */}
                                       <div className="flex justify-between items-start mb-3">
@@ -147,7 +155,7 @@ const TaskModule: React.FC = () => {
                                                   </span>
                                               ))}
                                           </div>
-                                          {/* Quick Move (Mock) */}
+                                          {/* Quick Move */}
                                           {task.status !== 'Done' && (
                                               <button 
                                                 onClick={(e) => { e.stopPropagation(); moveTask(task.id, task.status === 'Todo' ? 'In Progress' : 'Done'); }}
@@ -176,8 +184,8 @@ const TaskModule: React.FC = () => {
                                   </div>
                               ))}
                               
-                              {/* Add Button */}
-                              <button className="w-full py-3 rounded-xl border border-dashed border-white/10 text-gray-500 text-xs font-bold hover:bg-white/5 hover:text-white hover:border-white/30 transition-all flex items-center justify-center gap-2">
+                              {/* Add Button Placeholder */}
+                              <button onClick={() => setIsModalOpen(true)} className="w-full py-3 rounded-xl border border-dashed border-white/10 text-gray-500 text-xs font-bold hover:bg-white/5 hover:text-white hover:border-white/30 transition-all flex items-center justify-center gap-2">
                                   <Plus size={14} /> 添加卡片
                               </button>
                           </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
 import { 
   TrendingUp, TrendingDown, DollarSign, Wallet, PieChart, 
@@ -25,12 +25,12 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
 
   // Categories Config
   const EXPENSE_CATEGORIES = [
-      { id: 'COGS', label: '采购/货值', icon: <Box size={18}/> },
-      { id: 'Shipping', label: '物流运费', icon: <Truck size={18}/> },
-      { id: 'Marketing', label: '营销广告', icon: <Megaphone size={18}/> },
-      { id: 'Operations', label: '运营杂支', icon: <Settings size={18}/> },
-      { id: 'Salary', label: '人员薪资', icon: <Users size={18}/> },
-      { id: 'Tax', label: '税务合规', icon: <Percent size={18}/> },
+      { id: 'COGS', label: '采购/货值', icon: <Box size={18}/>, color: '#FF2975' },
+      { id: 'Shipping', label: '物流运费', icon: <Truck size={18}/>, color: '#B829FF' },
+      { id: 'Marketing', label: '营销广告', icon: <Megaphone size={18}/>, color: '#29D9FF' },
+      { id: 'Operations', label: '运营杂支', icon: <Settings size={18}/>, color: '#FFD600' },
+      { id: 'Salary', label: '人员薪资', icon: <Users size={18}/>, color: '#00FF9D' },
+      { id: 'Tax', label: '税务合规', icon: <Percent size={18}/>, color: '#FF9500' },
   ];
 
   const REVENUE_CATEGORIES = [
@@ -66,29 +66,70 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
       setTxType('Expense');
   };
 
-  // --- Statistics Calculation ---
-  const totalRevenue = transactions.filter(t => t.type === 'Revenue').reduce((acc, t) => acc + t.amount, 0);
-  const totalExpenses = transactions.filter(t => t.type === 'Expense').reduce((acc, t) => acc + t.amount, 0);
-  const netProfit = totalRevenue - totalExpenses;
-  const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+  // --- Real-time Data Aggregation ---
+  
+  const financials = useMemo(() => {
+      const revenue = transactions.filter(t => t.type === 'Revenue').reduce((acc, t) => acc + t.amount, 0);
+      const expenses = transactions.filter(t => t.type === 'Expense').reduce((acc, t) => acc + t.amount, 0);
+      const net = revenue - expenses;
+      const margin = revenue > 0 ? (net / revenue) * 100 : 0;
+      return { revenue, expenses, net, margin };
+  }, [transactions]);
 
-  // Mock Chart Data (In a real app, aggregation logic would go here)
-  const chartData = [
-      { name: 'Mon', revenue: 4000, expenses: 2400 },
-      { name: 'Tue', revenue: 3000, expenses: 1398 },
-      { name: 'Wed', revenue: 2000, expenses: 5800 },
-      { name: 'Thu', revenue: 2780, expenses: 3908 },
-      { name: 'Fri', revenue: 6890, expenses: 4800 },
-      { name: 'Sat', revenue: 8390, expenses: 3800 },
-      { name: 'Sun', revenue: 9490, expenses: 4300 },
-  ];
+  // Chart 1: Cash Flow Over Time
+  const cashFlowData = useMemo(() => {
+      const grouped = new Map<string, { date: string, revenue: number, expenses: number }>();
+      
+      // Initialize with transactions
+      transactions.forEach(t => {
+          if (!grouped.has(t.date)) {
+              grouped.set(t.date, { date: t.date, revenue: 0, expenses: 0 });
+          }
+          const entry = grouped.get(t.date)!;
+          if (t.type === 'Revenue') entry.revenue += t.amount;
+          else entry.expenses += t.amount;
+      });
 
-  const categoryData = [
-      { name: 'COGS', value: 35, color: '#FF2975' }, 
-      { name: 'Shipping', value: 25, color: '#B829FF' }, 
-      { name: 'Ads', value: 20, color: '#29D9FF' }, 
-      { name: 'Ops', value: 20, color: '#FFD600' }, 
-  ];
+      // Sort by date and format
+      let sorted = Array.from(grouped.values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // If empty, provide a fallback for visual structure
+      if (sorted.length === 0) {
+          const today = new Date().toISOString().split('T')[0];
+          sorted = [{ date: today, revenue: 0, expenses: 0 }];
+      }
+
+      // Format date for X-Axis (e.g. 11/15)
+      return sorted.map(item => ({
+          ...item,
+          name: item.date.slice(5).replace('-', '/')
+      }));
+  }, [transactions]);
+
+  // Chart 2: Expense Category Breakdown
+  const expenseStructure = useMemo(() => {
+      const expenseTxs = transactions.filter(t => t.type === 'Expense');
+      const grouped = new Map<string, number>();
+      let total = 0;
+
+      expenseTxs.forEach(t => {
+          const current = grouped.get(t.category) || 0;
+          grouped.set(t.category, current + t.amount);
+          total += t.amount;
+      });
+
+      const result = Array.from(grouped.entries()).map(([catId, value]) => {
+          const config = EXPENSE_CATEGORIES.find(c => c.id === catId);
+          return {
+              name: config?.label || catId,
+              value: total > 0 ? Math.round((value / total) * 100) : 0,
+              amount: value,
+              color: config?.color || '#666'
+          };
+      }).sort((a, b) => b.value - a.value);
+
+      return result.length > 0 ? result : [{ name: '无支出', value: 100, amount: 0, color: '#333' }];
+  }, [transactions]);
 
   return (
     <div className="space-y-6 animate-fade-in w-full pb-20 relative">
@@ -122,19 +163,13 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
       {isModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
               <div className="w-full max-w-lg glass-card border border-white/20 shadow-2xl overflow-hidden animate-scale-in">
-                  
-                  {/* Modal Header */}
                   <div className="relative px-8 py-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
                       <h3 className="text-xl font-bold text-white">记账 (Bookkeeping)</h3>
                       <button onClick={() => setIsModalOpen(false)} className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-white transition-colors">
                           <X size={20} />
                       </button>
                   </div>
-
-                  {/* Modal Body */}
                   <div className="p-8 space-y-8">
-                      
-                      {/* 1. Type Toggle */}
                       <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10">
                           <button 
                               onClick={() => { setTxType('Expense'); setCategory(''); }}
@@ -149,8 +184,6 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                               收入 (Revenue)
                           </button>
                       </div>
-
-                      {/* 2. Amount Input */}
                       <div className="relative group">
                           <span className={`absolute left-0 top-1/2 -translate-y-1/2 text-3xl font-bold transition-colors ${txType === 'Revenue' ? 'text-neon-green' : 'text-neon-pink'}`}>$</span>
                           <input 
@@ -162,8 +195,6 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                              className="w-full h-16 bg-transparent border-b-2 border-white/10 text-5xl font-display font-bold text-white text-right outline-none focus:border-white/50 placeholder-gray-700"
                           />
                       </div>
-
-                      {/* 3. Category Grid */}
                       <div className="space-y-2">
                           <label className="text-[10px] text-gray-500 font-bold uppercase">选择分类</label>
                           <div className="grid grid-cols-3 gap-3">
@@ -183,8 +214,6 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                               ))}
                           </div>
                       </div>
-
-                      {/* 4. Details (Date, Note, Status) */}
                       <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-1">
                               <label className="text-[10px] text-gray-500 font-bold uppercase flex items-center gap-1"><Calendar size={10}/> 日期</label>
@@ -203,7 +232,6 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                               </div>
                           </div>
                       </div>
-                      
                       <div className="space-y-1">
                            <label className="text-[10px] text-gray-500 font-bold uppercase flex items-center gap-1"><AlignLeft size={10}/> 备注</label>
                            <textarea 
@@ -213,8 +241,6 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                               className="w-full h-20 bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white outline-none resize-none focus:bg-white/10"
                            />
                       </div>
-                      
-                      {/* Submit */}
                       <button 
                           onClick={handleSubmit}
                           disabled={!amount || !category}
@@ -226,7 +252,6 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                       >
                           <Check size={20} strokeWidth={3} /> 确认记账
                       </button>
-
                   </div>
               </div>
           </div>
@@ -234,11 +259,10 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
 
       {/* Top Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
           <div className="glass-card p-6 border-l-4 border-l-neon-blue relative overflow-hidden group">
                <div className="absolute right-0 top-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"><ArrowUpRight size={80} className="text-neon-blue"/></div>
                <div className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">总营收 (Revenue)</div>
-               <div className="text-[32px] font-display font-bold text-white">${totalRevenue.toLocaleString()}</div>
+               <div className="text-[32px] font-display font-bold text-white">${financials.revenue.toLocaleString()}</div>
                <div className="flex items-center gap-2 mt-2 text-xs text-neon-blue">
                    <div className="px-2 py-0.5 bg-neon-blue/10 rounded border border-neon-blue/20 flex items-center gap-1">
                        <TrendingUp size={10} /> +12.5%
@@ -250,7 +274,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
           <div className="glass-card p-6 border-l-4 border-l-neon-pink relative overflow-hidden group">
                <div className="absolute right-0 top-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"><ArrowDownRight size={80} className="text-neon-pink"/></div>
                <div className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">总支出 (Expenses)</div>
-               <div className="text-[32px] font-display font-bold text-white">${totalExpenses.toLocaleString()}</div>
+               <div className="text-[32px] font-display font-bold text-white">${financials.expenses.toLocaleString()}</div>
                <div className="flex items-center gap-2 mt-2 text-xs text-neon-pink">
                    <div className="px-2 py-0.5 bg-neon-pink/10 rounded border border-neon-pink/20 flex items-center gap-1">
                        <TrendingUp size={10} /> +5.2%
@@ -262,10 +286,10 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
           <div className="glass-card p-6 border-l-4 border-l-neon-green relative overflow-hidden group">
                <div className="absolute right-0 top-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"><Wallet size={80} className="text-neon-green"/></div>
                <div className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">净利润 (Net Profit)</div>
-               <div className="text-[32px] font-display font-bold text-neon-green">{netProfit > 0 ? '+' : ''}${netProfit.toLocaleString()}</div>
+               <div className="text-[32px] font-display font-bold text-neon-green">{financials.net > 0 ? '+' : ''}${financials.net.toLocaleString()}</div>
                <div className="flex items-center gap-2 mt-2 text-xs">
-                   <span className={`font-bold ${profitMargin > 20 ? 'text-neon-green' : 'text-yellow-500'}`}>
-                       {profitMargin.toFixed(1)}% 利润率
+                   <span className={`font-bold ${financials.margin > 20 ? 'text-neon-green' : 'text-yellow-500'}`}>
+                       {financials.margin.toFixed(1)}% 利润率
                    </span>
                    <span className="text-gray-500">| 健康</span>
                </div>
@@ -282,7 +306,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
               </h3>
               <div className="flex-1 w-full min-h-0">
                   <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData}>
+                      <AreaChart data={cashFlowData}>
                           <defs>
                               <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
                                   <stop offset="5%" stopColor="#29D9FF" stopOpacity={0.3}/>
@@ -299,8 +323,8 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                             contentStyle={{ backgroundColor: '#111', borderColor: '#333', borderRadius: '8px' }}
                             itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                           />
-                          <Area type="monotone" dataKey="revenue" stroke="#29D9FF" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
-                          <Area type="monotone" dataKey="expenses" stroke="#FF2975" strokeWidth={3} fillOpacity={1} fill="url(#colorExp)" />
+                          <Area type="monotone" dataKey="revenue" stroke="#29D9FF" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" name="收入" />
+                          <Area type="monotone" dataKey="expenses" stroke="#FF2975" strokeWidth={3} fillOpacity={1} fill="url(#colorExp)" name="支出" />
                       </AreaChart>
                   </ResponsiveContainer>
               </div>
@@ -313,27 +337,33 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
               </h3>
               <div className="flex-1 w-full min-h-0 relative">
                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={categoryData} layout="vertical" barSize={20}>
+                        <BarChart data={expenseStructure} layout="vertical" barSize={20}>
                             <XAxis type="number" hide />
-                            <YAxis dataKey="name" type="category" stroke="#9CA3AF" tick={{fill: 'white', fontSize: 11}} width={50} axisLine={false} tickLine={false} />
-                            <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ backgroundColor: '#111', borderColor: '#333' }} />
+                            <YAxis dataKey="name" type="category" stroke="#9CA3AF" tick={{fill: 'white', fontSize: 11}} width={70} axisLine={false} tickLine={false} />
+                            <Tooltip 
+                                cursor={{fill: 'transparent'}} 
+                                contentStyle={{ backgroundColor: '#111', borderColor: '#333' }}
+                                formatter={(value: number, name: string, props: any) => [`$${props.payload.amount} (${value}%)`, name]}
+                            />
                             <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                                {categoryData.map((entry, index) => (
+                                {expenseStructure.map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={entry.color} />
                                 ))}
                             </Bar>
                         </BarChart>
                    </ResponsiveContainer>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                  {categoryData.map(c => (
-                      <div key={c.name} className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full" style={{backgroundColor: c.color}}></div>
-                          <span className="text-gray-400">{c.name}</span>
-                          <span className="text-white font-bold">{c.value}%</span>
-                      </div>
-                  ))}
-              </div>
+              {expenseStructure.length > 0 && (
+                  <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                      {expenseStructure.slice(0, 4).map(c => (
+                          <div key={c.name} className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{backgroundColor: c.color}}></div>
+                              <span className="text-gray-400">{c.name}</span>
+                              <span className="text-white font-bold">{c.value}%</span>
+                          </div>
+                      ))}
+                  </div>
+              )}
           </div>
       </div>
 
@@ -343,7 +373,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                <h3 className="font-bold text-white flex items-center gap-2">
                    <FileText size={18} /> 近期交易流水
                </h3>
-               <button className="text-xs text-neon-blue hover:underline">查看全部</button>
+               <div className="text-xs text-gray-500">显示最近 5 笔交易</div>
           </div>
           <div className="overflow-x-auto">
               <table className="w-full text-left text-sm text-gray-400">
@@ -366,7 +396,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                                       t.type === 'Revenue' ? 'bg-neon-green/10 text-neon-green border-neon-green/20' : 'bg-neon-pink/10 text-neon-pink border-neon-pink/20'
                                   }`}>
-                                      {t.category}
+                                      {activeCategories.find(c => c.id === t.category)?.label || t.category}
                                   </span>
                               </td>
                               <td className="px-6 py-4 text-white">{t.description}</td>

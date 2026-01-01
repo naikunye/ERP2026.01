@@ -11,9 +11,9 @@ import FinanceModule from './components/FinanceModule';
 import TaskModule from './components/TaskModule';
 import CommandPalette from './components/CommandPalette';
 import Copilot from './components/Copilot';
-import { Product, ProductStatus, Currency, Shipment, Influencer, Transaction, Theme } from './types';
+import { Product, ProductStatus, Currency, Shipment, Influencer, Transaction, Theme, InventoryLog, Task } from './types';
 
-// --- HIGH FIDELITY DEMO DATA ---
+// --- HIGH FIDELITY DEMO DATA (Updated for New Structure) ---
 
 const DEMO_PRODUCTS: Product[] = [
   {
@@ -30,24 +30,8 @@ const DEMO_PRODUCTS: Product[] = [
     marketplaces: ['US', 'DE'],
     lastUpdated: new Date().toISOString(),
     supplier: '深圳声学科技有限公司',
-    note: 'Q4 旺季主推款，注意备货节奏',
-    financials: {
-        costOfGoods: 22.5,
-        shippingCost: 3.2,
-        otherCost: 0.5,
-        sellingPrice: 89.99,
-        platformFee: 13.5, // 15%
-        adCost: 12.0
-    },
-    logistics: {
-        method: 'Air',
-        carrier: 'DHL',
-        trackingNo: 'DHL99283711HK',
-        status: 'In Transit',
-        origin: 'Shenzhen',
-        destination: 'US-LAX',
-        eta: '2023-11-20'
-    }
+    financials: { costOfGoods: 22.5, shippingCost: 3.2, otherCost: 0.5, sellingPrice: 89.99, platformFee: 13.5, adCost: 12.0 },
+    logistics: { method: 'Air', carrier: 'DHL', trackingNo: 'DHL99283711HK', status: 'In Transit', origin: 'Shenzhen', destination: 'US-LAX' }
   },
   {
     id: 'DEMO-002',
@@ -63,24 +47,8 @@ const DEMO_PRODUCTS: Product[] = [
     marketplaces: ['US'],
     lastUpdated: new Date().toISOString(),
     supplier: '安吉椅业集团',
-    note: '体积大，海运费上涨影响利润',
-    financials: {
-        costOfGoods: 65.0,
-        shippingCost: 45.0, // Heavy item
-        otherCost: 2.0,
-        sellingPrice: 199.00,
-        platformFee: 29.85,
-        adCost: 25.0
-    },
-    logistics: {
-        method: 'Sea',
-        carrier: 'Matson',
-        trackingNo: 'MSN78291029US',
-        status: 'Customs',
-        origin: 'Ningbo',
-        destination: 'US-LGB',
-        eta: '2023-11-25'
-    }
+    financials: { costOfGoods: 65.0, shippingCost: 45.0, otherCost: 2.0, sellingPrice: 199.00, platformFee: 29.85, adCost: 25.0 },
+    logistics: { method: 'Sea', carrier: 'Matson', trackingNo: 'MSN78291029US', status: 'Customs', origin: 'Ningbo', destination: 'US-LGB' }
   },
   {
     id: 'DEMO-003',
@@ -96,24 +64,8 @@ const DEMO_PRODUCTS: Product[] = [
     marketplaces: ['US', 'JP'],
     lastUpdated: new Date().toISOString(),
     supplier: '中山照明厂',
-    note: '缺货！需紧急补货',
-    financials: {
-        costOfGoods: 8.0,
-        shippingCost: 1.5,
-        otherCost: 0.2,
-        sellingPrice: 39.99,
-        platformFee: 6.0,
-        adCost: 8.0
-    },
-    logistics: {
-        method: 'Air',
-        carrier: 'UPS',
-        trackingNo: '',
-        status: 'Pending',
-        origin: 'Zhongshan',
-        destination: 'US-DAL',
-        eta: ''
-    }
+    financials: { costOfGoods: 8.0, shippingCost: 1.5, otherCost: 0.2, sellingPrice: 39.99, platformFee: 6.0, adCost: 8.0 },
+    logistics: { method: 'Air', carrier: 'UPS', trackingNo: '', status: 'Pending', origin: 'Zhongshan', destination: 'US-DAL' }
   }
 ];
 
@@ -131,8 +83,7 @@ const DEMO_SHIPMENTS: Shipment[] = [
     progress: 65,
     weight: 3500,
     cartons: 120,
-    riskReason: '正常航行',
-    skuIds: ['DEMO-002'],
+    items: [{ skuId: 'DEMO-002', skuCode: 'ERGO-CHAIR-X1', quantity: 120 }], // Updated Structure
     vesselName: 'COSCO GALAXY',
     voyageNo: 'V.049W',
     containerNo: 'MSKU9022831',
@@ -153,31 +104,10 @@ const DEMO_SHIPMENTS: Shipment[] = [
     progress: 85,
     weight: 240,
     cartons: 20,
-    riskReason: '清关查验排队中',
-    skuIds: ['DEMO-001'],
+    items: [{ skuId: 'DEMO-001', skuCode: 'AERO-ANC-PRO', quantity: 500 }],
     customsStatus: 'Inspection',
     customsBroker: 'Flexport Customs',
     lastUpdate: '2023-11-11T14:15:00Z'
-  },
-  {
-    id: 'SH-003',
-    trackingNo: 'UPS1Z9928301',
-    carrier: 'UPS Worldwide',
-    method: 'Air',
-    origin: 'Shanghai, CN',
-    destination: 'New York, US',
-    etd: '2023-10-25',
-    eta: '2023-10-28',
-    status: 'Delivered',
-    progress: 100,
-    weight: 50,
-    cartons: 5,
-    riskReason: '',
-    skuIds: ['DEMO-003'],
-    customsStatus: 'Cleared',
-    podName: 'J. SMITH (Dock)',
-    podTime: '2023-10-28T10:30:00Z',
-    lastUpdate: '2023-10-28T10:30:00Z'
   }
 ];
 
@@ -197,47 +127,25 @@ const DEMO_INFLUENCERS: Influencer[] = [
         gmv: 12400,
         roi: 8.2,
         sampleSku: 'AERO-ANC-PRO'
-    },
-    {
-        id: 'INF-002',
-        name: 'David Home',
-        handle: '@david.living',
-        platform: 'Instagram',
-        followers: 450000,
-        engagementRate: 3.2,
-        region: 'Europe',
-        category: 'Home Decor',
-        status: 'Sample Sent',
-        avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150',
-        cost: 500,
-        gmv: 0,
-        roi: 0,
-        sampleSku: 'LUMI-SMART-BULB'
-    },
-    {
-        id: 'INF-003',
-        name: 'TechUnboxed',
-        handle: 'tech_unboxed_official',
-        platform: 'YouTube',
-        followers: 890000,
-        engagementRate: 8.5,
-        region: 'Global',
-        category: 'Tech Review',
-        status: 'Negotiating',
-        avatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=150&h=150',
-        cost: 3000,
-        gmv: 0,
-        roi: 0,
-        sampleSku: 'N/A'
     }
 ];
 
 const DEMO_TRANSACTIONS: Transaction[] = [
     { id: 'TX-1001', date: '2023-11-15', type: 'Revenue', category: 'Sales', amount: 4500.00, description: 'Amazon US Settlement', status: 'Cleared' },
     { id: 'TX-1002', date: '2023-11-14', type: 'Expense', category: 'Shipping', amount: 1200.00, description: 'DHL Express Payment', status: 'Cleared' },
-    { id: 'TX-1003', date: '2023-11-14', type: 'Expense', category: 'Marketing', amount: 500.00, description: 'Influencer Fee @david.living', status: 'Pending' },
-    { id: 'TX-1004', date: '2023-11-13', type: 'Revenue', category: 'Sales', amount: 2100.00, description: 'Shopify Store Payout', status: 'Cleared' },
-    { id: 'TX-1005', date: '2023-11-12', type: 'Expense', category: 'COGS', amount: 3000.00, description: 'Supplier Payment Batch #4', status: 'Cleared' },
+];
+
+const DEMO_TASKS: Task[] = [
+  {
+    id: 'T-101',
+    title: '审核 Q4 备货计划',
+    desc: '根据 AI 预测数据，审核主要 SKU 的补货建议量。',
+    priority: 'High',
+    status: 'Todo',
+    assignee: 'https://ui-avatars.com/api/?name=Admin&background=random',
+    dueDate: '2023-11-20',
+    tags: ['Inventory', 'Audit']
+  }
 ];
 
 const App: React.FC = () => {
@@ -245,19 +153,14 @@ const App: React.FC = () => {
   const [currentTheme, setCurrentTheme] = useState<Theme>('neon');
   const [isCmdOpen, setIsCmdOpen] = useState(false);
   
-  // --- SAFE INITIALIZATION WRAPPER ---
-  // Fix: Use 'extends unknown' to ensure <T> is not parsed as JSX in some environments
+  // --- Data Loading ---
   const loadSafe = <T extends unknown>(key: string, fallback: T): T => {
     try {
       const saved = localStorage.getItem(key);
       if (!saved) return fallback;
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(fallback) && !Array.isArray(parsed)) throw new Error('Type mismatch: Expected array');
-      return parsed;
+      return JSON.parse(saved);
     } catch (e) {
-      console.warn(`Data corruption detected for key "${key}". Reverting to demo data.`, e);
-      // Clean up corrupt data to prevent white screen loop
-      try { localStorage.removeItem(key); } catch {}
+      console.warn(`Data corruption detected for key "${key}".`, e);
       return fallback;
     }
   };
@@ -266,6 +169,8 @@ const App: React.FC = () => {
   const [shipments, setShipments] = useState<Shipment[]>(() => loadSafe('aero_erp_shipments', DEMO_SHIPMENTS));
   const [influencers, setInfluencers] = useState<Influencer[]>(() => loadSafe('aero_erp_influencers', DEMO_INFLUENCERS));
   const [transactions, setTransactions] = useState<Transaction[]>(() => loadSafe('aero_erp_transactions', DEMO_TRANSACTIONS));
+  const [tasks, setTasks] = useState<Task[]>(() => loadSafe('aero_erp_tasks', DEMO_TASKS));
+  const [inventoryLogs, setInventoryLogs] = useState<InventoryLog[]>(() => loadSafe('aero_erp_inventory_logs', []));
 
   const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined);
   const [editingSKU, setEditingSKU] = useState<Product | null>(null);
@@ -275,6 +180,8 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('aero_erp_shipments', JSON.stringify(shipments)); }, [shipments]);
   useEffect(() => { localStorage.setItem('aero_erp_influencers', JSON.stringify(influencers)); }, [influencers]);
   useEffect(() => { localStorage.setItem('aero_erp_transactions', JSON.stringify(transactions)); }, [transactions]);
+  useEffect(() => { localStorage.setItem('aero_erp_tasks', JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { localStorage.setItem('aero_erp_inventory_logs', JSON.stringify(inventoryLogs)); }, [inventoryLogs]);
 
   // Theme Side Effect
   useEffect(() => {
@@ -293,9 +200,80 @@ const App: React.FC = () => {
     return () => document.removeEventListener('keydown', down);
   }, []);
 
+  // --- CORE BUSINESS LOGIC CONTROLLER ---
+
+  const handleInventoryTransaction = (
+      productId: string, 
+      delta: number, 
+      type: 'Inbound' | 'Outbound' | 'Adjustment', 
+      reason: string,
+      operator: string = 'Admin'
+  ) => {
+      setProducts(prev => prev.map(p => {
+          if (p.id !== productId) return p;
+          const newStock = Math.max(0, p.stock + delta); // Prevent negative stock
+          return { ...p, stock: newStock };
+      }));
+
+      const log: InventoryLog = {
+          id: `LOG-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
+          productId,
+          type,
+          quantity: delta,
+          reason,
+          timestamp: new Date().toISOString(),
+          operator
+      };
+      setInventoryLogs(prev => [log, ...prev]);
+  };
+
+  const handleAddShipment = (newShipment: Shipment) => {
+      setShipments(prev => [newShipment, ...prev]);
+
+      // Logic: If it's a new outbound shipment, deduct stock
+      newShipment.items.forEach(item => {
+          handleInventoryTransaction(
+              item.skuId, 
+              -item.quantity, 
+              'Outbound', 
+              `发货出库: ${newShipment.trackingNo} (${newShipment.method})`
+          );
+      });
+
+      // Logic: Auto-generate Finance Entry (Estimate)
+      const rate = newShipment.method === 'Air' ? 5.5 : 1.5;
+      const estimatedCost = newShipment.weight * rate;
+      
+      if (estimatedCost > 0) {
+          const expense: Transaction = {
+              id: `TX-AUTO-${Date.now()}`,
+              date: new Date().toISOString().split('T')[0],
+              type: 'Expense',
+              category: 'Shipping',
+              amount: estimatedCost,
+              description: `[系统自动] 运费预估: ${newShipment.trackingNo}`,
+              status: 'Pending'
+          };
+          setTransactions(prev => [expense, ...prev]);
+      }
+  };
+
+  const handleUpdateShipment = (updatedShipment: Shipment) => {
+      setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
+  };
+
+  // --- CRUD Handlers ---
+
   const handleSaveProduct = (savedProduct: Product) => {
     setProducts(prev => {
       const exists = prev.find(p => p.id === savedProduct.id);
+      if (exists && exists.stock !== savedProduct.stock) {
+          const delta = savedProduct.stock - exists.stock;
+          handleInventoryTransaction(savedProduct.id, delta, 'Adjustment', '手动修正 (Product Editor)');
+      } else if (!exists && savedProduct.stock > 0) {
+          handleInventoryTransaction(savedProduct.id, savedProduct.stock, 'Inbound', '初始库存 (Initial)');
+      }
+
       if (exists) {
         return prev.map(p => p.id === savedProduct.id ? savedProduct : p);
       }
@@ -307,41 +285,16 @@ const App: React.FC = () => {
     if (editingSKU) {
        setProducts(prev => prev.map(p => {
            if (p.id !== editingSKU.id) return p;
-           
-           // Correctly reconstruct the financials object using existing values or defaults
-           // to prevent undefined errors in other modules
-           const existingFin = p.financials || { costOfGoods: 0, shippingCost: 0, otherCost: 0, sellingPrice: 0, platformFee: 0, adCost: 0 };
-           const existingLog = p.logistics || { method: 'Sea', carrier: '', trackingNo: '', status: 'Pending', origin: '', destination: '' };
-
-           // Calculate derived costs if needed, or trust the form
-           const shippingCost = (updatedData.shippingRate || 0) * (updatedData.unitWeight || 0);
-           const platformFee = (updatedData.sellingPrice || 0) * (updatedData.tiktokCommission || 0) / 100;
-           const otherCost = (updatedData.fulfillmentFee || 0);
-
            return {
                ...p,
                note: updatedData.note,
+               imageUrl: updatedData.imageUrl || p.imageUrl, 
                supplier: updatedData.supplierName,
-               // Deep merge financials
                financials: {
-                   ...existingFin,
-                   costOfGoods: updatedData.unitCost || existingFin.costOfGoods,
-                   shippingCost: shippingCost || existingFin.shippingCost,
-                   otherCost: otherCost || existingFin.otherCost,
-                   sellingPrice: updatedData.sellingPrice || existingFin.sellingPrice,
-                   platformFee: platformFee || existingFin.platformFee,
-                   adCost: updatedData.adCostPerUnit || existingFin.adCost
+                   ...p.financials!,
+                   costOfGoods: updatedData.unitCost,
+                   sellingPrice: updatedData.sellingPrice,
                },
-               // Deep merge logistics
-               logistics: {
-                   ...existingLog,
-                   carrier: updatedData.carrier || existingLog.carrier,
-                   trackingNo: updatedData.trackingNo || existingLog.trackingNo,
-                   method: updatedData.transportMethod || existingLog.method,
-                   // origin: 'China', // Keep existing origin
-                   destination: updatedData.destinationWarehouse || existingLog.destination,
-                   // etd: updatedData.restockDate // Optional
-               }
            } as Product;
        }));
     }
@@ -380,23 +333,27 @@ const App: React.FC = () => {
       });
   };
   
-  // Handlers for modules
-  const handleAddShipment = (newShipment: Shipment) => setShipments(prev => [newShipment, ...prev]);
-  const handleUpdateShipment = (updatedShipment: Shipment) => setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
   const handleAddInfluencer = (newInfluencer: Influencer) => setInfluencers(prev => [newInfluencer, ...prev]);
   const handleUpdateInfluencer = (updatedInfluencer: Influencer) => setInfluencers(prev => prev.map(inf => inf.id === updatedInfluencer.id ? updatedInfluencer : inf));
   const handleDeleteInfluencer = (id: string) => { if(window.confirm('确定删除?')) setInfluencers(prev => prev.filter(inf => inf.id !== id)); }
   const handleAddTransaction = (newTx: Transaction) => setTransactions(prev => [newTx, ...prev]);
+  
+  // Task Handlers
+  const handleUpdateTasks = (updatedTasks: Task[]) => setTasks(updatedTasks);
+
+  // Command Palette Handler
+  const handleOpenProduct = (product: Product) => {
+      setEditingProduct(product);
+  };
 
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard products={products} shipments={shipments} transactions={transactions} influencers={influencers} onChangeView={setActiveView} />;
-      case 'tasks': return <TaskModule />;
+      case 'tasks': return <TaskModule tasks={tasks} onUpdateTasks={handleUpdateTasks} />;
       case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct(null)} />;
       case 'orders': return <LogisticsModule shipments={shipments} products={products} onAddShipment={handleAddShipment} onUpdateShipment={handleUpdateShipment} />;
       case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} />;
       case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
-      // Replaced 'datasync' with 'settings'
       case 'settings': return <SettingsModule currentTheme={currentTheme} onThemeChange={setCurrentTheme} currentData={products} onImportData={handleImportData} />;
       default: return null;
     }
@@ -412,6 +369,7 @@ const App: React.FC = () => {
         onChangeView={setActiveView}
         products={products}
         onAddNewProduct={() => setEditingProduct(null)}
+        onOpenProduct={handleOpenProduct}
       />
 
       {/* 2. Global AI Copilot */}
@@ -423,7 +381,6 @@ const App: React.FC = () => {
                 shipments: shipments.length, 
                 activeInfluencers: influencers.filter(i=>i.status==='Content Live').length 
             },
-            // Enhanced Context: Pass currently selected/edited item
             activeContextItem: editingSKU ? { type: 'SKU_Detail', ...editingSKU } : (editingProduct ? { type: 'Product_Edit', ...editingProduct } : null)
          }} 
       />
@@ -447,6 +404,7 @@ const App: React.FC = () => {
           onClose={() => setEditingProduct(undefined)}
           onSave={handleSaveProduct}
           initialProduct={editingProduct}
+          inventoryLogs={inventoryLogs.filter(l => l.productId === editingProduct?.id)}
         />
       )}
 

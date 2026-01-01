@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Product, ProductStatus, Currency, ProductVariant } from '../types';
+import { Product, ProductStatus, Currency, ProductVariant, InventoryLog } from '../types';
 import { 
   Sparkles, X, Globe, Check, Loader2, Image as ImageIcon, Activity, Layers, Cpu, Scan, 
-  Terminal, Tag, Box, Plus, Trash2, DollarSign, Calculator, Wand2, TrendingUp, Search
+  Terminal, Tag, Box, Plus, Trash2, DollarSign, Calculator, Wand2, TrendingUp, Search, History
 } from 'lucide-react';
 import { 
   generateProductDescription, 
@@ -17,10 +17,11 @@ interface ProductEditorProps {
   onClose: () => void;
   onSave: (product: Product) => void;
   initialProduct?: Product | null;
+  inventoryLogs?: InventoryLog[]; // New Prop
 }
 
-const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialProduct }) => {
-  const [activeTab, setActiveTab] = useState<'details' | 'variants' | 'financials' | 'intelligence'>('details');
+const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialProduct, inventoryLogs = [] }) => {
+  const [activeTab, setActiveTab] = useState<'details' | 'variants' | 'financials' | 'intelligence' | 'logs'>('details');
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<{ score: number; reasoning: string } | null>(null);
   
@@ -41,7 +42,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
     }
   );
 
-  // Variant Generation State
+  // ... (Keep existing variant & AI logic) ...
   const [variantColor, setVariantColor] = useState('');
   const [variantSize, setVariantSize] = useState('');
 
@@ -70,7 +71,6 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
       }));
   };
 
-  // --- AI Actions ---
   const handleAiGenerate = async () => {
     if (!formData.name) return;
     setIsLoadingAi(true);
@@ -103,7 +103,6 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
       setIsLoadingAi(false);
   }
 
-  // --- Variant Logic ---
   const handleAddVariant = () => {
       if(!variantColor || !variantSize) return;
       const newVariant: ProductVariant = {
@@ -135,17 +134,14 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
     onSave({
       id: initialProduct?.id || Math.random().toString(36).substr(2, 9),
       lastUpdated: new Date().toISOString(),
-      // Fallback image if none selected
       imageUrl: formData.imageUrl || `https://picsum.photos/400/400?random=${Math.random()}`,
       ...formData as Product
     });
     onClose();
   };
 
-  // --- Profit Calculation ---
   const profitMetrics = useMemo(() => {
       const f = formData.financials || { costOfGoods: 0, shippingCost: 0, otherCost: 0, sellingPrice: 0, platformFee: 0, adCost: 0 };
-      // Fallback: If financials aren't set, use base price and estimated costs
       const sellingPrice = f.sellingPrice || formData.price || 0;
       const cost = f.costOfGoods + f.shippingCost + f.otherCost + f.platformFee + f.adCost;
       const profit = sellingPrice - cost;
@@ -187,7 +183,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                     { id: 'details', label: '基础信息', icon: <Layers size={14} /> },
                     { id: 'variants', label: 'SKU 矩阵', icon: <Box size={14} /> },
                     { id: 'financials', label: '利润实验室', icon: <Calculator size={14} /> },
-                    { id: 'intelligence', label: 'AI 营销', icon: <Cpu size={14} /> }
+                    { id: 'intelligence', label: 'AI 营销', icon: <Cpu size={14} /> },
+                    { id: 'logs', label: '库存流水', icon: <History size={14} /> }
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -218,7 +215,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                 
                 {activeTab === 'details' && (
                     <div className="grid grid-cols-12 gap-8 animate-fade-in h-full">
-                        {/* Left: Image & Upload (Enhanced) */}
+                        {/* Left: Image & Upload */}
                         <div className="col-span-12 md:col-span-4 flex flex-col gap-6">
                             <div className="aspect-square w-full">
                                 <ImageUpload 
@@ -265,13 +262,14 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">Category</label>
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">库存 (Manual Override)</label>
                                     <input
-                                        name="category"
-                                        value={formData.category}
+                                        type="number"
+                                        name="stock"
+                                        value={formData.stock}
                                         onChange={handleInputChange}
                                         className="w-full h-12 px-4 input-glass rounded-xl text-sm"
-                                        placeholder="e.g. Electronics"
+                                        placeholder="0"
                                     />
                                 </div>
                             </div>
@@ -295,9 +293,9 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                     </div>
                 )}
 
+                {/* ... (Variants and Financials and Intelligence tabs same as before) ... */}
                 {activeTab === 'variants' && (
                     <div className="space-y-8 animate-fade-in">
-                        {/* Variant Generator */}
                         <div className="glass-card p-6 border-white/5 bg-gradient-to-r from-neon-purple/5 to-transparent">
                             <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                                 <Box size={16} className="text-neon-purple" /> 快速生成变体 (Variant Generator)
@@ -327,8 +325,6 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                 </button>
                             </div>
                         </div>
-
-                        {/* Variants Table */}
                         <div className="rounded-xl border border-white/10 overflow-hidden">
                             <table className="w-full text-left">
                                 <thead className="bg-white/5 text-[10px] font-bold text-gray-500 uppercase">
@@ -369,10 +365,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
 
                 {activeTab === 'financials' && (
                     <div className="grid grid-cols-12 gap-8 animate-fade-in">
-                        {/* Interactive Calculator */}
                         <div className="col-span-12 md:col-span-7 space-y-6">
                             <h3 className="text-lg font-bold text-white mb-6">成本结构录入</h3>
-                            
                             <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-1">
                                     <label className="text-[10px] text-gray-500 font-bold uppercase">最终售价 ($)</label>
@@ -393,7 +387,6 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                     />
                                 </div>
                             </div>
-
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-[10px] text-gray-500 font-bold uppercase">头程运费</label>
@@ -409,12 +402,9 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                 </div>
                             </div>
                         </div>
-
-                        {/* Visualization */}
                         <div className="col-span-12 md:col-span-5">
                             <div className="glass-card p-6 border-neon-green/30 bg-gradient-to-b from-neon-green/5 to-transparent h-full flex flex-col items-center justify-center relative">
                                 <h4 className="text-xs font-bold text-neon-green uppercase tracking-widest absolute top-6 left-6">实时利润预测</h4>
-                                
                                 <div className="w-48 h-48 my-4 relative">
                                      <ResponsiveContainer width="100%" height="100%">
                                         <PieChart>
@@ -431,7 +421,6 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                          <span className="text-[10px] text-gray-400">Margin</span>
                                      </div>
                                 </div>
-
                                 <div className="w-full space-y-2 mt-4">
                                     <div className="flex justify-between text-sm border-b border-white/5 pb-2">
                                         <span className="text-gray-400">净利润 (Net Profit)</span>
@@ -451,7 +440,6 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
 
                 {activeTab === 'intelligence' && (
                     <div className="space-y-8 animate-fade-in">
-                        {/* 1. SEO Title Optimizer */}
                         <section className="glass-card p-6 border-white/10">
                              <div className="flex justify-between items-start mb-4">
                                  <div>
@@ -466,8 +454,6 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                  {formData.seoTitle || "点击优化按钮生成..."}
                              </div>
                         </section>
-
-                        {/* 2. Keyword Generator */}
                         <section className="glass-card p-6 border-white/10">
                              <div className="flex justify-between items-start mb-4">
                                  <div>
@@ -490,8 +476,6 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                  )}
                              </div>
                         </section>
-
-                         {/* 3. Market Fit Analysis */}
                          <section className="glass-card p-6 border-white/10">
                              <div className="flex justify-between items-start mb-4">
                                  <div>
@@ -510,6 +494,60 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                 </div>
                              )}
                         </section>
+                    </div>
+                )}
+
+                {/* NEW TAB: INVENTORY LOGS */}
+                {activeTab === 'logs' && (
+                    <div className="animate-fade-in space-y-4">
+                        <div className="glass-card p-0 overflow-hidden">
+                            <table className="w-full text-left">
+                                <thead className="bg-white/5 text-[10px] font-bold text-gray-500 uppercase">
+                                    <tr>
+                                        <th className="px-6 py-4">时间 (Time)</th>
+                                        <th className="px-6 py-4">类型 (Type)</th>
+                                        <th className="px-6 py-4">变动数量 (Qty)</th>
+                                        <th className="px-6 py-4">变动原因 (Reason)</th>
+                                        <th className="px-6 py-4">操作人</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {inventoryLogs && inventoryLogs.length > 0 ? (
+                                        inventoryLogs.map(log => (
+                                            <tr key={log.id} className="hover:bg-white/5 transition-colors">
+                                                <td className="px-6 py-4 text-xs font-mono text-gray-400">
+                                                    {new Date(log.timestamp).toLocaleString()}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                                        log.type === 'Inbound' ? 'text-neon-green border-neon-green/30 bg-neon-green/10' :
+                                                        log.type === 'Outbound' ? 'text-neon-pink border-neon-pink/30 bg-neon-pink/10' :
+                                                        'text-neon-blue border-neon-blue/30 bg-neon-blue/10'
+                                                    }`}>
+                                                        {log.type === 'Inbound' ? '入库' : log.type === 'Outbound' ? '出库' : '调整'}
+                                                    </span>
+                                                </td>
+                                                <td className={`px-6 py-4 font-bold font-mono text-sm ${log.quantity > 0 ? 'text-neon-green' : 'text-neon-pink'}`}>
+                                                    {log.quantity > 0 ? '+' : ''}{log.quantity}
+                                                </td>
+                                                <td className="px-6 py-4 text-xs text-white">
+                                                    {log.reason}
+                                                </td>
+                                                <td className="px-6 py-4 text-xs text-gray-500">
+                                                    {log.operator}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={5} className="px-6 py-12 text-center text-gray-500 text-xs italic">
+                                                暂无库存变动记录
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
 
