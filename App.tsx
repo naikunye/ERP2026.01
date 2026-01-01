@@ -396,6 +396,12 @@ const App: React.FC = () => {
       const existingShipment = shipments.find(s => s.trackingNo === trackingNo);
 
       if (existingShipment) {
+          // Check if shipment is closed
+          if (existingShipment.status === 'Delivered' || existingShipment.status === 'Exception') {
+              addNotification('error', '同步被拒绝', `运单 ${trackingNo} 已${existingShipment.status === 'Delivered' ? '送达' : '异常'}，无法追加货物。`);
+              return;
+          }
+
           const skuExists = existingShipment.items.find(i => i.skuId === product.id);
           if (skuExists) {
               addNotification('warning', '重复添加', `SKU ${product.sku} 已存在于运单 ${trackingNo} 中`);

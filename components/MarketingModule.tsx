@@ -157,6 +157,25 @@ const MarketingModule: React.FC = () => {
         setSavedDrafts(prev => prev.filter(d => d.id !== id));
     };
 
+    // --- Simple Markdown Formatter ---
+    const formatContent = (text: string) => {
+        if (!text) return null;
+        return text.split('\n').map((line, index) => {
+            // Replace **bold** with <strong>bold</strong>
+            const parts = line.split(/(\*\*.*?\*\*)/g);
+            return (
+                <div key={index} className="min-h-[1.2em]">
+                    {parts.map((part, i) => {
+                        if (part.startsWith('**') && part.endsWith('**')) {
+                            return <strong key={i} className="text-neon-blue">{part.slice(2, -2)}</strong>;
+                        }
+                        return part;
+                    })}
+                </div>
+            );
+        });
+    };
+
     return (
         <div className="space-y-6 animate-fade-in w-full pb-20 h-full flex flex-col">
             
@@ -293,7 +312,7 @@ const MarketingModule: React.FC = () => {
                                                 </button>
                                             </div>
                                             <div className="text-xs text-gray-300 font-mono bg-black/30 p-3 rounded-lg max-h-32 overflow-hidden relative">
-                                                {draft.content.slice(0, 200)}...
+                                                {formatContent(draft.content)}
                                                 <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-black/50 to-transparent"></div>
                                             </div>
                                             <div className="mt-3 flex justify-end">
@@ -339,7 +358,7 @@ const MarketingModule: React.FC = () => {
                                 {generatedContent ? (
                                     <div className="prose prose-invert max-w-none animate-fade-in">
                                         <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-200 font-mono">
-                                            {generatedContent}
+                                            {formatContent(generatedContent)}
                                         </div>
                                     </div>
                                 ) : (

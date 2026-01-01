@@ -1,11 +1,18 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Helper to safely get the AI client only when needed.
-// This prevents the app from crashing on startup if 'process' is not defined in the browser environment.
 const getAiClient = () => {
-  // Safety check: ensure process is defined before accessing it to avoid ReferenceError
   const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
   return new GoogleGenAI({ apiKey });
+};
+
+// --- HELPER: Strip Markdown Code Blocks from JSON ---
+const cleanJson = (text: string): string => {
+    if (!text) return "{}";
+    // Remove ```json and ``` markers
+    let clean = text.replace(/```json/g, '').replace(/```/g, '');
+    // Trim whitespace
+    return clean.trim();
 };
 
 export const generateProductDescription = async (productName: string, features: string, tone: string = 'Professional'): Promise<string> => {
@@ -77,7 +84,7 @@ export const generateSeoKeywords = async (productName: string, description: stri
         
         const jsonText = response.text;
         if (!jsonText) return [];
-        const data = JSON.parse(jsonText);
+        const data = JSON.parse(cleanJson(jsonText)); // Sanitized
         return data.keywords || [];
     } catch (error) {
         console.error("Keyword Gen Error", error);
@@ -124,7 +131,7 @@ export const analyzeMarketFit = async (productName: string, price: number): Prom
         const jsonText = response.text;
         if (!jsonText) return { score: 0, reasoning: "无数据返回" };
         
-        return JSON.parse(jsonText);
+        return JSON.parse(cleanJson(jsonText)); // Sanitized
     } catch (error) {
         console.error("Analysis Error", error);
         return { score: 50, reasoning: "AI 分析暂不可用。" };
@@ -164,7 +171,7 @@ export const generateRestockInsight = async (productName: string, currentStock: 
         const jsonText = response.text;
         if (!jsonText) return { suggestedAmount: 0, reason: "分析失败", riskLevel: "Unknown" };
         
-        return JSON.parse(jsonText);
+        return JSON.parse(cleanJson(jsonText)); // Sanitized
     } catch (error) {
         console.error("Restock Analysis Error", error);
         return { suggestedAmount: 0, reason: "AI 不可用", riskLevel: "Unknown" };
