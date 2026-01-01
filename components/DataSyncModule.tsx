@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
-import { Product } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
-  Wifi, Activity, FileText, CheckCircle2, AlertCircle, Loader2, Globe, Lock
+  Wifi, Activity, FileText, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -15,6 +15,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   const [serverUrl, setServerUrl] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [wsMessageCount, setWsMessageCount] = useState(0);
 
   const [importDragActive, setImportDragActive] = useState(false);
   const [importStatus, setImportStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
@@ -22,9 +23,63 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // REAL Logic: Attempt to connect to the provided URL
+  // Clean up socket on unmount
+  useEffect(() => {
+      return () => {
+          if (socket) socket.close();
+      };
+  }, []);
+
+  // --- 1. CRITICAL: DATA SANITIZATION TO PREVENT CRASHES ---
+  // This ensures that even if the JSON is missing fields, the app won't crash (white screen).
+  const sanitizeProduct = (raw: any): Product => {
+      return {
+          id: raw.id || crypto.randomUUID(),
+          sku: raw.sku || 'UNKNOWN-SKU',
+          name: raw.name || '未命名商品',
+          description: raw.description || '',
+          price: Number(raw.price) || 0,
+          currency: raw.currency || Currency.USD,
+          stock: Number(raw.stock) || 0,
+          category: raw.category || 'Uncategorized',
+          status: raw.status || ProductStatus.Draft,
+          imageUrl: raw.imageUrl || '',
+          marketplaces: Array.isArray(raw.marketplaces) ? raw.marketplaces : [],
+          lastUpdated: raw.lastUpdated || new Date().toISOString(),
+          supplier: raw.supplier || '',
+          note: raw.note || '',
+          inboundId: raw.inboundId || '',
+          dailySales: Number(raw.dailySales) || 0,
+          
+          // CRITICAL: Ensure nested objects exist to prevent "Cannot read properties of undefined"
+          financials: {
+              costOfGoods: Number(raw.financials?.costOfGoods) || 0,
+              shippingCost: Number(raw.financials?.shippingCost) || 0,
+              otherCost: Number(raw.financials?.otherCost) || 0,
+              sellingPrice: Number(raw.financials?.sellingPrice) || Number(raw.price) || 0,
+              platformFee: Number(raw.financials?.platformFee) || 0,
+              adCost: Number(raw.financials?.adCost) || 0,
+          },
+          logistics: {
+              method: raw.logistics?.method || 'Air',
+              carrier: raw.logistics?.carrier || '',
+              trackingNo: raw.logistics?.trackingNo || '',
+              status: raw.logistics?.status || 'Pending',
+              origin: raw.logistics?.origin || '',
+              destination: raw.logistics?.destination || '',
+              etd: raw.logistics?.etd || '',
+              eta: raw.logistics?.eta || ''
+          }
+      };
+  };
+
+  // --- 2. WebSocket Logic (Fixed) ---
   const handleConnect = () => {
-      if (!serverUrl) return;
+      if (!serverUrl) {
+          setImportStatus('error');
+          setImportMessage('请输入有效的服务器地址 (wss://...)');
+          return;
+      }
 
       setConnectionStatus('connecting');
       try {
@@ -33,9 +88,30 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           ws.onopen = () => {
               setConnectionStatus('connected');
               setSocket(ws);
+              console.log("WebSocket Connected");
+              // Optional: Send auth if needed
+              // ws.send(JSON.stringify({ type: 'AUTH', key: '...' }));
           };
 
-          ws.onerror = () => {
+          ws.onmessage = (event) => {
+              setWsMessageCount(prev => prev + 1);
+              try {
+                  const payload = JSON.parse(event.data);
+                  // Assuming server sends { type: 'SYNC_PRODUCTS', data: [...] } or just raw array
+                  const rawData = Array.isArray(payload) ? payload : (payload.data || payload.products);
+                  
+                  if (Array.isArray(rawData)) {
+                      const cleanData = rawData.map(sanitizeProduct);
+                      onImportData(cleanData);
+                      console.log(`Synced ${cleanData.length} items from server`);
+                  }
+              } catch (e) {
+                  console.warn("Received non-JSON message from server", event.data);
+              }
+          };
+
+          ws.onerror = (e) => {
+              console.error("WebSocket Error:", e);
               setConnectionStatus('error');
           };
 
@@ -56,7 +132,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       }
   };
 
-  // Handle Export
+  // --- 3. Local File Import Logic ---
   const handleExport = () => {
     const dataStr = JSON.stringify(currentData, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -69,12 +145,10 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
     document.body.removeChild(link);
   };
 
-  // Handle Import (File Input)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       processFile(e.target.files[0]);
     }
-    // Reset value to allow selecting the same file again if user fixes it
     e.target.value = '';
   };
 
@@ -92,36 +166,16 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
     }
   };
 
-  const handleZoneClick = () => {
-      if (fileInputRef.current) {
-          fileInputRef.current.click();
-      }
-  };
-
-  // Helper to check if an object looks like a Product
-  const isValidProduct = (item: any): boolean => {
-      return (
-          typeof item === 'object' && 
-          item !== null && 
-          (typeof item.id === 'string' || typeof item.id === 'number') &&
-          typeof item.name === 'string'
-          // We can add more strict checks if needed, but this prevents "complete garbage" or empty objects
-      );
-  };
-
   const processFile = (file: File) => {
-    // Relaxed check: Check extension mostly
-    const isJsonExt = file.name.toLowerCase().endsWith('.json');
-    // const isJsonType = file.type === "application/json"; 
-
-    if (!isJsonExt) {
+    // Basic validation
+    if (!file.name.toLowerCase().endsWith('.json')) {
       setImportStatus('error');
-      setImportMessage(`格式不支持：请上传 .json 后缀的文件`);
+      setImportMessage(`格式不支持：必须是 .json 文件`);
       return;
     }
 
     setImportStatus('processing');
-    setImportMessage('正在解析数据结构...');
+    setImportMessage('正在解析并修复数据结构...');
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -130,44 +184,33 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
         if (!content) throw new Error("File is empty");
 
         const json = JSON.parse(content);
-        let productsToImport: Product[] = [];
+        let productsToImport: any[] = [];
         
         // Flexible parsing strategy
         if (Array.isArray(json)) {
-            productsToImport = json as Product[];
+            productsToImport = json;
         } else if (typeof json === 'object' && json !== null) {
-            // Support importing { products: [...] } or single object
             if ('products' in json && Array.isArray((json as any).products)) {
                 productsToImport = (json as any).products;
-            } else if ('id' in json) {
-                productsToImport = [json as Product];
             } else {
-                // Fallback: try to find any array property that looks like products
+                // Try to find any array
                 const values = Object.values(json);
-                const potentialArray = values.find(v => Array.isArray(v) && v.length > 0 && isValidProduct(v[0]));
-                if (potentialArray) {
-                    productsToImport = potentialArray as Product[];
-                }
+                const potentialArray = values.find(v => Array.isArray(v));
+                if (potentialArray) productsToImport = potentialArray as any[];
             }
         }
 
-        // --- CRITICAL SAFETY CHECK ---
-        // Filter out items that don't look like products to prevent App crash
-        const validProducts = productsToImport.filter(isValidProduct);
-
-        if (validProducts.length === 0) {
-            throw new Error("JSON 中未找到有效的产品数据 (No valid products found)");
+        if (productsToImport.length === 0) {
+            throw new Error("文件内未找到数组数据");
         }
 
-        if (validProducts.length < productsToImport.length) {
-            console.warn(`Filtered out ${productsToImport.length - validProducts.length} invalid items.`);
-        }
+        // --- APPLY SANITIZATION ---
+        const validProducts = productsToImport.map(sanitizeProduct);
 
         onImportData(validProducts);
         setImportStatus('success');
-        setImportMessage(`成功导入 ${validProducts.length} 条数据`);
+        setImportMessage(`成功恢复 ${validProducts.length} 条数据 (已自动修复缺失字段)`);
         
-        // Auto reset to idle state so user can import again easily
         setTimeout(() => {
             setImportStatus('idle');
             setImportMessage('');
@@ -176,13 +219,13 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       } catch (err) {
         console.error("Import Error:", err);
         setImportStatus('error');
-        setImportMessage('文件解析失败：格式不正确或数据为空');
+        setImportMessage('文件解析失败：JSON 语法错误');
       }
     };
     
     reader.onerror = () => {
         setImportStatus('error');
-        setImportMessage('读取文件发生系统错误');
+        setImportMessage('读取文件失败');
     };
 
     reader.readAsText(file);
@@ -208,21 +251,21 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                   
                   <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
                       <Server className="text-neon-blue" size={20} /> 
-                      私有云连接配置
+                      私有云连接配置 (WebSocket)
                   </h2>
                   <p className="text-sm text-gray-400 max-w-sm mb-6">
-                      请输入您腾讯云服务器的 WebSocket 地址以启用实时同步。
+                      连接腾讯云或其他 WebSocket 服务器以启用实时数据同步。
                   </p>
 
                   <div className="space-y-4 relative z-10">
                       <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase">Server URL (WebSocket)</label>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">Server URL</label>
                           <div className="relative">
                               <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
                               <input 
                                 value={serverUrl}
                                 onChange={(e) => setServerUrl(e.target.value)}
-                                placeholder="wss://your-tencent-server-ip:8080"
+                                placeholder="wss://your-server.com/socket"
                                 disabled={connectionStatus === 'connected'}
                                 className="w-full h-12 pl-12 pr-4 bg-black/40 border border-white/10 rounded-xl text-sm text-white focus:border-neon-blue outline-none font-mono"
                               />
@@ -230,7 +273,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                       </div>
                       
                       <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase">API Key (SecretId)</label>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">API Secret (Optional)</label>
                           <div className="relative">
                               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
                               <input 
@@ -261,12 +304,18 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                       {/* Real Status Feedback */}
                       {connectionStatus === 'error' && (
                           <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs flex items-center gap-2">
-                              <AlertCircle size={14} /> 连接失败，请检查服务器地址或防火墙设置。
+                              <AlertCircle size={14} /> 连接失败：请检查 URL (需要 wss://) 或网络。
                           </div>
                       )}
                       {connectionStatus === 'connected' && (
-                          <div className="p-3 bg-neon-green/10 border border-neon-green/20 rounded-lg text-neon-green text-xs flex items-center gap-2">
-                              <Activity size={14} /> 通道已建立，正在监听数据流...
+                          <div className="space-y-2">
+                              <div className="p-3 bg-neon-green/10 border border-neon-green/20 rounded-lg text-neon-green text-xs flex items-center gap-2">
+                                  <Activity size={14} /> 已连接服务器。
+                              </div>
+                              <div className="flex justify-between text-[10px] text-gray-500 font-mono px-1">
+                                  <span>Status: ACTIVE</span>
+                                  <span>Msgs: {wsMessageCount}</span>
+                              </div>
                           </div>
                       )}
                   </div>
@@ -278,7 +327,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                <section className="glass-card p-8 h-full flex flex-col">
                    <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
                       <Database className="text-neon-purple" size={20} /> 
-                      本地数据管理
+                      本地数据管理 (Local Backup)
                    </h2>
                    
                    {/* Import Zone */}
@@ -287,13 +336,13 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                           importDragActive ? 'border-neon-purple bg-neon-purple/10' : 'border-white/20 bg-black/20 hover:border-white/40 hover:bg-white/5'
                       }`}
                       onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
-                      onClick={handleZoneClick}
+                      onClick={() => fileInputRef.current?.click()}
                    >
                         <input 
                             ref={fileInputRef}
                             type="file" 
                             className="hidden" 
-                            accept=".json,application/json" 
+                            accept=".json" 
                             onChange={handleFileChange}
                             onClick={(e) => e.stopPropagation()} 
                         />
@@ -330,9 +379,15 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                            <div className="font-bold uppercase">当前缓存</div>
                            <div className="text-white">{currentData.length} SKU</div>
                        </div>
-                       <button onClick={handleExport} className="px-6 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white text-sm font-bold flex items-center gap-2 transition-all">
-                           <Download size={16} /> 备份数据
-                       </button>
+                       <div className="flex gap-2">
+                           {/* Refresh button to reload from local storage if needed */}
+                           <button onClick={() => window.location.reload()} className="p-3 rounded-xl border border-white/20 hover:bg-white/10 text-white transition-all" title="刷新页面">
+                               <RefreshCw size={16} />
+                           </button>
+                           <button onClick={handleExport} className="px-6 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white text-sm font-bold flex items-center gap-2 transition-all">
+                               <Download size={16} /> 备份数据
+                           </button>
+                       </div>
                    </div>
                </section>
           </div>
