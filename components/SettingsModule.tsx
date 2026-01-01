@@ -13,6 +13,28 @@ interface SettingsModuleProps {
   onImportData: (data: Product[]) => void;
 }
 
+// Helper to fuzzy match keys from raw object
+const findValue = (obj: any, keys: string[]) => {
+    if (!obj) return undefined;
+    
+    // 1. Exact match
+    for (const key of keys) {
+        if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') return obj[key];
+    }
+
+    // 2. Case-insensitive / Space-insensitive search (more expensive, do only if needed)
+    const normalizedKeys = keys.map(k => k.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, ''));
+    const objKeys = Object.keys(obj);
+    
+    for (const objKey of objKeys) {
+        const normalizedObjKey = objKey.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+        if (normalizedKeys.includes(normalizedObjKey)) {
+             if (obj[objKey] !== undefined && obj[objKey] !== null && obj[objKey] !== '') return obj[objKey];
+        }
+    }
+    return undefined;
+};
+
 const SettingsModule: React.FC<SettingsModuleProps> = ({ 
   currentTheme, onThemeChange, currentData, onImportData 
 }) => {
@@ -50,64 +72,87 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         const text = e.target?.result as string;
         const json = JSON.parse(text);
         
-        // Handle various JSON structures (array or object with key)
+        // Handle various JSON structures
         const arr = Array.isArray(json) ? json : (json.products || json.items || []);
         
         if (!Array.isArray(arr) || arr.length === 0) {
             throw new Error("文件未包含有效的数组数据");
         }
         
-        // Strict Sanitization to prevent crashes
-        const sanitized: Product[] = arr.map((raw: any) => ({
-            id: raw.id || `IMP-${Math.random().toString(36).substr(2,9)}`,
-            sku: raw.sku || 'UNKNOWN-SKU',
-            name: raw.name || 'Unnamed Product',
-            description: raw.description || '',
-            // Ensure numbers are numbers
-            price: typeof raw.price === 'number' ? raw.price : parseFloat(raw.price) || 0,
-            stock: typeof raw.stock === 'number' ? raw.stock : parseFloat(raw.stock) || 0,
-            // Enums with defaults
-            currency: raw.currency || Currency.USD,
-            status: raw.status || ProductStatus.Draft,
-            category: raw.category || 'General',
-            // Arrays
-            marketplaces: Array.isArray(raw.marketplaces) ? raw.marketplaces : [],
-            variants: Array.isArray(raw.variants) ? raw.variants : [],
-            // Strings
-            imageUrl: raw.imageUrl || '',
-            lastUpdated: raw.lastUpdated || new Date().toISOString(),
-            supplier: raw.supplier || '',
-            note: raw.note || '',
-            // Physical Specs
-            unitWeight: Number(raw.unitWeight) || 0,
-            boxLength: Number(raw.boxLength) || 0,
-            boxWidth: Number(raw.boxWidth) || 0,
-            boxHeight: Number(raw.boxHeight) || 0,
-            boxWeight: Number(raw.boxWeight) || 0,
-            itemsPerBox: Number(raw.itemsPerBox) || 0,
-            restockCartons: Number(raw.restockCartons) || 0,
-            // Nested Objects (Critical for preventing crash)
-            financials: {
-                // Support flat imports where cost might be at root
-                costOfGoods: Number(raw.financials?.costOfGoods || raw.cost || raw.unitCost) || 0,
-                shippingCost: Number(raw.financials?.shippingCost) || 0,
-                otherCost: Number(raw.financials?.otherCost) || 0,
-                sellingPrice: Number(raw.financials?.sellingPrice || raw.price) || 0,
-                platformFee: Number(raw.financials?.platformFee) || 0,
-                adCost: Number(raw.financials?.adCost) || 0,
-            },
-            logistics: {
-                method: raw.logistics?.method || 'Sea',
-                carrier: raw.logistics?.carrier || '',
-                trackingNo: raw.logistics?.trackingNo || '',
-                status: raw.logistics?.status || 'Pending',
-                origin: raw.logistics?.origin || '',
-                destination: raw.logistics?.destination || ''
-            },
-            // Optional Numbers
-            dailySales: Number(raw.dailySales) || 0,
-            inboundId: raw.inboundId || ''
-        }));
+        // Strict Sanitization with Fuzzy Matching for Headers
+        const sanitized: Product[] = arr.map((raw: any) => {
+            // Field mapping strategies
+            const id = findValue(raw, ['id', 'ID', 'product_id', '序号']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
+            const sku = findValue(raw, ['sku', 'SKU', 'sku_code', 'SKU编码']) || 'UNKNOWN-SKU';
+            const name = findValue(raw, ['name', 'title', 'product_name', '产品名称', '中文名称']) || 'Unnamed Product';
+            const note = findValue(raw, ['note', 'remarks', 'remark', '备注']) || '';
+            const supplier = findValue(raw, ['supplier', 'vendor', 'supplier_name', '供应商']) || '';
+            
+            // Numeric fields
+            const parseNum = (keys: string[]) => {
+                const val = findValue(raw, keys);
+                if (typeof val === 'string') return parseFloat(val.replace(/[$,¥]/g, '')) || 0;
+                return Number(val) || 0;
+            };
+
+            const price = parseNum(['price', 'selling_price', '销售价', '售价']);
+            const stock = parseNum(['stock', 'quantity', 'inventory', '库存', '现有库存']);
+            
+            const unitCost = parseNum(['unitCost', 'cost', 'purchase_price', 'cost_price', '采购单价', '单价', '含税单价']);
+            const restockCartons = parseNum(['restockCartons', 'cartons', 'box_count', '采购箱数', '箱数']);
+            const itemsPerBox = parseNum(['itemsPerBox', 'per_box', 'boxing_qty', '装箱数', '每箱数量']);
+            const unitWeight = parseNum(['unitWeight', 'weight', 'weight_kg', '单品重量', '重量']);
+            
+            // Inbound ID
+            const inboundId = findValue(raw, ['inboundId', 'inbound_id', 'shipment_id', '入库单号', '货件编号']);
+
+            return {
+                id,
+                sku,
+                name,
+                description: raw.description || '',
+                price,
+                stock,
+                currency: raw.currency || Currency.USD,
+                status: raw.status || ProductStatus.Draft,
+                category: raw.category || 'General',
+                marketplaces: Array.isArray(raw.marketplaces) ? raw.marketplaces : [],
+                variants: Array.isArray(raw.variants) ? raw.variants : [],
+                imageUrl: raw.imageUrl || '',
+                lastUpdated: new Date().toISOString(),
+                supplier,
+                note,
+                
+                // Mapped extended fields
+                unitWeight,
+                boxLength: Number(raw.boxLength) || 0,
+                boxWidth: Number(raw.boxWidth) || 0,
+                boxHeight: Number(raw.boxHeight) || 0,
+                boxWeight: Number(raw.boxWeight) || 0,
+                itemsPerBox,
+                restockCartons,
+                inboundId: inboundId || '', // Ensure empty string if not found, NOT undefined
+
+                // Financials reconstruction
+                financials: {
+                    costOfGoods: unitCost,
+                    shippingCost: parseNum(['shippingCost', 'shipping', 'head_freight', '头程运费']),
+                    otherCost: parseNum(['otherCost', 'fulfillment', 'fba_fee', '杂费']),
+                    sellingPrice: price, // Default to main price if sellingPrice not explicit in financials
+                    platformFee: parseNum(['platformFee', 'referral_fee', 'commission', '佣金']),
+                    adCost: parseNum(['adCost', 'cpa', 'ad_spend', '广告费']),
+                },
+                logistics: {
+                    method: raw.logistics?.method || 'Sea',
+                    carrier: raw.logistics?.carrier || '',
+                    trackingNo: raw.logistics?.trackingNo || '',
+                    status: raw.logistics?.status || 'Pending',
+                    origin: raw.logistics?.origin || '',
+                    destination: raw.logistics?.destination || ''
+                },
+                dailySales: parseNum(['dailySales', 'daily_sales', 'sales_velocity', '日销', '日均销量'])
+            };
+        });
 
         onImportData(sanitized);
         setImportStatus('success');
@@ -263,7 +308,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       <div>
                           <h2 className="text-lg font-bold text-white mb-1">数据恢复导入</h2>
                           <p className="text-xs text-gray-400 px-6">
-                              {importStatus === 'success' ? <span className="text-neon-green">{importMessage}</span> : '点击或拖拽 AERO_OS_BACKUP.json 文件到此处。'}
+                              {importStatus === 'success' ? <span className="text-neon-green">{importMessage}</span> : '支持 AERO 原生 JSON 或平铺式 Excel 转换数据 (包含 UnitCost, InboundID 等字段)'}
                           </p>
                       </div>
                   </div>

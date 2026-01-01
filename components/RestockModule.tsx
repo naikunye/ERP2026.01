@@ -202,7 +202,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               <div className="col-span-2">产品详情</div>
               <div className="col-span-2">物流 & 入库</div>
               <div className="col-span-2">库存健康度 (DOI)</div>
-              <div className="col-span-1">投入资金</div>
+              <div className="col-span-1">采购成本</div>
               <div className="col-span-1">利润透视</div>
               <div className="col-span-2 text-center">操作</div>
           </div>
@@ -234,7 +234,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  const urgencyText = isCritical ? 'text-neon-pink' : (isLowStock ? 'text-neon-yellow' : 'text-neon-green');
                  const totalPotentialProfit = unitProfit * item.stock;
                  const costOfGoods = item.financials?.costOfGoods || 0;
-                 const shippingCost = item.financials?.shippingCost || 0;
                  const isSelected = selectedIds.has(item.id);
 
                  return (
@@ -301,29 +300,36 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                       {/* 4. Inventory Health */}
                       <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
                            <div className="flex justify-between items-end">
-                                <div className="text-lg font-display font-bold text-white leading-none">{item.stock}</div>
+                                <div className="text-lg font-display font-bold text-white leading-none">{item.stock} <span className="text-[10px] text-gray-500 font-sans">pcs</span></div>
                                 <div className={`text-[10px] font-bold ${urgencyText} flex items-center gap-1`}>
                                     {isCritical && <AlertTriangle size={10} />}
                                     {daysOfInventory > 365 ? '>1年' : `${daysOfInventory}天可售`}
                                 </div>
                            </div>
-                           <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                               <Activity size={10} /> 日销: <span className="text-white font-mono">{item.dailySales || 0}</span>
+                           {/* Add explicit Restock Cartons display */}
+                           <div className="flex items-center justify-between gap-1 text-[10px] text-gray-500">
+                               <div className="flex items-center gap-1">
+                                   <Activity size={10} /> 日销: <span className="text-white font-mono">{item.dailySales || 0}</span>
+                               </div>
+                               {item.restockCartons ? (
+                                   <div className="text-gray-400 font-mono">Plan: {item.restockCartons}箱</div>
+                               ) : null}
                            </div>
                            <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
                                <div className={`h-full rounded-full ${urgencyColor}`} style={{ width: `${stockProgress}%` }}></div>
                            </div>
                       </div>
 
-                      {/* 5. Invested Capital */}
+                      {/* 5. Procurement Cost (NEW: Explicitly show Unit Cost) */}
                       <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-1">
                           {hasData ? (
                               <>
-                                <div className="flex items-center gap-1 text-xs font-bold text-white">
-                                    <span className="text-[10px] text-gray-500">¥</span>{((costOfGoods + shippingCost) * item.stock).toLocaleString()}
+                                <div className="flex flex-col">
+                                    <span className="text-[9px] text-gray-500 uppercase">采购单价</span>
+                                    <span className="text-xs font-bold text-white font-mono">${costOfGoods.toFixed(2)}</span>
                                 </div>
-                                <div className="flex flex-col gap-0.5">
-                                    <div className="flex items-center gap-1 text-[10px] text-gray-500"><span className="text-gray-600">货:</span><span className="font-mono">¥ {(costOfGoods * item.stock).toLocaleString()}</span></div>
+                                <div className="flex flex-col gap-0.5 mt-1">
+                                    <div className="flex items-center gap-1 text-[10px] text-gray-500"><span className="text-gray-600">Total:</span><span className="font-mono">¥ {(costOfGoods * item.stock).toLocaleString()}</span></div>
                                 </div>
                               </>
                           ) : <div className="text-[10px] text-gray-600">待补充</div>}
