@@ -114,15 +114,15 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
       s.trackingNo.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- TOP TIER TIMELINE GENERATOR ---
+  // --- TOP TIER TIMELINE GENERATOR (CHINESE) ---
   const getDetailedTimeline = (s: Shipment) => {
       const events = [];
       const today = new Date().toISOString().split('T')[0];
 
       // 1. Origin Events
       events.push({ 
-          title: 'Shipment Created', 
-          desc: 'Order received and processing started', 
+          title: '运单已创建', 
+          desc: '系统已接收订单信息，开始处理', 
           date: s.etd, 
           status: 'completed', 
           icon: <FileText size={14}/> 
@@ -130,8 +130,8 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
 
       if (s.progress > 10) {
           events.push({ 
-              title: 'Cargo Received', 
-              desc: `Received at ${s.origin.split(',')[0]} Warehouse`, 
+              title: '货物入仓', 
+              desc: `已送达 ${s.origin.split(',')[0]} 始发仓库`, 
               date: s.etd, 
               status: 'completed', 
               icon: <Package size={14}/> 
@@ -141,8 +141,8 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
       // 2. Export Customs
       if (s.progress > 20) {
           events.push({ 
-              title: 'Export Customs Cleared', 
-              desc: 'Customs release granted', 
+              title: '出口清关完成', 
+              desc: '海关放行，等待装载', 
               date: s.etd, // Simplified date logic
               status: 'completed', 
               icon: <ShieldCheck size={14} className="text-neon-green"/> 
@@ -152,8 +152,8 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
       // 3. Departure
       if (s.progress > 30) {
           events.push({ 
-              title: `Departed from ${s.origin.split(',')[0]}`, 
-              desc: s.vesselName ? `Vessel: ${s.vesselName}` : 'Flight departed', 
+              title: `已离开 ${s.origin.split(',')[0]}`, 
+              desc: s.vesselName ? `船名/航班: ${s.vesselName}` : '航班/航次已离港', 
               date: s.etd, 
               status: 'completed', 
               icon: s.method === 'Sea' ? <Anchor size={14}/> : <Plane size={14}/>
@@ -163,17 +163,17 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
       // 4. In Transit / Arrival
       if (s.progress > 60) {
           events.push({ 
-              title: `Arrived at ${s.destination.split(',')[0]}`, 
-              desc: 'Port/Airport Arrival', 
+              title: `抵达 ${s.destination.split(',')[0]}`, 
+              desc: '抵达目的港/机场', 
               date: s.eta, 
               status: 'completed', 
               icon: <MapPin size={14}/> 
           });
       } else if (s.status === 'In Transit') {
           events.push({ 
-              title: 'In Transit', 
-              desc: 'En route to destination', 
-              date: 'Live', 
+              title: '运输途中', 
+              desc: '正前往目的地', 
+              date: '实时', 
               status: 'active', 
               icon: <Activity size={14} className="animate-pulse text-neon-blue"/> 
           });
@@ -183,9 +183,15 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
       if (s.progress > 80) {
           const customsStatus = s.customsStatus || 'Pending';
           const isHeld = customsStatus === 'Held' || customsStatus === 'Inspection';
+          // Map EN status to CN display
+          let cnStatus = '待清关';
+          if (customsStatus === 'Cleared') cnStatus = '已放行';
+          if (customsStatus === 'Inspection') cnStatus = '查验中';
+          if (customsStatus === 'Held') cnStatus = '海关扣留';
+
           events.push({ 
-              title: `Import Customs: ${customsStatus}`, 
-              desc: isHeld ? 'Shipment held for inspection' : 'Customs entry released', 
+              title: `进口清关: ${cnStatus}`, 
+              desc: isHeld ? '货物被海关查验或扣留' : '清关完成，准备提货', 
               date: s.eta, 
               status: isHeld ? 'exception' : 'completed', 
               icon: isHeld ? <AlertCircle size={14} className="text-neon-pink"/> : <ShieldCheck size={14} className="text-neon-green"/> 
@@ -195,16 +201,16 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
       // 6. Delivery
       if (s.status === 'Delivered') {
           events.push({ 
-              title: 'Delivered', 
-              desc: s.podName ? `Signed by: ${s.podName}` : 'Delivered to consignee', 
+              title: '已送达', 
+              desc: s.podName ? `签收人: ${s.podName}` : '已送达收货人', 
               date: s.podTime || s.eta, 
               status: 'completed', 
               icon: <CheckCircle2 size={14} className="text-neon-green"/> 
           });
       } else if (s.status === 'Out for Delivery') {
            events.push({ 
-              title: 'Out for Delivery', 
-              desc: 'Courier is on the way', 
+              title: '派送中', 
+              desc: '快递员正在派送途中', 
               date: today, 
               status: 'active', 
               icon: <Truck size={14} className="animate-bounce"/> 
@@ -225,7 +231,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
            <div className="flex items-center gap-2 mb-1">
                 <span className="w-2 h-2 rounded-full bg-neon-green animate-pulse"></span>
                 <span className="text-[10px] font-mono text-neon-green tracking-widest uppercase">
-                    Satellite Link Active • {currentTime} UTC
+                    卫星链路已连接 • {currentTime} UTC
                 </span>
            </div>
            <h1 className="text-[32px] font-display font-bold text-white tracking-tight leading-none flex items-center gap-3">
@@ -384,7 +390,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                               </div>
                               <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-1">
-                                        <label className="text-[10px] text-gray-500 font-bold uppercase">ETD (预计发货)</label>
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase">预计发货 (ETD)</label>
                                         <input 
                                             type="date"
                                             value={form.etd || ''}
@@ -393,7 +399,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                         />
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-[10px] text-gray-500 font-bold uppercase">ETA (预计到达)</label>
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase">预计到达 (ETA)</label>
                                         <input 
                                             type="date"
                                             value={form.eta || ''}
@@ -407,7 +413,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                           {/* Section 3: Cargo */}
                           <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-1">
-                                  <label className="text-[10px] text-gray-500 font-bold uppercase">总重量 (kg)</label>
+                                  <label className="text-[10px] text-gray-500 font-bold uppercase">毛重 (kg)</label>
                                   <input 
                                       type="number"
                                       value={form.weight || 0}
@@ -545,7 +551,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                         <div className="flex justify-between items-start mb-6">
                              <div>
                                 <div className="text-[10px] uppercase font-bold text-neon-blue tracking-widest mb-1 flex items-center gap-2">
-                                    <Activity size={12} className="animate-pulse"/> Real-time Tracker
+                                    <Activity size={12} className="animate-pulse"/> 实时追踪 (Real-time Tracker)
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <h2 className="text-4xl font-display font-bold text-white tracking-tight">{selectedShipment.trackingNo}</h2>
@@ -562,15 +568,15 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                     onClick={() => openEditModal(selectedShipment)}
                                     className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-xs font-bold text-white hover:bg-white/10 flex items-center gap-2 transition-all"
                                 >
-                                    <Edit2 size={14} /> Update
+                                    <Edit2 size={14} /> 更新状态
                                 </button>
                              </div>
                         </div>
 
                         <div className="grid grid-cols-4 gap-4">
                             <StatCard 
-                                label="Customs Status" 
-                                value={selectedShipment.customsStatus || 'Pending'} 
+                                label="清关状态" 
+                                value={selectedShipment.customsStatus || '待定'} 
                                 icon={<ShieldCheck size={16}/>}
                                 statusColor={
                                     selectedShipment.customsStatus === 'Cleared' ? 'text-neon-green' : 
@@ -578,19 +584,19 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                 }
                             />
                             <StatCard 
-                                label="Estimated Delivery" 
-                                value={selectedShipment.eta || 'Calculating...'} 
+                                label="预计送达" 
+                                value={selectedShipment.eta || '计算中...'} 
                                 icon={<Timer size={16}/>}
                                 statusColor="text-white"
                             />
                             <StatCard 
-                                label="POD Status" 
-                                value={selectedShipment.podName ? 'Signed' : 'Pending'} 
+                                label="签收状态" 
+                                value={selectedShipment.podName ? '已签收' : '未签收'} 
                                 icon={<UserCheck size={16}/>}
                                 statusColor={selectedShipment.podName ? 'text-neon-green' : 'text-gray-500'}
                             />
                              <StatCard 
-                                label="Carrier" 
+                                label="承运商" 
                                 value={selectedShipment.carrier} 
                                 icon={<Truck size={16}/>}
                                 statusColor="text-white"
@@ -605,13 +611,13 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-white/10 z-0"></div>
                              <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-gradient-to-r from-neon-blue to-neon-purple z-0 shadow-[0_0_10px_#29D9FF]" style={{ width: `${selectedShipment.progress}%` }}></div>
 
-                             {/* Nodes */}
-                             <Node label="Booked" active={true} icon={<FileText size={14}/>} />
-                             <Node label="Received" active={selectedShipment.progress > 10} icon={<Package size={14}/>} />
-                             <Node label="Export" active={selectedShipment.progress > 20} icon={<ShieldCheck size={14}/>} />
-                             <Node label="Transit" active={selectedShipment.progress > 40} icon={<Ship size={14}/>} />
-                             <Node label="Import" active={selectedShipment.progress > 80} icon={<ShieldCheck size={14}/>} />
-                             <Node label="Delivered" active={selectedShipment.progress >= 100} icon={<CheckCircle2 size={14}/>} />
+                             {/* Nodes (Chinese) */}
+                             <Node label="已订舱" active={true} icon={<FileText size={14}/>} />
+                             <Node label="已揽收" active={selectedShipment.progress > 10} icon={<Package size={14}/>} />
+                             <Node label="出口清关" active={selectedShipment.progress > 20} icon={<ShieldCheck size={14}/>} />
+                             <Node label="运输中" active={selectedShipment.progress > 40} icon={<Ship size={14}/>} />
+                             <Node label="进口清关" active={selectedShipment.progress > 80} icon={<ShieldCheck size={14}/>} />
+                             <Node label="已送达" active={selectedShipment.progress >= 100} icon={<CheckCircle2 size={14}/>} />
                          </div>
                     </div>
 
@@ -622,22 +628,22 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                         <div className="w-1/2 p-8 border-r border-white/10 space-y-8 overflow-y-auto custom-scrollbar">
                              <div>
                                  <h3 className="text-[12px] font-bold text-neon-blue uppercase tracking-widest mb-4 flex items-center gap-2">
-                                     <Container size={14} /> 货柜与关务详情 (Manifest & Customs)
+                                     <Container size={14} /> 舱单与关务详情 (Manifest & Customs)
                                  </h3>
                                  <div className="grid grid-cols-2 gap-4">
-                                     <DataPoint label="Container No" value={selectedShipment.containerNo || '-'} icon={<Box size={14}/>} />
-                                     <DataPoint label="Seal No" value={selectedShipment.sealNo || '-'} icon={<ShieldCheck size={14}/>} />
-                                     <DataPoint label="Gross Weight" value={`${selectedShipment.weight} kg`} icon={<Scale size={14}/>} />
-                                     <DataPoint label="Volume" value={`${(selectedShipment.weight / 167).toFixed(2)} CBM`} icon={<Ruler size={14}/>} />
-                                     <DataPoint label="Service Type" value="FCL / Port-to-Door" />
-                                     <DataPoint label="Customs Entry" value={selectedShipment.customsStatus === 'Cleared' ? 'Rel. 772910' : '-'} />
+                                     <DataPoint label="柜号 (Container)" value={selectedShipment.containerNo || '-'} icon={<Box size={14}/>} />
+                                     <DataPoint label="封条号 (Seal)" value={selectedShipment.sealNo || '-'} icon={<ShieldCheck size={14}/>} />
+                                     <DataPoint label="毛重 (Gross)" value={`${selectedShipment.weight} kg`} icon={<Scale size={14}/>} />
+                                     <DataPoint label="体积 (Volume)" value={`${(selectedShipment.weight / 167).toFixed(2)} CBM`} icon={<Ruler size={14}/>} />
+                                     <DataPoint label="服务类型" value="FCL / 港到门" />
+                                     <DataPoint label="报关单号" value={selectedShipment.customsStatus === 'Cleared' ? 'Rel. 772910' : '-'} />
                                  </div>
                              </div>
 
                              {selectedShipment.podName && (
                                 <div className="p-4 bg-neon-green/10 border border-neon-green/20 rounded-xl">
                                     <div className="text-[10px] text-neon-green font-bold uppercase mb-2 flex items-center gap-2">
-                                        <CheckCircle2 size={12} /> Proof of Delivery
+                                        <CheckCircle2 size={12} /> 签收证明 (POD)
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <div>
@@ -645,7 +651,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                             <div className="text-[10px] text-gray-400">{selectedShipment.podTime}</div>
                                         </div>
                                         <div className="h-8 w-24 bg-white/10 rounded flex items-center justify-center text-[10px] text-gray-500 font-mono italic border border-white/10">
-                                            Signature
+                                            电子签名
                                         </div>
                                     </div>
                                 </div>
@@ -654,7 +660,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                              {/* Connected SKU Display */}
                              <div>
                                  <h3 className="text-[12px] font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
-                                     <Package size={14} /> 包含商品 ({selectedShipment.skuIds?.length || 0})
+                                     <Package size={14} /> 关联商品 ({selectedShipment.skuIds?.length || 0})
                                  </h3>
                                  <div className="space-y-2">
                                      {selectedShipment.skuIds && selectedShipment.skuIds.length > 0 ? (
@@ -715,7 +721,7 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
               ) : (
                   <div className="flex items-center justify-center h-full text-gray-500 flex-col gap-4">
                       <Navigation size={40} className="text-white/20" />
-                      <div>Select a shipment to view details</div>
+                      <div>请选择运单查看详情</div>
                   </div>
               )}
           </div>
