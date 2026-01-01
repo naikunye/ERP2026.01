@@ -253,11 +253,13 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                               {item.sku}
                           </div>
                           
-                          {/* MOVED INBOUND ID HERE FOR VISIBILITY */}
+                          {/* MOVED INBOUND ID HERE FOR VISIBILITY + WRAPPING FIX */}
                           {item.inboundId ? (
-                              <div className="flex items-center gap-1.5 text-[10px] text-neon-purple bg-neon-purple/5 px-1.5 py-0.5 rounded border border-neon-purple/20 w-fit" title="Inbound ID (入库单号)">
-                                  <Container size={10} />
-                                  <span className="font-mono font-bold tracking-wide">{item.inboundId}</span>
+                              <div className="flex items-start gap-1.5 text-[10px] text-neon-purple bg-neon-purple/5 px-1.5 py-0.5 rounded border border-neon-purple/20 w-full" title="Inbound ID (入库单号)">
+                                  <Container size={10} className="shrink-0 mt-[2px]" />
+                                  <span className="font-mono font-bold tracking-wide break-all whitespace-normal leading-tight">
+                                      {item.inboundId}
+                                  </span>
                               </div>
                           ) : (
                               <div className="text-[9px] text-gray-600 border border-dashed border-gray-800 px-1 py-0.5 rounded w-fit">无入库单号</div>

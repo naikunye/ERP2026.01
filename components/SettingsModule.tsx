@@ -14,30 +14,23 @@ interface SettingsModuleProps {
 }
 
 // ------------------------------------------------------------------
-// CORE MATCHING ENGINE V5.2 (LX Support)
+// CORE MATCHING ENGINE V6 (Deep Value Detection)
 // ------------------------------------------------------------------
 const findValue = (obj: any, searchTerms: string[], excludeTerms: string[] = []) => {
     if (!obj) return undefined;
     const objKeys = Object.keys(obj);
     
-    // Normalize string: lowercase, remove ALL punctuation/spaces/symbols (keep chinese/english/numbers)
     const clean = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
 
     const normalizedSearch = searchTerms.map(clean);
     const normalizedExclude = excludeTerms.map(clean);
 
-    // PRIORITY LOOP: Iterate through Search Terms FIRST. 
     for (const term of normalizedSearch) {
         if (!term) continue;
-
         for (const key of objKeys) {
              const normalizedKey = clean(key);
-             
-             // 1. CHECK EXCLUSIONS
              const isExcluded = normalizedExclude.some(ex => ex && normalizedKey.includes(ex));
              if (isExcluded) continue;
-
-             // 2. CHECK MATCH
              if (normalizedKey.includes(term)) {
                  const val = obj[key];
                  if (val !== undefined && val !== null && val !== '') return val;
@@ -69,7 +62,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('正在应用 V5.2 智能匹配算法...');
+    setImportMessage('启动 V6 深层值检测引擎...');
     
     if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
         setImportStatus('error');
@@ -88,9 +81,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             throw new Error("无有效数据");
         }
         
-        // ------------------------------------------------
-        // V5.2 MAPPING CONFIGURATION
-        // ------------------------------------------------
         const sanitized: Product[] = arr.map((raw: any) => {
             
             // Helper: Numerical Parser
@@ -105,7 +95,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 return 0;
             };
 
-            // Helper: String Parser (Forces String for IDs)
+            // Helper: String Parser
             const parseStr = (keys: string[], exclude: string[] = []) => {
                 const val = findValue(raw, keys, exclude);
                 return val ? String(val).trim() : '';
@@ -114,7 +104,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             // --- 1. CORE FINANCIALS ---
             const unitCost = parseNum(
                 ['采购单价', '含税单价', '进货价', '成本', 'purchase_price', 'cost_price', 'buying_price', 'unit_cost', 'cost'], 
-                ['销售', 'selling', 'retail', 'market', '物流', '运费']
+                ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping']
             );
 
             const price = parseNum(
@@ -122,14 +112,44 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 ['采购', '成本', 'cost', 'purchase', 'buying', '进货'] 
             );
 
-            // --- 2. IDENTITY (Fix for LX/IB Headers) ---
-            const inboundId = parseStr(
-                [
-                    'lx', 'ib', '领星', '入库', '货件', 'fba', 'shipment', 'inbound', // High Priority
-                    '批次', 'batch', 'po_no', 'ref', 'reference', '单号' // Low Priority
-                ],
-                ['sku', 'tracking', '物流', '快递', 'carrier', '配送'] // Removed '运单' to allow "入库运单"
+            // --- 2. LOGISTICS COST (Enhanced Fallback) ---
+            let shippingCost = parseNum([
+                'shippingCost', 'freight', '运费', '头程', 
+                '物流单价', '物流费', '物流成本', '海运费', '空运费', '单价', // '单价' added but relies on unitCost logic to exclude '物流'
+                'shipping_price', 'logistics_cost', 'logistics'
+            ]);
+
+            // Fallback: If 0, scan keys for ANY loosely containing "运" or "物流"
+            if (shippingCost === 0) {
+                const looseKey = Object.keys(raw).find(k => (k.includes('运') || k.includes('物流')) && (k.includes('价') || k.includes('费')));
+                if (looseKey) {
+                    const val = raw[looseKey];
+                    if (typeof val === 'number') shippingCost = val;
+                    else if (typeof val === 'string') shippingCost = parseFloat(val) || 0;
+                }
+            }
+
+            // --- 3. INBOUND ID (Deep Value Scan) ---
+            // First try standard header matching
+            let inboundId = parseStr(
+                ['lx', 'ib', '领星', '入库', '货件', 'fba', 'shipment', 'inbound', '批次', 'batch', 'po_no', 'ref', 'reference', '单号'],
+                ['sku', 'tracking', '快递', 'carrier', '配送']
             );
+
+            // NUCLEAR OPTION: If header match failed, SCAN VALUES for the pattern "LX" or "IB"
+            if (!inboundId || inboundId === '' || inboundId === 'UNKNOWN') {
+                const rawValues = Object.values(raw);
+                for (const v of rawValues) {
+                    if (typeof v === 'string') {
+                        const cleanVal = v.trim().toUpperCase();
+                        // PATTERN MATCHING: Look for specific prefixes user mentioned
+                        if (cleanVal.includes('LX:') || cleanVal.startsWith('IB') || (cleanVal.startsWith('FBA') && cleanVal.length > 8)) {
+                            inboundId = v; // Found it!
+                            break;
+                        }
+                    }
+                }
+            }
 
             const id = parseStr(['id', 'product_id', 'sys_id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
             const sku = parseStr(['sku', 'msku', '编码']) || 'UNKNOWN';
@@ -137,20 +157,11 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const note = parseStr(['note', 'remark', '备注', '说明', 'memo']);
             const supplier = parseStr(['supplier', 'vendor', '供应商', '厂家']);
 
-            // --- 3. SPECS ---
             const stock = parseNum(['stock', 'qty', 'quantity', '库存', '现有']);
             const restockCartons = parseNum(['restockCartons', 'cartons', 'box_count', '箱数', '件数']);
             const itemsPerBox = parseNum(['itemsPerBox', 'per_box', 'boxing', '装箱数']);
             const unitWeight = parseNum(['unitWeight', 'weight', '重量', 'kg']);
             
-            // Logistics Unit Price
-            const shippingCost = parseNum([
-                'shippingCost', 'freight', '运费', '头程', 
-                '物流单价', '物流费', '物流成本', '海运费', '空运费',
-                'shipping_price', 'logistics_cost'
-            ]);
-
-            // --- 4. RECONSTRUCT ---
             return {
                 id,
                 sku,
@@ -199,7 +210,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条 (支持 LX/IB 单号)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条 (V6 深度识别模式)`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
@@ -379,7 +390,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 5.5.2 (LX Match Fix)</p>
+                      <p className="text-xs text-gray-500">Version 6.0.0 (Deep Scan)</p>
                   </div>
               </div>
               <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors">
