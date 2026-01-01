@@ -251,8 +251,14 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         
                         <div className="bg-white/5 rounded-xl p-3 flex items-center justify-between border border-white/5">
                             <div>
-                                <div className="text-[10px] text-gray-500 font-bold uppercase">日均销量</div>
-                                <div className="text-lg font-bold text-white">{formData.dailySales} <span className="text-xs text-gray-600">件/天</span></div>
+                                <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">日均销量 (件/天)</label>
+                                <input 
+                                    type="number"
+                                    name="dailySales"
+                                    value={formData.dailySales}
+                                    onChange={handleChange}
+                                    className="bg-transparent border-b border-white/20 w-24 text-lg font-bold text-white outline-none focus:border-neon-blue"
+                                />
                             </div>
                             <div className="text-right">
                                 <div className="text-[10px] text-gray-500 font-bold uppercase">库存周转天数</div>
