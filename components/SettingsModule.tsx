@@ -14,27 +14,45 @@ interface SettingsModuleProps {
 }
 
 // ------------------------------------------------------------------
-// CORE MATCHING ENGINE V6.1 (Rate & Unit Support)
+// CORE MATCHING ENGINE V7.0 (Greedy Semantic Match)
 // ------------------------------------------------------------------
-const findValue = (obj: any, searchTerms: string[], excludeTerms: string[] = []) => {
+
+// 1. Helper: Normalize keys to remove noise (e.g. "装箱数(pcs)" -> "装箱数pcs")
+const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+
+// 2. Helper: Extract Number from messy strings (e.g. "¥ 12.5" -> 12.5, "10箱" -> 10)
+const parseCleanNum = (val: any): number => {
+    if (val === undefined || val === null) return 0;
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+        // Remove commas first (1,000 -> 1000)
+        const cleanStr = val.replace(/,/g, '');
+        // Match the first valid float number found
+        const match = cleanStr.match(/-?\d+(\.\d+)?/);
+        return match ? parseFloat(match[0]) : 0;
+    }
+    return 0;
+};
+
+// 3. Helper: The Greedy Finder
+const findValueGreedy = (obj: any, aliases: string[], exclude: string[] = []): any => {
     if (!obj) return undefined;
-    const objKeys = Object.keys(obj);
+    const keys = Object.keys(obj);
     
-    const clean = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+    // Priority 1: Exact or Contain Match based on alias list order
+    for (const alias of aliases) {
+        const nAlias = normalize(alias);
+        for (const key of keys) {
+            const nKey = normalize(key);
+            
+            // Check Exclusions first
+            if (exclude.some(ex => nKey.includes(normalize(ex)))) continue;
 
-    const normalizedSearch = searchTerms.map(clean);
-    const normalizedExclude = excludeTerms.map(clean);
-
-    for (const term of normalizedSearch) {
-        if (!term) continue;
-        for (const key of objKeys) {
-             const normalizedKey = clean(key);
-             const isExcluded = normalizedExclude.some(ex => ex && normalizedKey.includes(ex));
-             if (isExcluded) continue;
-             if (normalizedKey.includes(term)) {
-                 const val = obj[key];
-                 if (val !== undefined && val !== null && val !== '') return val;
-             }
+            // Check Match
+            if (nKey.includes(nAlias)) {
+                const val = obj[key];
+                if (val !== undefined && val !== null && val !== '') return val;
+            }
         }
     }
     return undefined;
@@ -62,7 +80,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('正在解析：支持费率与多币种识别...');
+    setImportMessage('V7 强力引擎解析中: 正在深度挖掘字段...');
     
     if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
         setImportStatus('error');
@@ -81,94 +99,71 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             throw new Error("无有效数据");
         }
         
+        // ------------------------------------------------
+        // V7.0 MAPPING CONFIGURATION
+        // ------------------------------------------------
         const sanitized: Product[] = arr.map((raw: any) => {
             
-            // Helper: Numerical Parser
-            const parseNum = (keys: string[], exclude: string[] = []) => {
-                const val = findValue(raw, keys, exclude);
-                if (val === undefined || val === null) return 0;
-                if (typeof val === 'number') return val;
-                if (typeof val === 'string') {
-                    const match = val.match(/-?\d+(\.\d+)?/);
-                    return match ? parseFloat(match[0]) : 0;
-                }
-                return 0;
-            };
-
-            // Helper: String Parser
-            const parseStr = (keys: string[], exclude: string[] = []) => {
-                const val = findValue(raw, keys, exclude);
-                return val ? String(val).trim() : '';
-            }
-
-            // --- 1. CORE FINANCIALS ---
-            const unitCost = parseNum(
-                ['采购单价', '含税单价', '进货价', '成本', 'purchase_price', 'cost_price', 'buying_price', 'unit_cost', 'cost'], 
-                ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping', '费率', 'rate'] // Exclude Rates
-            );
-
-            const price = parseNum(
-                ['销售价', '售价', '定价', 'selling_price', 'retail_price', 'sale_price', 'price'], 
-                ['采购', '成本', 'cost', 'purchase', 'buying', '进货', '费率', 'rate'] // Exclude Rates
-            );
-
-            // --- 2. LOGISTICS COST (Added 'Rate' Support) ---
-            let shippingCost = parseNum([
-                'shippingCost', 'freight', '运费', '头程', 
-                '物流单价', '物流费', '物流成本', '海运费', '空运费', '单价',
-                'shipping_price', 'logistics_cost', 'logistics',
-                '费率', 'rate', 'kg_price' // Fix: Support "费率 ($/kg)"
-            ]);
-
-            // Fallback: If 0, scan keys for ANY loosely containing "运" or "物流"
-            if (shippingCost === 0) {
-                const looseKey = Object.keys(raw).find(k => (k.includes('运') || k.includes('物流')) && (k.includes('价') || k.includes('费') || k.includes('率')));
-                if (looseKey) {
-                    const val = raw[looseKey];
-                    if (typeof val === 'number') shippingCost = val;
-                    else if (typeof val === 'string') shippingCost = parseFloat(val) || 0;
-                }
-            }
-
-            // --- 3. INBOUND ID (Deep Value Scan) ---
-            // First try standard header matching
-            let inboundId = parseStr(
-                ['lx', 'ib', '领星', '入库', '货件', 'fba', 'shipment', 'inbound', '批次', 'batch', 'po_no', 'ref', 'reference', '单号'],
+            // --- A. IDENTITY ---
+            // Try very hard to find the Inbound/Shipment ID
+            const inboundId = findValueGreedy(raw, 
+                ['lx', 'ib', '入库', '货件', 'fba', 'shipment', 'inbound', '批次', 'batch', 'po_no', '单号'],
                 ['sku', 'tracking', '快递', 'carrier', '配送']
-            );
+            ) || '';
 
-            // NUCLEAR OPTION: If header match failed, SCAN VALUES for the pattern "LX" or "IB"
-            if (!inboundId || inboundId === '' || inboundId === 'UNKNOWN') {
-                const rawValues = Object.values(raw);
-                for (const v of rawValues) {
-                    if (typeof v === 'string') {
-                        const cleanVal = v.trim().toUpperCase();
-                        // PATTERN MATCHING: Look for specific prefixes user mentioned
-                        if (cleanVal.includes('LX:') || cleanVal.startsWith('IB') || (cleanVal.startsWith('FBA') && cleanVal.length > 8)) {
-                            inboundId = v; // Found it!
-                            break;
-                        }
-                    }
-                }
-            }
+            const id = findValueGreedy(raw, ['product_id', 'sys_id', 'id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
+            const sku = findValueGreedy(raw, ['sku', 'msku', '编码', 'item_no', 'model']) || 'UNKNOWN';
+            const name = findValueGreedy(raw, ['name', 'title', '名称', '标题', '品名']) || 'Unnamed Product';
+            const supplier = findValueGreedy(raw, ['supplier', 'vendor', '供应商', '厂家']);
+            const note = findValueGreedy(raw, ['note', 'remark', '备注', '说明']);
 
-            const id = parseStr(['id', 'product_id', 'sys_id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
-            const sku = parseStr(['sku', 'msku', '编码']) || 'UNKNOWN';
-            const name = parseStr(['name', 'title', '名称', '标题']) || 'Unnamed Product';
-            const note = parseStr(['note', 'remark', '备注', '说明', 'memo']);
-            const supplier = parseStr(['supplier', 'vendor', '供应商', '厂家']);
+            // --- B. FINANCIALS (Crucial: Parsing Cost vs Price) ---
+            const unitCost = parseCleanNum(findValueGreedy(raw, 
+                ['采购单价', '含税单价', '未税', '进货价', '成本', 'purchase', 'cost', 'buying', 'sourcing', '单价', 'price_cost'],
+                ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping', '费率', 'rate']
+            ));
 
-            const stock = parseNum(['stock', 'qty', 'quantity', '库存', '现有']);
-            const restockCartons = parseNum(['restockCartons', 'cartons', 'box_count', '箱数', '件数']);
-            const itemsPerBox = parseNum(['itemsPerBox', 'per_box', 'boxing', '装箱数']);
-            const unitWeight = parseNum(['unitWeight', 'weight', '重量', 'kg']);
-            
+            const price = parseCleanNum(findValueGreedy(raw, 
+                ['销售价', '售价', '定价', '标准价', 'selling', 'retail', 'sale_price', 'listing', 'msrp'],
+                ['采购', '成本', 'cost', 'purchase', 'buying', '进货', '费率', 'rate']
+            ));
+
+            // --- C. LOGISTICS & SPECS ---
+            // Very aggressive shipping matching
+            let shippingCost = parseCleanNum(findValueGreedy(raw, 
+                ['shippingCost', 'freight', '运费', '头程', '物流费', '海运费', '空运费', '费率', 'rate', 'kg_price', 'shipping', 'logistics'],
+                []
+            ));
+
+            // Stock / Quantity
+            const stock = parseCleanNum(findValueGreedy(raw, 
+                ['stock', 'qty', 'quantity', '库存', '现有', '总数', 'amount', 'total', 'on_hand', 'available'],
+                ['箱', 'carton', 'box'] // Avoid confusing stock with box count
+            ));
+
+            // Boxing Info
+            // Items Per Box (装箱数)
+            const itemsPerBox = parseCleanNum(findValueGreedy(raw, 
+                ['itemsPerBox', 'per_box', 'boxing', '装箱数', '每箱', '单箱', 'pcs_per', 'quantity_per'],
+                []
+            ));
+
+            // Carton Count (箱数)
+            const restockCartons = parseCleanNum(findValueGreedy(raw, 
+                ['restockCartons', 'cartons', 'box_count', '箱数', '件数', 'ctns', 'total_boxes'],
+                ['per', '装箱'] // Avoid "Items Per Box"
+            ));
+
+            const unitWeight = parseCleanNum(findValueGreedy(raw, ['unitWeight', 'weight', '重量', 'kg']));
+            const boxWeight = parseCleanNum(findValueGreedy(raw, ['boxWeight', '箱重', 'gross_weight']));
+
+            // --- D. RECONSTRUCT ---
             return {
                 id,
-                sku,
-                name,
+                sku: String(sku),
+                name: String(name),
                 description: raw.description || '',
-                price: price || (unitCost * 3), 
+                price: price || (unitCost * 3) || 99.99, // Fallback if missing
                 stock,
                 currency: raw.currency || Currency.USD,
                 status: raw.status || ProductStatus.Draft,
@@ -177,25 +172,25 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 variants: [],
                 imageUrl: raw.imageUrl || '',
                 lastUpdated: new Date().toISOString(),
-                supplier,
-                note,
+                supplier: String(supplier || ''),
+                note: String(note || ''),
                 
                 unitWeight,
                 boxLength: Number(raw.boxLength) || 0,
                 boxWidth: Number(raw.boxWidth) || 0,
                 boxHeight: Number(raw.boxHeight) || 0,
-                boxWeight: Number(raw.boxWeight) || 0,
+                boxWeight: boxWeight,
                 itemsPerBox,
                 restockCartons,
-                inboundId, 
+                inboundId: String(inboundId), 
 
                 financials: {
                     costOfGoods: unitCost,
                     shippingCost: shippingCost,
-                    otherCost: parseNum(['otherCost', '杂费']),
+                    otherCost: parseCleanNum(findValueGreedy(raw, ['otherCost', '杂费'])),
                     sellingPrice: price, 
-                    platformFee: parseNum(['platformFee', '佣金']),
-                    adCost: parseNum(['adCost', '广告']),
+                    platformFee: parseCleanNum(findValueGreedy(raw, ['platformFee', '佣金'])),
+                    adCost: parseCleanNum(findValueGreedy(raw, ['adCost', '广告'])),
                 },
                 logistics: {
                     method: raw.logistics?.method || 'Sea',
@@ -205,13 +200,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                     origin: '',
                     destination: ''
                 },
-                dailySales: parseNum(['dailySales', '日销', 'sales'])
+                dailySales: parseCleanNum(findValueGreedy(raw, ['dailySales', '日销', 'sales']))
             };
         });
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条 (支持费率识别)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条 (V7 强力匹配: 箱规/运费/成本 已锁定)`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
@@ -391,7 +386,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 6.1.0 (Rate Support)</p>
+                      <p className="text-xs text-gray-500">Version 7.0.0 (Greedy Matcher)</p>
                   </div>
               </div>
               <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold text-gray-300 transition-colors">

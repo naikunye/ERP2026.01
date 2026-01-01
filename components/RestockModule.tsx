@@ -3,7 +3,7 @@ import { Product } from '../types';
 import { 
   Search, Plus, Filter, Factory, Truck, Plane, Ship, 
   DollarSign, Calendar, Package, Edit3, Copy, Trash2, StickyNote, Wallet, ExternalLink,
-  Activity, AlertTriangle, TrendingUp, BarChart, Container, CheckSquare, Square, ShoppingCart, ArrowRight
+  Activity, AlertTriangle, TrendingUp, BarChart, Container, CheckSquare, Square, ShoppingCart, ArrowRight, Scale
 } from 'lucide-react';
 
 interface RestockModuleProps {
@@ -199,10 +199,10 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           {/* Header Row */}
           <div className="grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12">
               <div className="col-span-2">SKU / 入库单 / 备注</div>
-              <div className="col-span-2">产品详情</div>
-              <div className="col-span-2">物流状态</div>
+              <div className="col-span-2">产品详情 / 箱规</div>
+              <div className="col-span-2">物流状态 / 费率</div>
               <div className="col-span-2">库存健康度 (DOI)</div>
-              <div className="col-span-1">采购成本</div>
+              <div className="col-span-1">采购成本 / 售价</div>
               <div className="col-span-1">利润透视</div>
               <div className="col-span-2 text-center">操作</div>
           </div>
@@ -234,6 +234,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  const urgencyText = isCritical ? 'text-neon-pink' : (isLowStock ? 'text-neon-yellow' : 'text-neon-green');
                  const totalPotentialProfit = unitProfit * item.stock;
                  const costOfGoods = item.financials?.costOfGoods || 0;
+                 const shippingCost = item.financials?.shippingCost || 0;
                  const isSelected = selectedIds.has(item.id);
 
                  return (
@@ -275,20 +276,28 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           )}
                       </div>
 
-                      {/* 2. Product Detail */}
-                      <div className="col-span-2 p-4 border-r border-white/5 h-full flex items-center gap-3 overflow-hidden">
-                          <div className="w-12 h-12 rounded-lg bg-black/50 border border-white/10 overflow-hidden shrink-0">
-                              <img src={item.imageUrl} className="w-full h-full object-cover" alt="" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                              <div className="font-bold text-white text-xs truncate mb-1">{item.name}</div>
-                              <div className="flex items-center gap-2 text-[10px] text-gray-500 truncate">
-                                  <Factory size={10} className="shrink-0"/> <span className="truncate">{item.supplier || '未指定供应商'}</span>
+                      {/* 2. Product Detail + Boxing Info */}
+                      <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
+                          <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-black/50 border border-white/10 overflow-hidden shrink-0">
+                                  <img src={item.imageUrl} className="w-full h-full object-cover" alt="" />
                               </div>
+                              <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-white text-xs truncate mb-1" title={item.name}>{item.name}</div>
+                                  <div className="flex items-center gap-2 text-[10px] text-gray-500 truncate">
+                                      <Factory size={10} className="shrink-0"/> <span className="truncate">{item.supplier || '未指定供应商'}</span>
+                                  </div>
+                              </div>
+                          </div>
+                          {/* NEW: Explicit Box Info */}
+                          <div className="flex gap-2 text-[9px] text-gray-400 bg-black/20 p-1.5 rounded border border-white/5">
+                              <span>装箱: <strong className="text-white">{item.itemsPerBox || 0}</strong> pcs/箱</span>
+                              <span className="text-gray-600">|</span>
+                              <span>箱数: <strong className="text-white">{item.restockCartons || 0}</strong> ctns</span>
                           </div>
                       </div>
 
-                      {/* 3. Logistics (Simplified) */}
+                      {/* 3. Logistics (Simplified) + Rate */}
                       <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
                           {item.logistics ? (
                               <>
@@ -302,12 +311,19 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                                 </div>
                               </>
                           ) : <div className="text-[10px] text-gray-600 italic">暂无物流数据</div>}
+                          
+                          {/* NEW: Shipping Rate */}
+                          {shippingCost > 0 && (
+                              <div className="text-[10px] text-neon-yellow flex items-center gap-1">
+                                  <Scale size={10}/> 费率: ${shippingCost.toFixed(2)}/kg
+                              </div>
+                          )}
                       </div>
 
                       {/* 4. Inventory Health */}
                       <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
                            <div className="flex justify-between items-end">
-                                <div className="text-lg font-display font-bold text-white leading-none">{item.stock} <span className="text-[10px] text-gray-500 font-sans">pcs</span></div>
+                                <div className="text-lg font-display font-bold text-white leading-none">{item.stock} <span className="text-[10px] text-gray-500 font-sans">pcs (总数)</span></div>
                                 <div className={`text-[10px] font-bold ${urgencyText} flex items-center gap-1`}>
                                     {isCritical && <AlertTriangle size={10} />}
                                     {daysOfInventory > 365 ? '>1年' : `${daysOfInventory}天可售`}
@@ -317,28 +333,22 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                                <div className="flex items-center gap-1">
                                    <Activity size={10} /> 日销: <span className="text-white font-mono">{item.dailySales || 0}</span>
                                </div>
-                               {item.restockCartons ? (
-                                   <div className="text-gray-400 font-mono">Plan: {item.restockCartons}箱</div>
-                               ) : null}
                            </div>
                            <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
                                <div className={`h-full rounded-full ${urgencyColor}`} style={{ width: `${stockProgress}%` }}></div>
                            </div>
                       </div>
 
-                      {/* 5. Procurement Cost */}
-                      <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-1">
-                          {hasData ? (
-                              <>
-                                <div className="flex flex-col">
-                                    <span className="text-[9px] text-gray-500 uppercase">采购单价</span>
-                                    <span className="text-xs font-bold text-white font-mono">${costOfGoods.toFixed(2)}</span>
-                                </div>
-                                <div className="flex flex-col gap-0.5 mt-1">
-                                    <div className="flex items-center gap-1 text-[10px] text-gray-500"><span className="text-gray-600">Total:</span><span className="font-mono">¥ {(costOfGoods * item.stock).toLocaleString()}</span></div>
-                                </div>
-                              </>
-                          ) : <div className="text-[10px] text-gray-600">待补充</div>}
+                      {/* 5. Procurement Cost / Sales Price */}
+                      <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
+                          <div className="flex flex-col">
+                              <span className="text-[9px] text-gray-500 uppercase">采购成本</span>
+                              <span className="text-xs font-bold text-white font-mono">${costOfGoods.toFixed(2)}</span>
+                          </div>
+                          <div className="flex flex-col">
+                              <span className="text-[9px] text-gray-500 uppercase">销售价</span>
+                              <span className="text-xs font-bold text-neon-green font-mono">${item.financials?.sellingPrice.toFixed(2) || '0.00'}</span>
+                          </div>
                       </div>
 
                       {/* 6. Financials */}
