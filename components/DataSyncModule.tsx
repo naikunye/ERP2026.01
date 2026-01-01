@@ -3,7 +3,7 @@ import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
   Wifi, Activity, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw, Zap, ShieldAlert,
-  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu
+  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu, Copy, Check
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -15,7 +15,7 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   const [serverUrl, setServerUrl] = useState('ws://119.28.72.106:8090');
   
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error' | 'simulating'>('disconnected');
-  const [errorDetail, setErrorDetail] = useState<React.ReactNode>('');
+  const [errorCode, setErrorCode] = useState<number>(0);
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [wsMessageCount, setWsMessageCount] = useState(0);
   const [simulationInterval, setSimulationInterval] = useState<any>(null);
@@ -23,6 +23,9 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
   const [importDragActive, setImportDragActive] = useState(false);
   const [importStatus, setImportStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [importMessage, setImportMessage] = useState('');
+  
+  // UI State for Copy buttons
+  const [copiedStep, setCopiedStep] = useState<number | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -32,6 +35,12 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           if (simulationInterval) clearInterval(simulationInterval);
       };
   }, []);
+
+  const copyToClipboard = (text: string, stepId: number) => {
+      navigator.clipboard.writeText(text);
+      setCopiedStep(stepId);
+      setTimeout(() => setCopiedStep(null), 2000);
+  };
 
   const sanitizeProduct = (raw: any): Product => {
       const id = raw.id || raw._id || `IMPORTED-${Math.random().toString(36).substr(2, 9)}`;
@@ -77,8 +86,8 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       if (socket) socket.close();
       if (simulationInterval) clearInterval(simulationInterval);
       
-      setErrorDetail('');
       setConnectionStatus('connecting');
+      setErrorCode(0);
 
       let targetUrl = serverUrl.trim();
       if (!targetUrl.startsWith('ws://') && !targetUrl.startsWith('wss://')) {
@@ -95,7 +104,6 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
             ws.onopen = () => {
                 setConnectionStatus('connected');
                 setSocket(ws);
-                setErrorDetail('');
                 console.log("[Success] WebSocket Connected");
             };
 
@@ -118,74 +126,12 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                 console.log(`[Closed] Code: ${e.code}, Reason: ${e.reason}`);
                 setSocket(null);
                 setConnectionStatus('error');
-
-                if (e.code === 1006) {
-                    const isPageHttps = window.location.protocol === 'https:';
-                    const isTargetUnsecure = targetUrl.startsWith('ws://');
-
-                    if (isPageHttps && isTargetUnsecure) {
-                        setErrorDetail(
-                            <div className="space-y-4 mt-2">
-                                <div className="font-bold text-neon-pink flex items-center gap-2 text-sm border-b border-white/10 pb-2">
-                                    <ShieldAlert size={16}/> 连接仍被拒绝 (Code 1006)
-                                </div>
-                                
-                                <div className="text-xs text-gray-300 leading-relaxed">
-                                    既然您已确认为浏览器开启了不安全内容权限，且腾讯云后台防火墙已放行，那么问题一定在<b>服务器内部设置</b>。
-                                </div>
-
-                                <div className="bg-black/40 p-4 rounded-lg border border-white/20 text-xs text-white font-mono space-y-4">
-                                    <div className="flex items-start gap-3">
-                                        <Terminal size={16} className="text-neon-blue mt-1 shrink-0"/>
-                                        <div className="space-y-2 w-full">
-                                            <div className="font-bold text-neon-blue font-sans mb-1">关键排查：程序监听地址错误</div>
-                                            <p className="text-gray-400 font-sans">
-                                                很多程序默认只监听 <code>127.0.0.1</code> (本机)。为了让外网能连，必须监听 <code>0.0.0.0</code>。
-                                            </p>
-                                            <div className="bg-white/5 p-2 rounded border border-white/10 text-gray-300">
-                                                # 在服务器 SSH 中运行此命令查看：<br/>
-                                                <span className="text-neon-yellow">netstat -tunlp | grep 8090</span>
-                                            </div>
-                                            <div className="space-y-1 text-gray-400 font-sans pl-2 border-l-2 border-gray-700">
-                                                <div>❌ 错误显示: <span className="text-red-400">127.0.0.1:8090</span> (只能自己连)</div>
-                                                <div>✅ 正确显示: <span className="text-neon-green">0.0.0.0:8090</span> 或 <span className="text-neon-green">:::8090</span></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="w-full h-px bg-white/10"></div>
-
-                                    <div className="flex items-start gap-3">
-                                        <ShieldCheck size={16} className="text-neon-purple mt-1 shrink-0"/>
-                                        <div className="space-y-2 w-full">
-                                            <div className="font-bold text-neon-purple font-sans mb-1">关键排查：服务器内部防火墙</div>
-                                            <p className="text-gray-400 font-sans">
-                                                即使腾讯云放行了，Linux 系统内部可能还有一道墙 (ufw/firewalld)。
-                                            </p>
-                                            <div className="bg-white/5 p-2 rounded border border-white/10 text-gray-300">
-                                                # 尝试在 SSH 运行放行命令 (Ubuntu):<br/>
-                                                <span className="text-neon-yellow">sudo ufw allow 8090/tcp</span>
-                                                <br/>
-                                                # 或者 (CentOS):<br/>
-                                                <span className="text-neon-yellow">firewall-cmd --zone=public --add-port=8090/tcp --permanent</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    } else {
-                        setErrorDetail(`连接失败 (Code 1006): 无法连接到 ${targetUrl}。请检查 IP 是否正确，或服务器程序是否已启动。`);
-                    }
-                } else {
-                    setErrorDetail(`连接断开 (Code ${e.code}): ${e.reason || '网络中断'}`);
-                }
+                setErrorCode(e.code);
             };
         } catch (err: any) {
             setConnectionStatus('error');
-            setErrorDetail(`初始化异常: ${err.message}`);
         }
-      }, 500); 
+      }, 800); 
   };
 
   const handleDisconnect = () => {
@@ -199,7 +145,6 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       handleDisconnect();
       setTimeout(() => {
         setConnectionStatus('simulating');
-        setErrorDetail('');
         let counter = 0;
         const interval = setInterval(() => {
             setWsMessageCount(prev => prev + 1);
@@ -319,26 +264,116 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                           )}
                       </div>
 
-                      {/* Diagnostic / Status Area */}
-                      <div className="min-h-[80px]">
-                          {connectionStatus === 'error' && (
-                              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-xs animate-fade-in relative z-20">
-                                  {errorDetail}
-                              </div>
-                          )}
-                          {connectionStatus === 'connected' && (
-                              <div className="p-3 bg-neon-green/10 border border-neon-green/20 rounded-lg text-neon-green text-xs flex items-center gap-2 animate-fade-in">
-                                  <Activity size={14} className="animate-pulse" /> 
-                                  连接成功 | 已接收 {wsMessageCount} 条数据包
-                              </div>
-                          )}
-                          {connectionStatus === 'simulating' && (
-                              <div className="p-3 bg-neon-purple/10 border border-neon-purple/20 rounded-lg text-neon-purple text-xs flex items-center gap-2 animate-fade-in">
-                                  <Zap size={14} className="animate-pulse" /> 
-                                  正在生成模拟数据... ({wsMessageCount})
-                              </div>
-                          )}
-                      </div>
+                      {/* --- Troubleshooting Wizard --- */}
+                      {connectionStatus === 'error' && errorCode === 1006 && (
+                          <div className="mt-4 p-0 bg-black/60 border border-red-500/30 rounded-xl overflow-hidden animate-fade-in">
+                                <div className="bg-red-500/10 px-4 py-3 border-b border-red-500/20 flex justify-between items-center">
+                                    <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
+                                        <ShieldAlert size={14} /> 连接诊断向导 (Server Diagnostics)
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <span className="flex items-center gap-1 text-[10px] text-neon-green/80 bg-neon-green/10 px-2 py-0.5 rounded border border-neon-green/20">
+                                            <Check size={10} /> 浏览器
+                                        </span>
+                                        <span className="flex items-center gap-1 text-[10px] text-neon-green/80 bg-neon-green/10 px-2 py-0.5 rounded border border-neon-green/20">
+                                            <Check size={10} /> 云防火墙
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div className="p-5 space-y-6">
+                                    <p className="text-[11px] text-gray-400">
+                                        外部通道已打通！现在的目标是<b className="text-white">服务器内部</b>。请在 SSH 终端依次运行以下命令：
+                                    </p>
+
+                                    {/* Step 1 */}
+                                    <div>
+                                        <h4 className="text-white font-bold text-xs mb-2 flex items-center gap-2">
+                                            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-mono">1</span>
+                                            检查监听地址 (Port Binding)
+                                        </h4>
+                                        <div className="bg-black/50 rounded-lg p-3 font-mono text-[11px] border border-white/10 relative group hover:border-neon-blue/50 transition-colors">
+                                            <span className="text-neon-pink select-none">$ </span>
+                                            netstat -tunlp | grep 8090
+                                            <button 
+                                                onClick={() => copyToClipboard('netstat -tunlp | grep 8090', 1)}
+                                                className="absolute right-2 top-2 p-1.5 hover:bg-white/20 rounded bg-white/5 text-gray-400 hover:text-white transition-all" 
+                                                title="复制命令"
+                                            >
+                                                {copiedStep === 1 ? <Check size={12} className="text-neon-green"/> : <Copy size={12}/>}
+                                            </button>
+                                        </div>
+                                        <div className="mt-2 grid grid-cols-1 gap-1 text-[10px] pl-2 border-l-2 border-white/5">
+                                            <div className="text-gray-500 flex items-center gap-2">
+                                                <span className="text-red-400">❌ 127.0.0.1:8090</span> 
+                                                <span>(仅限本机访问 → 修改代码监听 0.0.0.0)</span>
+                                            </div>
+                                            <div className="text-gray-500 flex items-center gap-2">
+                                                <span className="text-neon-green">✅ 0.0.0.0:8090</span> 
+                                                <span>(允许外网访问 → 继续下一步)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Step 2 */}
+                                    <div>
+                                        <h4 className="text-white font-bold text-xs mb-2 flex items-center gap-2">
+                                            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-mono">2</span>
+                                            放行内部防火墙 (Internal Firewall)
+                                        </h4>
+                                        <div className="space-y-2">
+                                            {/* Ubuntu */}
+                                            <div className="bg-black/50 rounded-lg p-3 font-mono text-[11px] border border-white/10 relative group hover:border-neon-purple/50 transition-colors">
+                                                <div className="text-gray-600 mb-1 select-none text-[9px] uppercase font-bold">Ubuntu / Debian (UFW)</div>
+                                                <span className="text-neon-pink select-none">$ </span>
+                                                sudo ufw allow 8090/tcp
+                                                <button 
+                                                    onClick={() => copyToClipboard('sudo ufw allow 8090/tcp', 2)}
+                                                    className="absolute right-2 top-2 p-1.5 hover:bg-white/20 rounded bg-white/5 text-gray-400 hover:text-white transition-all"
+                                                >
+                                                    {copiedStep === 2 ? <Check size={12} className="text-neon-green"/> : <Copy size={12}/>}
+                                                </button>
+                                            </div>
+
+                                            {/* CentOS */}
+                                            <div className="bg-black/50 rounded-lg p-3 font-mono text-[11px] border border-white/10 relative group hover:border-neon-purple/50 transition-colors">
+                                                <div className="text-gray-600 mb-1 select-none text-[9px] uppercase font-bold">CentOS / RedHat (FirewallD)</div>
+                                                <div className="flex flex-col gap-1">
+                                                    <div>
+                                                        <span className="text-neon-pink select-none">$ </span>
+                                                        firewall-cmd --zone=public --add-port=8090/tcp --permanent
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-neon-pink select-none">$ </span>
+                                                        firewall-cmd --reload
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => copyToClipboard('firewall-cmd --zone=public --add-port=8090/tcp --permanent && firewall-cmd --reload', 3)}
+                                                    className="absolute right-2 top-2 p-1.5 hover:bg-white/20 rounded bg-white/5 text-gray-400 hover:text-white transition-all"
+                                                >
+                                                    {copiedStep === 3 ? <Check size={12} className="text-neon-green"/> : <Copy size={12}/>}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                          </div>
+                      )}
+
+                      {/* Diagnostic / Status Area (Non-Error) */}
+                      {connectionStatus === 'connected' && (
+                           <div className="p-3 bg-neon-green/10 border border-neon-green/20 rounded-lg text-neon-green text-xs flex items-center gap-2 animate-fade-in mt-4">
+                               <Activity size={14} className="animate-pulse" /> 
+                               连接成功 | 已接收 {wsMessageCount} 条数据包
+                           </div>
+                       )}
+                       {connectionStatus === 'simulating' && (
+                           <div className="p-3 bg-neon-purple/10 border border-neon-purple/20 rounded-lg text-neon-purple text-xs flex items-center gap-2 animate-fade-in mt-4">
+                               <Zap size={14} className="animate-pulse" /> 
+                               正在生成模拟数据... ({wsMessageCount})
+                           </div>
+                       )}
                   </div>
               </section>
           </div>
