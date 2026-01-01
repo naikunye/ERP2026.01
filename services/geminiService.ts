@@ -1,14 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const apiKey = process.env.API_KEY || '';
-
-// Initialize Gemini Client
-// Note: In a production app, handle the missing key more gracefully.
-const ai = new GoogleGenAI({ apiKey });
+// Initialize Gemini Client strictly following the provided guidelines.
+// Always use the process.env.API_KEY directly in the constructor.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generateProductDescription = async (productName: string, features: string, tone: string = 'Professional'): Promise<string> => {
-  if (!apiKey) throw new Error("API Key missing");
-
   try {
     const prompt = `
       You are an expert e-commerce copywriter for the Chinese market.
@@ -18,21 +14,21 @@ export const generateProductDescription = async (productName: string, features: 
       Format: Plain text, max 2 paragraphs.
     `;
 
+    // Use ai.models.generateContent directly with model name and prompt.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
 
+    // Access .text property directly (not a method).
     return response.text || "无法生成描述。";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "生成内容出错，请检查 API Key。";
+    return "生成内容出错，请检查配置。";
   }
 };
 
 export const translateProductContent = async (text: string, targetLanguage: string): Promise<string> => {
-  if (!apiKey) throw new Error("API Key missing");
-
   try {
     const prompt = `Translate the following e-commerce product text into ${targetLanguage}. Maintain the marketing tone. Text: "${text}"`;
 
@@ -49,11 +45,10 @@ export const translateProductContent = async (text: string, targetLanguage: stri
 };
 
 export const analyzeMarketFit = async (productName: string, price: number): Promise<{ score: number; reasoning: string }> => {
-    if (!apiKey) throw new Error("API Key missing");
-
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            // Use Pro model for analysis tasks requiring reasoning.
+            model: 'gemini-3-pro-preview',
             contents: `Analyze the market fit for a product named "${productName}" priced at ${price}. Return a JSON with a score (1-100) and a short reasoning sentence in Chinese (Simplified).`,
             config: {
                 responseMimeType: "application/json",
@@ -79,8 +74,6 @@ export const analyzeMarketFit = async (productName: string, price: number): Prom
 }
 
 export const generateRestockInsight = async (productName: string, currentStock: number, dailySales: number): Promise<{ suggestedAmount: number; reason: string; riskLevel: string }> => {
-    if (!apiKey) throw new Error("API Key missing");
-
     try {
         const prompt = `
             Product: "${productName}"
@@ -93,7 +86,8 @@ export const generateRestockInsight = async (productName: string, currentStock: 
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            // Use Pro model for reasoning tasks.
+            model: 'gemini-3-pro-preview',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
