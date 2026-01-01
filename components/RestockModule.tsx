@@ -98,7 +98,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           case 'Delivered': return '已送达';
           case 'In Production': return '生产中';
           case 'Customs': return '清关中';
-          case 'Pending': return '待处理';
+          case 'Pending': return '待发货'; // UPDATED
+          case 'Out for Delivery': return '派送中';
+          case 'Exception': return '异常';
           default: return status;
       }
   }
@@ -279,6 +281,12 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                                   <span className="font-mono font-bold tracking-wide break-all whitespace-normal leading-tight">
                                       {item.inboundId}
                                   </span>
+                                  {/* NEW: Inbound Status Badge */}
+                                  {item.inboundStatus === 'Received' ? (
+                                      <span className="ml-1 text-[9px] bg-neon-green/20 text-neon-green px-1 rounded border border-neon-green/20 shrink-0">已入库</span>
+                                  ) : (
+                                      <span className="ml-1 text-[9px] bg-neon-yellow/20 text-neon-yellow px-1 rounded border border-neon-yellow/20 shrink-0">待入库</span>
+                                  )}
                               </div>
                           ) : (
                               <div className="text-[9px] text-gray-600 border border-dashed border-gray-800 px-1 py-0.5 rounded w-fit mt-1">无入库单号</div>

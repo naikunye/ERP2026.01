@@ -83,6 +83,7 @@ export interface Product {
   supplier?: string;
   
   inboundId?: string; 
+  inboundStatus?: 'Pending' | 'Received'; // NEW FIELD
   dailySales?: number; 
   restockDate?: string; 
   

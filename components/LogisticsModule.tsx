@@ -35,6 +35,31 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
   const [shipmentItems, setShipmentItems] = useState<ShipmentItem[]>([]);
   const [searchSkuTerm, setSearchSkuTerm] = useState('');
 
+  // Helper: Status Translation
+  const getStatusLabel = (status: string) => {
+      switch (status) {
+          case 'Pending': return '⏳ 待发货';
+          case 'In Production': return '🏭 生产中';
+          case 'In Transit': return '🚚 运输中';
+          case 'Customs': return '🛃 清关中';
+          case 'Out for Delivery': return '📦 派送中';
+          case 'Delivered': return '✅ 已送达';
+          case 'Exception': return '⚠️ 异常';
+          default: return status;
+      }
+  };
+
+  const getStatusColor = (status: string) => {
+      switch (status) {
+          case 'Pending': return 'text-neon-yellow border-neon-yellow/30 bg-neon-yellow/10';
+          case 'In Transit': 
+          case 'Out for Delivery': return 'text-neon-blue border-neon-blue/30 bg-neon-blue/10';
+          case 'Delivered': return 'text-neon-green border-neon-green/30 bg-neon-green/10';
+          case 'Exception': return 'text-neon-pink border-neon-pink/30 bg-neon-pink/10';
+          default: return 'text-gray-400 border-gray-600/30 bg-gray-600/10';
+      }
+  };
+
   // Initialize Modal for Adding
   const openAddModal = () => {
       setModalMode('ADD');
@@ -253,13 +278,14 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                       onChange={(e) => setForm(p => ({...p, status: e.target.value as any}))}
                                       className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none"
                                   >
-                                      <option value="Pending">待处理</option>
-                                      <option value="In Production">生产中</option>
-                                      <option value="In Transit">运输中</option>
-                                      <option value="Customs">清关中</option>
-                                      <option value="Out for Delivery">派送中</option>
-                                      <option value="Delivered">已送达</option>
-                                      <option value="Exception">异常</option>
+                                      <option value="Pending">⏳ 待发货 (Pending)</option>
+                                      <option value="In Transit">🚚 运输中 (In Transit)</option>
+                                      <option value="Delivered">✅ 已送达 (Delivered)</option>
+                                      <option disabled>──────────</option>
+                                      <option value="In Production">🏭 生产中</option>
+                                      <option value="Customs">🛃 清关中</option>
+                                      <option value="Out for Delivery">📦 派送中</option>
+                                      <option value="Exception">⚠️ 异常</option>
                                   </select>
                               </div>
                               <div className="space-y-1">
@@ -444,12 +470,8 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                    </div>
                                    <span className="font-mono text-sm font-bold text-white">{shipment.trackingNo}</span>
                               </div>
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                                  shipment.status === 'Exception' ? 'text-neon-pink border-neon-pink/30 bg-neon-pink/10' :
-                                  shipment.status === 'Delivered' ? 'text-neon-green border-neon-green/30 bg-neon-green/10' :
-                                  'text-neon-blue border-neon-blue/30 bg-neon-blue/10'
-                              }`}>
-                                  {shipment.status}
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getStatusColor(shipment.status)}`}>
+                                  {getStatusLabel(shipment.status)}
                               </span>
                           </div>
                           
@@ -499,13 +521,10 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
 
                         <div className="grid grid-cols-4 gap-4">
                             <StatCard 
-                                label="清关状态" 
-                                value={selectedShipment.customsStatus || '待定'} 
-                                icon={<ShieldCheck size={16}/>}
-                                statusColor={
-                                    selectedShipment.customsStatus === 'Cleared' ? 'text-neon-green' : 
-                                    selectedShipment.customsStatus === 'Inspection' ? 'text-neon-pink' : 'text-yellow-500'
-                                }
+                                label="当前状态" 
+                                value={getStatusLabel(selectedShipment.status)} 
+                                icon={<Activity size={16}/>}
+                                statusColor="text-white"
                             />
                             <StatCard 
                                 label="预计送达" 

@@ -32,6 +32,8 @@ const DEMO_PRODUCTS: Product[] = [
     marketplaces: ['US', 'DE'],
     lastUpdated: new Date().toISOString(),
     supplier: '深圳声学科技有限公司',
+    inboundId: 'IB-20231101',
+    inboundStatus: 'Received',
     financials: { costOfGoods: 22.5, shippingCost: 3.2, otherCost: 0.5, sellingPrice: 89.99, platformFee: 13.5, adCost: 12.0 },
     logistics: { method: 'Air', carrier: 'DHL', trackingNo: 'DHL99283711HK', status: 'In Transit', origin: 'Shenzhen', destination: 'US-LAX', shippingRate: 5.5 }
   },
@@ -49,6 +51,8 @@ const DEMO_PRODUCTS: Product[] = [
     marketplaces: ['US'],
     lastUpdated: new Date().toISOString(),
     supplier: '安吉椅业集团',
+    inboundId: 'IB-20231105',
+    inboundStatus: 'Pending',
     financials: { costOfGoods: 65.0, shippingCost: 45.0, otherCost: 2.0, sellingPrice: 199.00, platformFee: 29.85, adCost: 25.0 },
     logistics: { method: 'Sea', carrier: 'Matson', trackingNo: 'MSN78291029US', status: 'Customs', origin: 'Ningbo', destination: 'US-LGB', shippingRate: 1.2 }
   },
@@ -349,6 +353,7 @@ const App: React.FC = () => {
                supplier: updatedData.supplierName,
                dailySales: updatedData.dailySales,
                inboundId: updatedData.inboundId,
+               inboundStatus: updatedData.inboundStatus, // Persist Status
                restockDate: updatedData.restockDate,
                
                // Persist Extended Physical Props

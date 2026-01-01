@@ -3,7 +3,7 @@ import { Product, Currency } from '../types';
 import { 
   X, Save, History, Box, Layers, Truck, 
   DollarSign, TrendingUp, Calculator, Package, 
-  Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText
+  Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText, CheckCircle2, Clock
 } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
@@ -41,8 +41,9 @@ interface SKUFormData {
   boxWeight: number; // kg
   itemsPerBox: number;
   restockCartons: number;
-  totalRestockUnits: number; // NEW: Manual Override capability
+  totalRestockUnits: number; // Manual Override capability
   inboundId: string;
+  inboundStatus: 'Pending' | 'Received'; // NEW STATUS
 
   // M4: First Leg Logistics
   transportMethod: 'Air' | 'Sea';
@@ -82,6 +83,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     // Initialize Total Units (Standard calc as default)
     totalRestockUnits: (product.restockCartons || 10) * (product.itemsPerBox || 24),
     inboundId: product.inboundId || `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+    inboundStatus: product.inboundStatus || 'Pending', // Initialize status
     transportMethod: product.logistics?.method || 'Sea',
     carrier: product.logistics?.carrier || '',
     trackingNo: product.logistics?.trackingNo || '',
@@ -307,7 +309,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5 mb-4">
                          <InputGroup label="补货箱数 (ctns)" name="restockCartons" value={formData.restockCartons} highlight="text-white bg-white/10 rounded px-2" onChange={handleChange} />
                          
-                         {/* UPDATED: Total Restock Units as Input */}
+                         {/* Total Restock Units as Input */}
                          <div className="space-y-1 w-full">
                             <label className="text-[10px] text-neon-yellow font-bold uppercase flex items-center gap-1">
                                 总数量 (pcs) <span className="text-[9px] font-normal opacity-70">非标可改</span>
@@ -323,7 +325,26 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     </div>
 
                     <div className="space-y-4">
-                        <InputGroup label="入库单号 (Inbound ID)" name="inboundId" value={formData.inboundId} type="text" onChange={handleChange} />
+                        {/* INBOUND ID + STATUS SELECTOR */}
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="col-span-2">
+                                <InputGroup label="入库单号 (Inbound ID)" name="inboundId" value={formData.inboundId} type="text" onChange={handleChange} />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-bold uppercase">状态</label>
+                                <select 
+                                    name="inboundStatus"
+                                    value={formData.inboundStatus}
+                                    onChange={handleChange}
+                                    className={`w-full h-10 bg-white/5 border border-white/10 rounded-lg px-2 text-xs font-bold text-white outline-none focus:border-white/30 ${
+                                        formData.inboundStatus === 'Received' ? 'text-neon-green border-neon-green/30' : 'text-neon-yellow border-neon-yellow/30'
+                                    }`}
+                                >
+                                    <option value="Pending">⏳ 待入库</option>
+                                    <option value="Received">✅ 已入库</option>
+                                </select>
+                            </div>
+                        </div>
                         
                         <div className="mt-4 flex gap-4 text-[10px] font-mono text-gray-500 bg-black/20 p-2 rounded-lg justify-between">
                             <span>总体积: {metrics.cbm.toFixed(2)} m³</span>
