@@ -71,10 +71,11 @@ const Copilot: React.FC<CopilotProps> = ({ contextData }) => {
         
         Instructions:
         1. Answer strictly based on the provided context if it's a data question.
-        2. If asked to write content, be professional and creative.
-        3. Keep answers concise (under 100 words) unless asked for details.
-        4. Use formatting like bullet points for clarity.
-        5. Tone: Futuristic, professional, helpful.
+        2. SPECIAL INSTRUCTION: If 'activeContextItem' is present in the data, the user is likely asking about this specific product/SKU. Use its details (financials, logistics, stock) to answer.
+        3. If asked to write content, be professional and creative.
+        4. Keep answers concise (under 100 words) unless asked for details.
+        5. Use formatting like bullet points for clarity.
+        6. Tone: Futuristic, professional, helpful.
       `;
 
       const response = await ai.models.generateContent({

@@ -137,6 +137,17 @@ export interface Transaction {
     status: 'Cleared' | 'Pending';
 }
 
+export interface Task {
+  id: string;
+  title: string;
+  desc: string;
+  priority: 'High' | 'Medium' | 'Low';
+  status: 'Todo' | 'In Progress' | 'Review' | 'Done';
+  assignee: string; // Avatar URL or Initials
+  dueDate: string;
+  tags: string[];
+}
+
 export interface DashboardStats {
   totalRevenue: number;
   activeProducts: number;

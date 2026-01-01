@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, ArrowRight, LayoutGrid, RefreshCw, ShoppingBag, 
-  Users, Wallet, BarChart2, Server, Plus, Box, FileText, X
+  Users, Wallet, CheckSquare, Server, Plus, Box, FileText, X
 } from 'lucide-react';
 import { Product } from '../types';
 
@@ -55,11 +55,11 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChan
 
   const navigationItems = [
     { id: 'nav-dash', label: '前往 总览面板 (Dashboard)', icon: <LayoutGrid size={14}/>, action: () => onChangeView('dashboard'), group: 'Navigation' },
+    { id: 'nav-task', label: '前往 任务协作 (Tasks)', icon: <CheckSquare size={14}/>, action: () => onChangeView('tasks'), group: 'Navigation' },
     { id: 'nav-restock', label: '前往 智能备货 (Restock)', icon: <RefreshCw size={14}/>, action: () => onChangeView('restock'), group: 'Navigation' },
     { id: 'nav-orders', label: '前往 物流追踪 (Orders)', icon: <ShoppingBag size={14}/>, action: () => onChangeView('orders'), group: 'Navigation' },
     { id: 'nav-inf', label: '前往 达人矩阵 (Influencers)', icon: <Users size={14}/>, action: () => onChangeView('influencers'), group: 'Navigation' },
     { id: 'nav-fin', label: '前往 财务中枢 (Finance)', icon: <Wallet size={14}/>, action: () => onChangeView('finance'), group: 'Navigation' },
-    { id: 'nav-ana', label: '前往 数据深潜 (Analytics)', icon: <BarChart2 size={14}/>, action: () => onChangeView('analytics'), group: 'Navigation' },
     { id: 'act-new', label: '新建 SKU 资产', icon: <Plus size={14}/>, action: () => { onChangeView('restock'); setTimeout(onAddNewProduct, 100); }, group: 'Actions' },
   ];
 

@@ -8,7 +8,7 @@ import LogisticsModule from './components/LogisticsModule';
 import DataSyncModule from './components/DataSyncModule';
 import InfluencerModule from './components/InfluencerModule';
 import FinanceModule from './components/FinanceModule';
-import AnalyticsModule from './components/AnalyticsModule';
+import TaskModule from './components/TaskModule';
 import CommandPalette from './components/CommandPalette';
 import Copilot from './components/Copilot';
 import { Product, ProductStatus, Currency, Shipment, Influencer, Transaction, Theme } from './types';
@@ -391,11 +391,11 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard products={products} shipments={shipments} transactions={transactions} influencers={influencers} onChangeView={setActiveView} />;
+      case 'tasks': return <TaskModule />;
       case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct(null)} />;
       case 'orders': return <LogisticsModule shipments={shipments} products={products} onAddShipment={handleAddShipment} onUpdateShipment={handleUpdateShipment} />;
       case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} />;
       case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
-      case 'analytics': return <AnalyticsModule />;
       case 'datasync': return <DataSyncModule currentData={products} onImportData={handleImportData} />;
       default: return null;
     }
@@ -421,7 +421,9 @@ const App: React.FC = () => {
                 products: products.length, 
                 shipments: shipments.length, 
                 activeInfluencers: influencers.filter(i=>i.status==='Content Live').length 
-            } 
+            },
+            // Enhanced Context: Pass currently selected/edited item
+            activeContextItem: editingSKU ? { type: 'SKU_Detail', ...editingSKU } : (editingProduct ? { type: 'Product_Edit', ...editingProduct } : null)
          }} 
       />
 
