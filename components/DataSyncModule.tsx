@@ -3,7 +3,7 @@ import { Product, ProductStatus, Currency } from '../types';
 import { 
   Cloud, Server, Database, Upload, Download, 
   Wifi, Activity, CheckCircle2, AlertCircle, Loader2, Globe, Lock, RefreshCw, Zap, ShieldAlert,
-  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu, Copy, Check, Layout
+  PlayCircle, HelpCircle, AlertTriangle, ExternalLink, ShieldCheck, Terminal, Cpu, Copy, Check, Layout, MousePointerClick
 } from 'lucide-react';
 
 interface DataSyncModuleProps {
@@ -99,15 +99,22 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       setConnectionStatus('connecting');
       setErrorCode(0);
       
-      // Removed preemptive check. We try to fetch first.
-      
       try {
-          // 2. Fetch Collection
-          // Standard PB API: /api/collections/{collection}/records
+          // Create an AbortController for timeout
+          const controller = new AbortController();
+          const id = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+          // CRITICAL FIX: DO NOT send 'Content-Type': 'application/json' for GET requests.
+          // Sending custom headers triggers a CORS Preflight (OPTIONS) request.
+          // Many HTTP/HTTPS mixed scenarios block OPTIONS requests aggressively.
+          // By removing headers, this becomes a "Simple Request" which is more likely to succeed.
           const response = await fetch(`${serverUrl}/api/collections/products/records?perPage=200`, {
               method: 'GET',
-              headers: { 'Content-Type': 'application/json' }
+              signal: controller.signal
+              // No headers!
           });
+          
+          clearTimeout(id);
 
           if (!response.ok) {
               if (response.status === 404) throw new Error('404_COLLECTION');
@@ -131,11 +138,13 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
           console.error(err);
           setConnectionStatus('error');
           
-          // Check for mixed content conditions AFTER failure
           const isHttps = window.location.protocol === 'https:';
           const isTargetHttp = serverUrl.startsWith('http://');
           
-          if (isHttps && isTargetHttp) {
+          if (err.name === 'AbortError') {
+              setErrorCode('TIMEOUT');
+          } else if (isHttps && isTargetHttp) {
+              // Even if allowed in settings, fetch can still fail opaquely
               setErrorCode('MIXED_CONTENT');
           } else {
               setErrorCode(err.message || 'UNKNOWN');
@@ -354,19 +363,33 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                                 <div className="p-5 space-y-4 text-xs">
                                     {errorCode === 'MIXED_CONTENT' && (
                                         <div className="text-gray-300">
-                                            <p className="font-bold text-white mb-2">安全协议冲突 (Mixed Content)</p>
-                                            <p className="mb-2">您的浏览器正在拦截请求。因为此网页是 <span className="text-neon-green">HTTPS (安全)</span>，但您尝试连接的服务器是 <span className="text-red-400">HTTP (不安全)</span>。</p>
+                                            <p className="font-bold text-white mb-2">连接被阻断 (Connection Blocked)</p>
+                                            <p className="mb-2">我们删除了所有请求头以尝试穿透，但浏览器依然阻断了请求。</p>
                                             
-                                            <div className="bg-red-500/20 p-3 rounded border border-red-500/30 mb-2">
-                                                <div className="font-bold text-white mb-1">如何解决 (以 Chrome 为例):</div>
-                                                <ol className="list-decimal list-inside space-y-1">
-                                                    <li>点击地址栏左侧的 <strong>设置 (Settings)</strong> 或 <strong>锁图标</strong>。</li>
-                                                    <li>选择 <strong>网站设置 (Site Settings)</strong>。</li>
-                                                    <li>找到最下方的 <strong>不安全内容 (Insecure Content)</strong>。</li>
-                                                    <li>将其改为 <strong>允许 (Allow)</strong>。</li>
-                                                    <li>刷新页面重试。</li>
-                                                </ol>
+                                            <div className="bg-white/10 p-4 rounded-xl border border-white/10 mb-3">
+                                                <div className="font-bold text-white mb-2 flex items-center gap-2">
+                                                    <MousePointerClick size={16} className="text-neon-blue"/>
+                                                    验证服务器状态：
+                                                </div>
+                                                <p className="mb-2 text-gray-400">请点击下方链接。如果能在新窗口看到 JSON 数据，说明服务器是好的，纯粹是浏览器安全限制。</p>
+                                                <a 
+                                                    href={`${serverUrl}/api/collections/products/records?perPage=200`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-2 text-neon-blue font-bold underline hover:text-white"
+                                                >
+                                                    打开 API 测试链接 <ExternalLink size={12}/>
+                                                </a>
                                             </div>
+
+                                            <p className="text-gray-500 italic">如果上方链接也打不开，请检查服务器防火墙 IP 白名单。</p>
+                                        </div>
+                                    )}
+
+                                    {errorCode === 'TIMEOUT' && (
+                                        <div className="text-gray-300">
+                                            <p className="font-bold text-white mb-2">请求超时 (Timeout)</p>
+                                            <p>服务器在 5 秒内没有响应。请检查 IP 是否正确，或服务器是否卡死。</p>
                                         </div>
                                     )}
 
@@ -382,29 +405,6 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                                                     <li>点击 Create</li>
                                                 </ol>
                                             </div>
-                                        </div>
-                                    )}
-
-                                    {errorCode === '403_PERMISSION' && (
-                                        <div className="text-gray-300">
-                                            <p className="font-bold text-white mb-2">权限被拒绝 (API Rules)</p>
-                                            <p className="mb-3">找到了 products 表，但 API 权限是锁定的。</p>
-                                            <div className="bg-white/10 p-3 rounded border border-white/10">
-                                                <div className="font-bold mb-1">请解锁 API 规则：</div>
-                                                <ol className="list-decimal list-inside space-y-1 text-gray-400">
-                                                    <li>在 PocketBase 后台点击 <strong>products</strong> 表</li>
-                                                    <li>点击右上角 <strong>Settings (齿轮)</strong> &gt; <strong>API Rules</strong></li>
-                                                    <li>将 <strong>List/Search</strong> 规则留空 (默认是 Admin only)</li>
-                                                    <li>或者填入 <code className="text-neon-green">""</code> (空字符串) 以完全公开</li>
-                                                </ol>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {errorCode === 1006 && protocol === 'websocket' && (
-                                        <div className="text-gray-300">
-                                            <p className="mb-2">检测到您正在运行 <strong className="text-white">PocketBase</strong> (从端口特征判断)。</p>
-                                            <p className="mb-2">PocketBase 不支持原生 WebSocket 连接。请切换到上方 <strong className="text-neon-blue">PocketBase (HTTP)</strong> 模式重试。</p>
                                         </div>
                                     )}
                                     
