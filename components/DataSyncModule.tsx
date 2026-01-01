@@ -99,15 +99,8 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       setConnectionStatus('connecting');
       setErrorCode(0);
       
-      // 1. Check Protocol (Mixed Content)
-      const isHttps = window.location.protocol === 'https:';
-      const isTargetHttp = serverUrl.startsWith('http://');
-      if (isHttps && isTargetHttp) {
-          setConnectionStatus('error');
-          setErrorCode('MIXED_CONTENT');
-          return;
-      }
-
+      // Removed preemptive check. We try to fetch first.
+      
       try {
           // 2. Fetch Collection
           // Standard PB API: /api/collections/{collection}/records
@@ -137,7 +130,16 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
       } catch (err: any) {
           console.error(err);
           setConnectionStatus('error');
-          setErrorCode(err.message || 'UNKNOWN');
+          
+          // Check for mixed content conditions AFTER failure
+          const isHttps = window.location.protocol === 'https:';
+          const isTargetHttp = serverUrl.startsWith('http://');
+          
+          if (isHttps && isTargetHttp) {
+              setErrorCode('MIXED_CONTENT');
+          } else {
+              setErrorCode(err.message || 'UNKNOWN');
+          }
       }
   };
 
@@ -354,7 +356,17 @@ const DataSyncModule: React.FC<DataSyncModuleProps> = ({ currentData, onImportDa
                                         <div className="text-gray-300">
                                             <p className="font-bold text-white mb-2">安全协议冲突 (Mixed Content)</p>
                                             <p className="mb-2">您的浏览器正在拦截请求。因为此网页是 <span className="text-neon-green">HTTPS (安全)</span>，但您尝试连接的服务器是 <span className="text-red-400">HTTP (不安全)</span>。</p>
-                                            <p className="text-gray-500">解决方案：请点击浏览器地址栏左侧的“锁”图标或“设置”图标，允许该网站的“不安全内容”或“混合内容”。</p>
+                                            
+                                            <div className="bg-red-500/20 p-3 rounded border border-red-500/30 mb-2">
+                                                <div className="font-bold text-white mb-1">如何解决 (以 Chrome 为例):</div>
+                                                <ol className="list-decimal list-inside space-y-1">
+                                                    <li>点击地址栏左侧的 <strong>设置 (Settings)</strong> 或 <strong>锁图标</strong>。</li>
+                                                    <li>选择 <strong>网站设置 (Site Settings)</strong>。</li>
+                                                    <li>找到最下方的 <strong>不安全内容 (Insecure Content)</strong>。</li>
+                                                    <li>将其改为 <strong>允许 (Allow)</strong>。</li>
+                                                    <li>刷新页面重试。</li>
+                                                </ol>
+                                            </div>
                                         </div>
                                     )}
 
