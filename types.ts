@@ -96,7 +96,8 @@ export interface Product {
   boxWeight?: number; // kg
   itemsPerBox?: number;
   restockCartons?: number;
-  totalRestockUnits?: number; // Added: Persist manual restock quantity (Non-standard)
+  totalRestockUnits?: number; // Persist manual restock quantity (Non-standard)
+  variantRestockMap?: Record<string, number>; // Added: Map of variant SKU/ID to restock quantity
 
   logistics?: LogisticsInfo;
   financials?: FinancialInfo;

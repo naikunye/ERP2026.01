@@ -39,6 +39,11 @@ const DEMO_PRODUCTS: Product[] = [
     inboundId: 'IB-20231101',
     inboundStatus: 'Received',
     exchangeRate: 7.2,
+    hasVariants: true,
+    variants: [
+        { id: 'v1', sku: 'AERO-ANC-PRO-BLK', name: 'Matte Black', price: 89.99, stock: 800, attributes: { color: 'Black' } },
+        { id: 'v2', sku: 'AERO-ANC-PRO-SLV', name: 'Arctic Silver', price: 89.99, stock: 400, attributes: { color: 'Silver' } }
+    ],
     financials: { costOfGoods: 160, shippingCost: 3.2, otherCost: 0.5, sellingPrice: 89.99, platformFee: 13.5, adCost: 12.0 }, // Cost in RMB (approx 160)
     logistics: { method: 'Air', carrier: 'DHL', trackingNo: 'DHL99283711HK', status: 'In Transit', origin: 'Shenzhen', destination: 'US-LAX', shippingRate: 5.5 }
   },
@@ -610,7 +615,8 @@ const App: React.FC = () => {
                boxWeight: updatedData.boxWeight,
                itemsPerBox: updatedData.itemsPerBox,
                restockCartons: updatedData.restockCartons,
-               totalRestockUnits: updatedData.totalRestockUnits, // Added: Persist non-standard restock qty
+               totalRestockUnits: updatedData.totalRestockUnits, // Persist non-standard restock qty
+               variantRestockMap: updatedData.variantRestockMap, // Added: Persist variant split
 
                // New TikTok Fields Persisted
                platformCommission: updatedData.platformCommission,

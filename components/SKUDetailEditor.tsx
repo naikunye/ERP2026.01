@@ -5,7 +5,7 @@ import {
   X, Save, History, Box, Layers, Truck, 
   DollarSign, TrendingUp, Calculator, Package, 
   Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText, CheckCircle2, Clock,
-  RefreshCcw, ArrowRightLeft
+  RefreshCcw, ArrowRightLeft, LayoutGrid, ChevronDown, ChevronUp
 } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
@@ -45,6 +45,7 @@ interface SKUFormData {
   itemsPerBox: number;
   restockCartons: number;
   totalRestockUnits: number; 
+  variantRestockMap: Record<string, number>; // New: Variant ID -> Quantity
   inboundId: string;
   inboundStatus: 'Pending' | 'Received'; 
 
@@ -70,7 +71,8 @@ interface SKUFormData {
 }
 
 const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete, onChangeView }) => {
-  
+  const [showVariants, setShowVariants] = useState(true);
+
   // Initialize with product data + defaults for missing fields
   const [formData, setFormData] = useState<SKUFormData>({
     note: product.note || '',
@@ -93,6 +95,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     restockCartons: product.restockCartons || 10,
     // CRITICAL FIX: Prioritize stored 'totalRestockUnits' if available, else auto-calculate
     totalRestockUnits: product.totalRestockUnits || ((product.restockCartons || 10) * (product.itemsPerBox || 24)),
+    variantRestockMap: product.variantRestockMap || {}, // Init variant map
     inboundId: product.inboundId || `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
     inboundStatus: product.inboundStatus || 'Pending', 
     transportMethod: product.logistics?.method || 'Sea',
@@ -200,15 +203,30 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     setFormData(prev => {
         const updates: any = { [name]: numVal };
         
-        if (name === 'restockCartons') {
-            updates.totalRestockUnits = (numVal as number) * prev.itemsPerBox;
-        }
-        if (name === 'itemsPerBox') {
-            updates.totalRestockUnits = prev.restockCartons * (numVal as number);
+        // Only auto-calc totalRestockUnits if variants are NOT driving it
+        if (!product.hasVariants || (product.variants?.length || 0) === 0) {
+            if (name === 'restockCartons') {
+                updates.totalRestockUnits = (numVal as number) * prev.itemsPerBox;
+            }
+            if (name === 'itemsPerBox') {
+                updates.totalRestockUnits = prev.restockCartons * (numVal as number);
+            }
         }
 
         return { ...prev, ...updates };
     });
+  };
+
+  const handleVariantQtyChange = (variantId: string, qty: number) => {
+      setFormData(prev => {
+          const newMap = { ...prev.variantRestockMap, [variantId]: qty };
+          const newTotal = Object.values(newMap).reduce((a, b) => a + b, 0);
+          return {
+              ...prev,
+              variantRestockMap: newMap,
+              totalRestockUnits: newTotal
+          };
+      });
   };
 
   const handleSave = () => {
@@ -359,7 +377,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     </div>
                 </section>
 
-                {/* Module 3: Boxing */}
+                {/* Module 3: Boxing & Inbound */}
                 <section className="glass-card p-6 border-l-4 border-l-gray-500 group hover:border-white/20 transition-all">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
                         <Package size={16} className="text-gray-300" /> 装箱与入库
@@ -377,20 +395,63 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5 mb-4">
                          <InputGroup label="补货箱数 (ctns)" name="restockCartons" value={formData.restockCartons} highlight="text-white bg-white/10 rounded px-2" onChange={handleChange} />
                          
-                         {/* Total Restock Units as Input */}
+                         {/* Total Restock Units as Input (Calculated if variants exist) */}
                          <div className="space-y-1 w-full">
                             <label className="text-[10px] text-neon-yellow font-bold uppercase flex items-center gap-1">
-                                总数量 (pcs) <span className="text-[9px] font-normal opacity-70">非标可改</span>
+                                总数量 (pcs) 
+                                {product.hasVariants && (
+                                    <span className="text-[9px] font-normal text-neon-purple bg-neon-purple/10 px-1 rounded border border-neon-purple/20">Auto-Sum</span>
+                                )}
                             </label>
                             <input 
                                 type="number" 
                                 name="totalRestockUnits"
                                 value={formData.totalRestockUnits}
                                 onChange={handleChange}
-                                className="w-full h-10 bg-black/40 border border-neon-yellow/30 rounded-lg px-3 text-sm text-neon-yellow font-bold outline-none focus:border-neon-yellow transition-colors"
+                                disabled={product.hasVariants && (product.variants?.length || 0) > 0} // Disable manual total if variants drive it
+                                className={`w-full h-10 bg-black/40 border border-neon-yellow/30 rounded-lg px-3 text-sm text-neon-yellow font-bold outline-none focus:border-neon-yellow transition-colors ${product.hasVariants ? 'opacity-80 cursor-not-allowed' : ''}`}
                             />
                         </div>
                     </div>
+
+                    {/* NEW: Variant Allocation Section */}
+                    {product.hasVariants && (product.variants?.length || 0) > 0 && (
+                        <div className="mb-6 border border-white/10 rounded-xl bg-black/20 overflow-hidden">
+                            <div 
+                                className="flex items-center justify-between px-3 py-2 bg-white/5 cursor-pointer hover:bg-white/10 transition-colors"
+                                onClick={() => setShowVariants(!showVariants)}
+                            >
+                                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase">
+                                    <LayoutGrid size={12} className="text-neon-purple"/> 多属性配货 (Variant Allocation)
+                                </div>
+                                {showVariants ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
+                            </div>
+                            
+                            {showVariants && (
+                                <div className="p-2 space-y-1">
+                                    {product.variants!.map(variant => (
+                                        <div key={variant.id} className="grid grid-cols-12 gap-2 items-center text-xs p-1">
+                                            <div className="col-span-5 truncate text-gray-300" title={variant.name}>{variant.name}</div>
+                                            <div className="col-span-3 text-right text-gray-500 text-[10px]">Stock: {variant.stock}</div>
+                                            <div className="col-span-4">
+                                                <input 
+                                                    type="number"
+                                                    value={formData.variantRestockMap[variant.id] || ''}
+                                                    onChange={(e) => handleVariantQtyChange(variant.id, parseInt(e.target.value) || 0)}
+                                                    placeholder="0"
+                                                    className="w-full h-7 bg-black/40 border border-white/10 rounded px-2 text-right text-neon-purple focus:border-neon-purple outline-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <div className="flex justify-between items-center px-2 py-1 mt-1 border-t border-white/5">
+                                        <span className="text-[9px] text-gray-500">Total Sum</span>
+                                        <span className="text-xs font-bold text-neon-yellow">{formData.totalRestockUnits} pcs</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div className="space-y-4">
                         {/* INBOUND ID + STATUS SELECTOR */}
