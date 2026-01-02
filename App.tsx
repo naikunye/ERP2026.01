@@ -602,6 +602,7 @@ const App: React.FC = () => {
                ...p,
                name: updatedData.name, // Persist Name
                variants: updatedData.variants, // Persist Variants Array
+               hasVariants: updatedData.variants && updatedData.variants.length > 0, // CORRECTED: Auto-calculate hasVariants
                
                note: updatedData.note,
                imageUrl: updatedData.imageUrl !== undefined ? updatedData.imageUrl : p.imageUrl, 

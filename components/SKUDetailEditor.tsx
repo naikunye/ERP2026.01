@@ -86,7 +86,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       
       const savedMap = product.variantRestockMap || {};
       const variantSum = Object.values(savedMap).reduce((a, b) => a + b, 0);
-      const hasVariants = product.hasVariants && (product.variants?.length || 0) > 0;
+      const hasVariants = product.variants && product.variants.length > 0; // Robust check
       
       let initialTotal = 0;
       if (hasVariants && variantSum > 0) {
@@ -230,7 +230,9 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         const updates: any = { [name]: numVal };
         
         // Only auto-calc totalRestockUnits if variants are NOT driving it
-        if (!product.hasVariants || (product.variants?.length || 0) === 0) {
+        // FIX: Check formData.variants, not product.variants
+        const hasVariants = (prev.variants?.length || 0) > 0;
+        if (!hasVariants) {
             if (name === 'restockCartons') {
                 updates.totalRestockUnits = (numVal as number) * prev.itemsPerBox;
             }
@@ -441,7 +443,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                          <div className="space-y-1 w-full">
                             <label className="text-[10px] text-neon-yellow font-bold uppercase flex items-center gap-1">
                                 总数量 (pcs) 
-                                {product.hasVariants && (
+                                {(formData.variants?.length || 0) > 0 && (
                                     <span className="text-[9px] font-normal text-neon-purple bg-neon-purple/10 px-1 rounded border border-neon-purple/20">Auto-Sum</span>
                                 )}
                             </label>
@@ -450,15 +452,16 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                 name="totalRestockUnits"
                                 value={formData.totalRestockUnits}
                                 onChange={handleChange}
-                                disabled={product.hasVariants && (product.variants?.length || 0) > 0} // Disable manual total if variants drive it
-                                className={`w-full h-10 bg-black/40 border border-neon-yellow/30 rounded-lg px-3 text-sm text-neon-yellow font-bold outline-none focus:border-neon-yellow transition-colors ${product.hasVariants ? 'opacity-80 cursor-not-allowed' : ''}`}
+                                disabled={(formData.variants?.length || 0) > 0} // Disable manual total if variants drive it
+                                className={`w-full h-10 bg-black/40 border border-neon-yellow/30 rounded-lg px-3 text-sm text-neon-yellow font-bold outline-none focus:border-neon-yellow transition-colors ${(formData.variants?.length || 0) > 0 ? 'opacity-80 cursor-not-allowed' : ''}`}
                             />
                         </div>
                     </div>
 
                     {/* NEW: Variant Allocation Section (Editable) */}
-                    {product.hasVariants && (formData.variants?.length || 0) > 0 && (
-                        <div className="mb-6 border border-white/10 rounded-xl bg-black/20 overflow-hidden">
+                    {/* CRITICAL FIX: Use formData.variants length to decide rendering, ignoring product.hasVariants prop which might be stale */}
+                    {(formData.variants?.length || 0) > 0 && (
+                        <div className="mb-6 border border-white/10 rounded-xl bg-black/20 overflow-hidden animate-fade-in">
                             <div 
                                 className="flex items-center justify-between px-3 py-2 bg-white/5 cursor-pointer hover:bg-white/10 transition-colors"
                                 onClick={() => setShowVariants(!showVariants)}
@@ -676,7 +679,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
 
                         <div className="relative z-10 text-center space-y-2 mb-10">
                              <div className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">单品净利</div>
-                             <div className="text-[56px] font-display font-bold text-white leading-none tracking-tight flex items-center justify-center gap-1">
+                             <div className="text--[56px] font-display font-bold text-white leading-none tracking-tight flex items-center justify-center gap-1">
                                  <span className="text-2xl text-neon-green mt-2">$</span>
                                  {metrics.unitProfit.toFixed(2)}
                              </div>
