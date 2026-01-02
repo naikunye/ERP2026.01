@@ -637,7 +637,8 @@ const App: React.FC = () => {
                    carrier: updatedData.carrier,
                    trackingNo: updatedData.trackingNo,
                    destination: updatedData.destinationWarehouse,
-                   shippingRate: updatedData.shippingRate // Raw RMB Rate
+                   shippingRate: updatedData.shippingRate, // Raw RMB Rate
+                   manualChargeableWeight: updatedData.manualChargeableWeight // Persist Manual Weight
                }
            } as Product;
        }));

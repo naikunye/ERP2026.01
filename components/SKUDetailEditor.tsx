@@ -98,7 +98,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     carrier: product.logistics?.carrier || '',
     trackingNo: product.logistics?.trackingNo || '',
     shippingRate: product.logistics?.shippingRate || 12, // Default typically higher in RMB
-    manualChargeableWeight: 0, // Default 0 means auto-calc
+    manualChargeableWeight: product.logistics?.manualChargeableWeight || 0, // CORRECTED: Initialize from product
     destinationWarehouse: product.logistics?.destination || '',
     
     // Financials

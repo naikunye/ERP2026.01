@@ -1,5 +1,4 @@
 
-
 export enum ProductStatus {
   Draft = 'Draft',
   Active = 'Active',
@@ -39,12 +38,13 @@ export interface LogisticsInfo {
   method: 'Air' | 'Sea' | 'Rail' | 'Truck';
   carrier: string;
   trackingNo: string;
-  status: 'In Production' | 'In Transit' | 'Customs' | 'Delivered' | 'Pending' | 'Exception' | 'Out for Delivery'; // Added Out for Delivery
+  status: 'In Production' | 'In Transit' | 'Customs' | 'Delivered' | 'Pending' | 'Exception' | 'Out for Delivery'; 
   etd?: string;
   eta?: string;
   origin: string;
   destination: string;
-  shippingRate?: number; // Added for persistence
+  shippingRate?: number; // RMB per kg
+  manualChargeableWeight?: number; // Added: Persist manual weight override
 }
 
 // 核心财务数据结构
@@ -84,7 +84,7 @@ export interface Product {
   supplier?: string;
   
   inboundId?: string; 
-  inboundStatus?: 'Pending' | 'Received'; // NEW FIELD
+  inboundStatus?: 'Pending' | 'Received'; 
   dailySales?: number; 
   restockDate?: string; 
   
