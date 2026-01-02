@@ -586,6 +586,13 @@ const App: React.FC = () => {
            const commissionRate = (updatedData.platformCommission || 0) + (updatedData.influencerCommission || 0);
            const calculatedPlatformFee = (updatedData.sellingPrice * commissionRate) / 100;
 
+           // Determine Shipping Cost Source of Truth
+           // If 'unitShippingCost' is passed (calculated from editor), use it.
+           // Fallback to existing or 0.
+           const finalShippingCostUSD = updatedData.unitShippingCost !== undefined 
+                ? updatedData.unitShippingCost 
+                : (p.financials?.shippingCost || 0);
+
            return {
                ...p,
                note: updatedData.note,
@@ -618,7 +625,7 @@ const App: React.FC = () => {
                    ...p.financials!,
                    costOfGoods: updatedData.unitCost, // Raw RMB Value
                    sellingPrice: updatedData.sellingPrice,
-                   shippingCost: updatedData.unitShippingCost || p.financials?.shippingCost || 0, // This comes as USD from Editor
+                   shippingCost: finalShippingCostUSD, // Explicitly saved USD value
                    // Map new fields to aggregate financials for backward compatibility
                    otherCost: (updatedData.lastMileShipping || 0) + (updatedData.orderFixedFee || 0) + ((updatedData.sellingPrice * (updatedData.returnRate || 0)) / 100),
                    adCost: updatedData.adCostPerUnit || 0,

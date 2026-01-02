@@ -128,7 +128,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       
       // 1. Costs in USD
       const costOfGoodsUSD = (item.financials?.costOfGoods || 0) / rate;
-      const shippingCostUSD = item.financials?.shippingCost || 0; // Already normalized
+      // CRITICAL FIX: Trust the saved 'shippingCost' in financials which is the accurate USD unit cost
+      const shippingCostUSD = item.financials?.shippingCost || 0; 
       
       // 2. Fees in USD (Recalculate dynamically to ensure accuracy)
       const platformFee = sellingPrice * ((item.platformCommission || 0) / 100);
@@ -266,8 +267,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  // --- COST CALCULATION (RMB) ---
                  const exchangeRate = item.exchangeRate || 7.2;
                  const costOfGoodsRMB = item.financials?.costOfGoods || 0; // Raw RMB
-                 const shippingCostUSD = item.financials?.shippingCost || 0; // Raw USD
-                 const shippingCostRMB = shippingCostUSD * exchangeRate; // Convert to RMB
+                 const shippingCostUSD = item.financials?.shippingCost || 0; // Raw USD (from Editor Save)
+                 const shippingCostRMB = shippingCostUSD * exchangeRate; // Convert to RMB for display
                  const totalUnitCostRMB = costOfGoodsRMB + shippingCostRMB;
 
                  return (

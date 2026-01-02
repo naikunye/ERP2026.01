@@ -115,7 +115,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   // --- Real-time Calculations ---
   const metrics = useMemo(() => {
     // Exchange Rate Safety
-    const rate = formData.exchangeRate || 1;
+    const rate = formData.exchangeRate || 7.2;
 
     // 1. Inventory Analysis
     const totalRestockUnits = formData.totalRestockUnits;
@@ -131,8 +131,10 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     const totalShippingCostRMB = chargeableWeight * formData.shippingRate;
     const unitShippingCostRMB = totalRestockUnits > 0 ? totalShippingCostRMB / totalRestockUnits : 0;
     
-    // CONVERT TO USD
+    // CONVERT TO USD (This is the Source of Truth)
     const unitShippingCostUSD = unitShippingCostRMB / rate;
+    
+    // Cost of Goods (USD)
     const unitCostUSD = formData.unitCost / rate;
 
     // 3. Profit Analysis (USD Base)
@@ -165,7 +167,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       chargeableWeight,
       totalShippingCostRMB,
       unitShippingCostRMB,
-      unitShippingCostUSD, // Exported for display
+      unitShippingCostUSD, // Exported for display and SAVING
       unitCostUSD,         // Exported for display
       totalUnitCostUSD,
       unitProfit,
@@ -201,10 +203,11 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   };
 
   const handleSave = () => {
+      // Force sync the calculated shipping cost
       onSave({
           ...formData,
-          unitShippingCost: metrics.unitShippingCostUSD, // Save normalized USD value
-          exchangeRate: formData.exchangeRate // Persist rate
+          unitShippingCost: metrics.unitShippingCostUSD, // CRITICAL: This overwrites any stale value
+          exchangeRate: formData.exchangeRate 
       });
   };
 
