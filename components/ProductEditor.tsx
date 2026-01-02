@@ -1,8 +1,9 @@
+
 import React, { useState, useMemo } from 'react';
 import { Product, ProductStatus, Currency, ProductVariant, InventoryLog } from '../types';
 import { 
   Sparkles, X, Globe, Check, Loader2, Image as ImageIcon, Activity, Layers, Cpu, Scan, 
-  Terminal, Tag, Box, Plus, Trash2, DollarSign, Calculator, Wand2, TrendingUp, Search, History
+  Terminal, Tag, Box, Plus, Trash2, DollarSign, Calculator, Wand2, TrendingUp, Search, History, ArrowRightLeft
 } from 'lucide-react';
 import { 
   generateProductDescription, 
@@ -38,7 +39,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
       category: '',
       variants: [],
       seoKeywords: [],
-      imageUrl: ''
+      imageUrl: '',
+      exchangeRate: 7.2 // Default
     }
   );
 
@@ -50,7 +52,7 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'price' || name === 'stock' ? parseFloat(value) : value
+      [name]: (name === 'price' || name === 'stock' || name === 'exchangeRate') ? parseFloat(value) : value
     }));
   };
 
@@ -142,15 +144,24 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
 
   const profitMetrics = useMemo(() => {
       const f = formData.financials || { costOfGoods: 0, shippingCost: 0, otherCost: 0, sellingPrice: 0, platformFee: 0, adCost: 0 };
+      const rate = formData.exchangeRate || 7.2;
       const sellingPrice = f.sellingPrice || formData.price || 0;
-      const cost = f.costOfGoods + f.shippingCost + f.otherCost + f.platformFee + f.adCost;
-      const profit = sellingPrice - cost;
+      
+      // Convert RMB Cost to USD
+      const costOfGoodsUSD = f.costOfGoods / rate;
+      // Shipping assumed USD here in simplified editor, OR we can stick to the strict model
+      // Let's assume standard input for simplified editor: 
+      // If user uses this editor, they might input direct USD values or need conversion.
+      // To be safe, we calculate total cost in USD
+      const costUSD = costOfGoodsUSD + f.shippingCost + f.otherCost + f.platformFee + f.adCost;
+      
+      const profit = sellingPrice - costUSD;
       const margin = sellingPrice > 0 ? (profit / sellingPrice) * 100 : 0;
-      return { sellingPrice, cost, profit, margin, f };
+      return { sellingPrice, costUSD, profit, margin, f, costOfGoodsUSD };
   }, [formData]);
 
   const chartData = [
-    { name: 'Cost', value: profitMetrics.f.costOfGoods, color: '#FF2975' },
+    { name: 'Cost', value: profitMetrics.costOfGoodsUSD, color: '#FF2975' },
     { name: 'Shipping', value: profitMetrics.f.shippingCost, color: '#B829FF' },
     { name: 'Fees/Ads', value: profitMetrics.f.platformFee + profitMetrics.f.adCost, color: '#29D9FF' },
     { name: 'Profit', value: profitMetrics.profit, color: '#00FF9D' }
@@ -366,10 +377,23 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                 {activeTab === 'financials' && (
                     <div className="grid grid-cols-12 gap-8 animate-fade-in">
                         <div className="col-span-12 md:col-span-7 space-y-6">
-                            <h3 className="text-lg font-bold text-white mb-6">成本结构录入</h3>
+                            <div className="flex justify-between items-center mb-2">
+                                <h3 className="text-lg font-bold text-white">成本结构录入</h3>
+                                <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-lg border border-white/10">
+                                    <span className="text-xs text-gray-400 font-bold uppercase flex items-center gap-1"><ArrowRightLeft size={12}/> 汇率</span>
+                                    <input 
+                                        type="number"
+                                        name="exchangeRate"
+                                        value={formData.exchangeRate}
+                                        onChange={handleInputChange}
+                                        className="w-12 bg-transparent text-sm font-bold text-white text-right outline-none focus:text-neon-blue"
+                                    />
+                                </div>
+                            </div>
+                            
                             <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">最终售价 ($)</label>
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase">最终售价 ($ USD)</label>
                                     <input 
                                         type="number"
                                         value={formData.financials?.sellingPrice || formData.price} 
@@ -378,33 +402,34 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">采购成本 ($)</label>
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase">采购成本 (¥ RMB)</label>
                                     <input 
                                         type="number"
                                         value={formData.financials?.costOfGoods} 
                                         onChange={e => handleFinancialChange('costOfGoods', e.target.value)}
                                         className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white focus:border-neon-pink outline-none"
                                     />
+                                    <div className="text-[10px] text-gray-500 text-right">≈ ${profitMetrics.costOfGoodsUSD.toFixed(2)} USD</div>
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">头程运费</label>
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase">头程运费 ($)</label>
                                     <input type="number" value={formData.financials?.shippingCost} onChange={e => handleFinancialChange('shippingCost', e.target.value)} className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none" />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">平台佣金</label>
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase">平台佣金 ($)</label>
                                     <input type="number" value={formData.financials?.platformFee} onChange={e => handleFinancialChange('platformFee', e.target.value)} className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none" />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">广告预算/单</label>
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase">广告预算/单 ($)</label>
                                     <input type="number" value={formData.financials?.adCost} onChange={e => handleFinancialChange('adCost', e.target.value)} className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none" />
                                 </div>
                             </div>
                         </div>
                         <div className="col-span-12 md:col-span-5">
                             <div className="glass-card p-6 border-neon-green/30 bg-gradient-to-b from-neon-green/5 to-transparent h-full flex flex-col items-center justify-center relative">
-                                <h4 className="text-xs font-bold text-neon-green uppercase tracking-widest absolute top-6 left-6">实时利润预测</h4>
+                                <h4 className="text-xs font-bold text-neon-green uppercase tracking-widest absolute top-6 left-6">实时利润预测 (USD)</h4>
                                 <div className="w-48 h-48 my-4 relative">
                                      <ResponsiveContainer width="100%" height="100%">
                                         <PieChart>
@@ -429,8 +454,8 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
                                         </span>
                                     </div>
                                     <div className="flex justify-between text-xs text-gray-500">
-                                        <span>总成本</span>
-                                        <span>${profitMetrics.cost.toFixed(2)}</span>
+                                        <span>总成本 (USD折算)</span>
+                                        <span>${profitMetrics.costUSD.toFixed(2)}</span>
                                     </div>
                                 </div>
                             </div>

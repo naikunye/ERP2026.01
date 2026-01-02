@@ -1,9 +1,11 @@
+
 import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
 import { 
   TrendingUp, TrendingDown, DollarSign, Wallet, PieChart, 
   ArrowUpRight, ArrowDownRight, CreditCard, FileText, Download, Calendar,
-  Plus, X, Tag, AlignLeft, Check, Box, Truck, Megaphone, Settings, Users, Percent
+  Plus, X, Tag, AlignLeft, Check, Box, Truck, Megaphone, Settings, Users, Percent,
+  ArrowRightLeft, BadgeCent
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 
@@ -17,7 +19,12 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
   // --- Bookkeeping Modal State ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [txType, setTxType] = useState<'Revenue' | 'Expense'>('Expense');
-  const [amount, setAmount] = useState('');
+  
+  // New Currency Logic
+  const [currency, setCurrency] = useState<'USD' | 'CNY'>('CNY'); // Default to CNY for expenses usually
+  const [exchangeRate, setExchangeRate] = useState(7.2);
+  const [inputAmount, setInputAmount] = useState(''); // Raw input
+  
   const [category, setCategory] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
@@ -42,17 +49,30 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
 
   const activeCategories = txType === 'Expense' ? EXPENSE_CATEGORIES : REVENUE_CATEGORIES;
 
+  // Computed USD Amount
+  const finalUsdAmount = useMemo(() => {
+      const val = parseFloat(inputAmount);
+      if (isNaN(val)) return 0;
+      return currency === 'USD' ? val : val / exchangeRate;
+  }, [inputAmount, currency, exchangeRate]);
+
   // Submit Handler
   const handleSubmit = () => {
-      if (!amount || !category) return;
+      if (!inputAmount || !category) return;
       
+      const isRmb = currency === 'CNY';
+      // Append original currency note if it was converted
+      const finalDesc = isRmb 
+        ? `${description} (原币: ¥${parseFloat(inputAmount).toLocaleString()} @ ${exchangeRate})` 
+        : description || (txType === 'Revenue' ? '一般收入' : '一般支出');
+
       const newTx: Transaction = {
           id: `TX-${Date.now().toString().slice(-6)}`,
           date,
           type: txType,
           category,
-          amount: parseFloat(amount),
-          description: description || (txType === 'Revenue' ? '一般收入' : '一般支出'),
+          amount: parseFloat(finalUsdAmount.toFixed(2)), // Store unified USD
+          description: finalDesc,
           status
       };
       
@@ -60,16 +80,17 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
       
       // Reset & Close
       setIsModalOpen(false);
-      setAmount('');
+      setInputAmount('');
       setCategory('');
       setDescription('');
       setTxType('Expense');
+      setCurrency('CNY'); // Reset preference
   };
 
   const handleExportCSV = () => {
-      const headers = ['ID', 'Date', 'Type', 'Category', 'Amount', 'Status', 'Description'];
+      const headers = ['ID', 'Date', 'Type', 'Category', 'Amount (USD)', 'Status', 'Description'];
       const rows = transactions.map(t => [
-          t.id, t.date, t.type, t.category, t.amount, t.status, `"${t.description.replace(/"/g, '""')}"`
+          t.id, t.date, t.type, t.category, t.amount.toFixed(2), t.status, `"${t.description.replace(/"/g, '""')}"`
       ]);
       const csvContent = [
           headers.join(','),
@@ -161,11 +182,11 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
               财务中枢
               <span className="text-neon-green/50 font-sans text-sm tracking-widest font-medium border border-neon-green/30 px-2 py-0.5 rounded">FINANCIAL CORE</span>
            </h1>
-           <p className="text-gray-400 text-sm mt-2">实时利润核算与现金流监控。</p>
+           <p className="text-gray-400 text-sm mt-2">实时利润核算与现金流监控 (Base: USD)。</p>
         </div>
         <div className="flex gap-3">
             <button 
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => { setIsModalOpen(true); setInputAmount(''); }}
                 className="px-6 py-2.5 bg-white text-black rounded-xl text-sm font-bold shadow-glow-white hover:scale-105 transition-all flex items-center gap-2"
             >
                 <Plus size={18} strokeWidth={3}/> 记一笔
@@ -189,32 +210,73 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                           <X size={20} />
                       </button>
                   </div>
-                  <div className="p-8 space-y-8">
+                  <div className="p-8 space-y-6">
+                      
+                      {/* Type Toggle */}
                       <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10">
                           <button 
-                              onClick={() => { setTxType('Expense'); setCategory(''); }}
+                              onClick={() => { setTxType('Expense'); setCategory(''); setCurrency('CNY'); }}
                               className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${txType === 'Expense' ? 'bg-neon-pink text-white shadow-glow-pink' : 'text-gray-400 hover:text-white'}`}
                           >
                               支出 (Expense)
                           </button>
                           <button 
-                              onClick={() => { setTxType('Revenue'); setCategory(''); }}
+                              onClick={() => { setTxType('Revenue'); setCategory(''); setCurrency('USD'); }}
                               className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${txType === 'Revenue' ? 'bg-neon-green text-black shadow-glow-green' : 'text-gray-400 hover:text-white'}`}
                           >
                               收入 (Revenue)
                           </button>
                       </div>
-                      <div className="relative group">
-                          <span className={`absolute left-0 top-1/2 -translate-y-1/2 text-3xl font-bold transition-colors ${txType === 'Revenue' ? 'text-neon-green' : 'text-neon-pink'}`}>$</span>
-                          <input 
-                             type="number"
-                             autoFocus
-                             value={amount}
-                             onChange={(e) => setAmount(e.target.value)}
-                             placeholder="0.00"
-                             className="w-full h-16 bg-transparent border-b-2 border-white/10 text-5xl font-display font-bold text-white text-right outline-none focus:border-white/50 placeholder-gray-700"
-                          />
+
+                      {/* Currency & Amount Input */}
+                      <div className="flex gap-4 items-start">
+                          <div className="w-24 shrink-0 space-y-1">
+                              <label className="text-[10px] text-gray-500 font-bold uppercase">币种</label>
+                              <div className="relative">
+                                  <select 
+                                      value={currency}
+                                      onChange={(e) => setCurrency(e.target.value as any)}
+                                      className="w-full h-12 bg-black/40 border border-white/10 rounded-xl text-white font-bold px-2 outline-none focus:border-white/30 appearance-none text-center"
+                                  >
+                                      <option value="CNY">¥ CNY</option>
+                                      <option value="USD">$ USD</option>
+                                  </select>
+                                  <BadgeCent size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"/>
+                              </div>
+                          </div>
+                          
+                          <div className="flex-1 space-y-1 relative group">
+                              <label className="text-[10px] text-gray-500 font-bold uppercase">金额 ({currency})</label>
+                              <input 
+                                 type="number"
+                                 autoFocus
+                                 value={inputAmount}
+                                 onChange={(e) => setInputAmount(e.target.value)}
+                                 placeholder="0.00"
+                                 className="w-full h-12 bg-transparent border-b-2 border-white/10 text-3xl font-display font-bold text-white outline-none focus:border-neon-blue placeholder-gray-700"
+                              />
+                          </div>
                       </div>
+
+                      {/* Exchange Rate Logic */}
+                      {currency === 'CNY' && (
+                          <div className="flex items-center gap-3 p-3 bg-neon-yellow/5 border border-neon-yellow/10 rounded-xl">
+                              <div className="text-[10px] text-neon-yellow font-bold whitespace-nowrap flex items-center gap-1">
+                                  <ArrowRightLeft size={12}/> 汇率折算
+                              </div>
+                              <input 
+                                  type="number"
+                                  value={exchangeRate}
+                                  onChange={(e) => setExchangeRate(parseFloat(e.target.value))}
+                                  className="w-16 bg-black/20 border-b border-neon-yellow/30 text-xs text-white text-center outline-none"
+                              />
+                              <div className="flex-1 text-right text-xs font-mono text-gray-300">
+                                  ≈ <span className="text-white font-bold">${finalUsdAmount.toFixed(2)}</span> USD
+                              </div>
+                          </div>
+                      )}
+
+                      {/* Category Grid */}
                       <div className="space-y-2">
                           <label className="text-[10px] text-gray-500 font-bold uppercase">选择分类</label>
                           <div className="grid grid-cols-3 gap-3">
@@ -234,6 +296,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                               ))}
                           </div>
                       </div>
+
                       <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-1">
                               <label className="text-[10px] text-gray-500 font-bold uppercase flex items-center gap-1"><Calendar size={10}/> 日期</label>
@@ -252,20 +315,22 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                               </div>
                           </div>
                       </div>
+
                       <div className="space-y-1">
                            <label className="text-[10px] text-gray-500 font-bold uppercase flex items-center gap-1"><AlignLeft size={10}/> 备注</label>
                            <textarea 
                               value={description}
                               onChange={(e) => setDescription(e.target.value)}
                               placeholder="输入交易备注..."
-                              className="w-full h-20 bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white outline-none resize-none focus:bg-white/10"
+                              className="w-full h-16 bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white outline-none resize-none focus:bg-white/10"
                            />
                       </div>
+
                       <button 
                           onClick={handleSubmit}
-                          disabled={!amount || !category}
+                          disabled={!inputAmount || !category}
                           className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all ${
-                              !amount || !category 
+                              !inputAmount || !category 
                                 ? 'bg-gray-800 text-gray-500 cursor-not-allowed' 
                                 : txType === 'Revenue' ? 'bg-neon-green text-black hover:scale-[1.02]' : 'bg-neon-pink text-white hover:scale-[1.02]'
                           }`}
@@ -281,7 +346,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="glass-card p-6 border-l-4 border-l-neon-blue relative overflow-hidden group">
                <div className="absolute right-0 top-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"><ArrowUpRight size={80} className="text-neon-blue"/></div>
-               <div className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">总营收 (Revenue)</div>
+               <div className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">总营收 (Revenue USD)</div>
                <div className="text-[32px] font-display font-bold text-white">${financials.revenue.toLocaleString()}</div>
                <div className="flex items-center gap-2 mt-2 text-xs text-neon-blue">
                    <div className="px-2 py-0.5 bg-neon-blue/10 rounded border border-neon-blue/20 flex items-center gap-1">
@@ -293,7 +358,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
 
           <div className="glass-card p-6 border-l-4 border-l-neon-pink relative overflow-hidden group">
                <div className="absolute right-0 top-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"><ArrowDownRight size={80} className="text-neon-pink"/></div>
-               <div className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">总支出 (Expenses)</div>
+               <div className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">总支出 (Expenses USD)</div>
                <div className="text-[32px] font-display font-bold text-white">${financials.expenses.toLocaleString()}</div>
                <div className="flex items-center gap-2 mt-2 text-xs text-neon-pink">
                    <div className="px-2 py-0.5 bg-neon-pink/10 rounded border border-neon-pink/20 flex items-center gap-1">
@@ -305,7 +370,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
 
           <div className="glass-card p-6 border-l-4 border-l-neon-green relative overflow-hidden group">
                <div className="absolute right-0 top-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"><Wallet size={80} className="text-neon-green"/></div>
-               <div className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">净利润 (Net Profit)</div>
+               <div className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">净利润 (Net Profit USD)</div>
                <div className="text-[32px] font-display font-bold text-neon-green">{financials.net > 0 ? '+' : ''}${financials.net.toLocaleString()}</div>
                <div className="flex items-center gap-2 mt-2 text-xs">
                    <span className={`font-bold ${financials.margin > 20 ? 'text-neon-green' : 'text-yellow-500'}`}>
@@ -404,7 +469,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                           <th className="px-6 py-4">类别</th>
                           <th className="px-6 py-4">描述</th>
                           <th className="px-6 py-4">状态</th>
-                          <th className="px-6 py-4 text-right">金额</th>
+                          <th className="px-6 py-4 text-right">金额 (USD)</th>
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
@@ -419,7 +484,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({ transactions, onAddTransa
                                       {activeCategories.find(c => c.id === t.category)?.label || t.category}
                                   </span>
                               </td>
-                              <td className="px-6 py-4 text-white">{t.description}</td>
+                              <td className="px-6 py-4 text-white max-w-xs truncate" title={t.description}>{t.description}</td>
                               <td className="px-6 py-4">
                                   <span className="flex items-center gap-1 text-xs">
                                       {t.status === 'Cleared' ? <div className="w-1.5 h-1.5 rounded-full bg-neon-green"></div> : <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></div>}

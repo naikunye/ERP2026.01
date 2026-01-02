@@ -38,7 +38,8 @@ const DEMO_PRODUCTS: Product[] = [
     supplier: '深圳声学科技有限公司',
     inboundId: 'IB-20231101',
     inboundStatus: 'Received',
-    financials: { costOfGoods: 22.5, shippingCost: 3.2, otherCost: 0.5, sellingPrice: 89.99, platformFee: 13.5, adCost: 12.0 },
+    exchangeRate: 7.2,
+    financials: { costOfGoods: 160, shippingCost: 3.2, otherCost: 0.5, sellingPrice: 89.99, platformFee: 13.5, adCost: 12.0 }, // Cost in RMB (approx 160)
     logistics: { method: 'Air', carrier: 'DHL', trackingNo: 'DHL99283711HK', status: 'In Transit', origin: 'Shenzhen', destination: 'US-LAX', shippingRate: 5.5 }
   },
   {
@@ -57,7 +58,8 @@ const DEMO_PRODUCTS: Product[] = [
     supplier: '安吉椅业集团',
     inboundId: 'IB-20231105',
     inboundStatus: 'Pending',
-    financials: { costOfGoods: 65.0, shippingCost: 45.0, otherCost: 2.0, sellingPrice: 199.00, platformFee: 29.85, adCost: 25.0 },
+    exchangeRate: 7.2,
+    financials: { costOfGoods: 450, shippingCost: 45.0, otherCost: 2.0, sellingPrice: 199.00, platformFee: 29.85, adCost: 25.0 }, // Cost in RMB
     logistics: { method: 'Sea', carrier: 'Matson', trackingNo: 'MSN78291029US', status: 'Customs', origin: 'Ningbo', destination: 'US-LGB', shippingRate: 1.2 }
   },
   {
@@ -74,7 +76,8 @@ const DEMO_PRODUCTS: Product[] = [
     marketplaces: ['US', 'JP'],
     lastUpdated: new Date().toISOString(),
     supplier: '中山照明厂',
-    financials: { costOfGoods: 8.0, shippingCost: 1.5, otherCost: 0.2, sellingPrice: 39.99, platformFee: 6.0, adCost: 8.0 },
+    exchangeRate: 7.2,
+    financials: { costOfGoods: 55, shippingCost: 1.5, otherCost: 0.2, sellingPrice: 39.99, platformFee: 6.0, adCost: 8.0 },
     logistics: { method: 'Air', carrier: 'UPS', trackingNo: '', status: 'Pending', origin: 'Zhongshan', destination: 'US-DAL', shippingRate: 6.0 }
   }
 ];
@@ -310,20 +313,27 @@ const App: React.FC = () => {
       newShipment.items.forEach(item => {
           handleInventoryTransaction(item.skuId, -item.quantity, 'Outbound', `发货出库: ${newShipment.trackingNo} (${newShipment.method})`);
       });
-      const rate = newShipment.method === 'Air' ? 5.5 : 1.5;
-      const estimatedCost = newShipment.weight * rate;
-      if (estimatedCost > 0) {
+      
+      // AUTO-LOGIC FIX: Calculate estimated shipping cost in USD based on RMB market rates
+      // Assumed Market Rates: Air ~40 RMB/kg, Sea ~10 RMB/kg
+      // Exchange Rate: 7.2
+      const rmbRate = newShipment.method === 'Air' ? 40 : 10;
+      const exchangeRate = 7.2;
+      const estimatedCostRMB = newShipment.weight * rmbRate;
+      const estimatedCostUSD = estimatedCostRMB / exchangeRate;
+
+      if (estimatedCostUSD > 0) {
           const expense: Transaction = {
               id: `TX-AUTO-${Date.now()}`,
               date: new Date().toISOString().split('T')[0],
               type: 'Expense',
               category: 'Shipping',
-              amount: estimatedCost,
-              description: `[系统自动] 运费预估: ${newShipment.trackingNo}`,
+              amount: parseFloat(estimatedCostUSD.toFixed(2)),
+              description: `[系统自动] 运费预估: ${newShipment.trackingNo} (Est. ¥${estimatedCostRMB.toFixed(0)})`,
               status: 'Pending'
           };
           setTransactions(prev => [expense, ...prev]);
-          addNotification('success', '运单已创建', `成功扣除库存并记录预计运费 $${estimatedCost.toFixed(2)}`);
+          addNotification('success', '运单已创建', `成功扣除库存并记录预计运费 $${estimatedCostUSD.toFixed(2)}`);
       }
   };
 
@@ -451,20 +461,20 @@ const App: React.FC = () => {
 
       handleInventoryTransaction(product.id as string, -addedQty, 'Outbound', `发货同步: ${trackingNo} (${logInfo.method})`);
 
-      const method = logInfo.method;
-      const defaultRate = method === 'Air' ? 5.5 : 1.5;
-      const rate: number = (typeof logInfo.shippingRate === 'number' ? logInfo.shippingRate : 0) || defaultRate;
+      // FIXED: Use product-specific shipping rate (RMB) -> USD
+      const exchangeRate = product.exchangeRate || 7.2;
+      const rmbRate = product.logistics?.shippingRate || (logInfo.method === 'Air' ? 40 : 10);
+      const estimatedCostRMB = addedWeight * rmbRate;
+      const estimatedCostUSD = estimatedCostRMB / exchangeRate;
       
-      const estimatedCost = addedWeight * rate;
-      
-      if (estimatedCost > 0) {
+      if (estimatedCostUSD > 0) {
           const expense: Transaction = {
               id: `TX-SYNC-${Date.now()}`,
               date: new Date().toISOString().split('T')[0],
               type: 'Expense',
               category: 'Shipping',
-              amount: estimatedCost,
-              description: `[系统同步] 运费预估: ${trackingNo} - ${product.sku as string}`,
+              amount: parseFloat(estimatedCostUSD.toFixed(2)),
+              description: `[系统同步] 运费预估: ${trackingNo} - ${product.sku as string} (Est. ¥${estimatedCostRMB.toFixed(0)})`,
               status: 'Pending'
           };
           setTransactions(prev => [expense, ...prev]);
@@ -479,12 +489,18 @@ const App: React.FC = () => {
   // --- PROCUREMENT WORKFLOW (New Feature) ---
   const handleCreatePurchaseOrder = (poItems: Array<{ skuId: string; quantity: number; cost: number }>, supplierName: string) => {
       const poId = `PO-${new Date().getFullYear()}${Math.floor(Math.random()*10000)}`;
-      let totalCost = 0;
+      let totalCostRMB = 0;
+      let totalCostUSD = 0;
       let totalQty = 0;
 
       for (const item of poItems) {
           handleInventoryTransaction(item.skuId, item.quantity, 'OrderPlaced', `采购下单: ${poId}`);
-          totalCost += item.cost * item.quantity;
+          
+          const product = products.find(p => p.id === item.skuId);
+          const rate = product?.exchangeRate || 7.2;
+          
+          totalCostRMB += item.cost * item.quantity;
+          totalCostUSD += (item.cost * item.quantity) / rate;
           totalQty += item.quantity;
       }
 
@@ -493,8 +509,8 @@ const App: React.FC = () => {
           date: new Date().toISOString().split('T')[0],
           type: 'Expense',
           category: 'COGS',
-          amount: totalCost,
-          description: `采购单 ${poId} - ${supplierName}`,
+          amount: parseFloat(totalCostUSD.toFixed(2)), // Record in USD for dashboard
+          description: `采购单 ${poId} - ${supplierName} (Total: ¥${totalCostRMB.toLocaleString()})`,
           status: 'Pending'
       };
       setTransactions(prev => [expense, ...prev]);
@@ -523,7 +539,7 @@ const App: React.FC = () => {
           return p;
       }));
 
-      addNotification('success', '采购单已生成', `${poId} 已发送。财务挂账 $${totalCost.toLocaleString()}，待办任务已创建。`);
+      addNotification('success', '采购单已生成', `${poId} 已发送。财务挂账 $${totalCostUSD.toLocaleString()} (¥${totalCostRMB.toLocaleString()})`);
   };
 
   // --- MARKET RADAR HANDLERS ---
@@ -594,12 +610,15 @@ const App: React.FC = () => {
                orderFixedFee: updatedData.orderFixedFee,
                returnRate: updatedData.returnRate,
                lastMileShipping: updatedData.lastMileShipping,
+               
+               // Persist Exchange Rate
+               exchangeRate: updatedData.exchangeRate,
 
                financials: {
                    ...p.financials!,
-                   costOfGoods: updatedData.unitCost,
+                   costOfGoods: updatedData.unitCost, // Raw RMB Value
                    sellingPrice: updatedData.sellingPrice,
-                   shippingCost: updatedData.unitShippingCost || p.financials?.shippingCost || 0, 
+                   shippingCost: updatedData.unitShippingCost || p.financials?.shippingCost || 0, // This comes as USD from Editor
                    // Map new fields to aggregate financials for backward compatibility
                    otherCost: (updatedData.lastMileShipping || 0) + (updatedData.orderFixedFee || 0) + ((updatedData.sellingPrice * (updatedData.returnRate || 0)) / 100),
                    adCost: updatedData.adCostPerUnit || 0,
@@ -611,7 +630,7 @@ const App: React.FC = () => {
                    carrier: updatedData.carrier,
                    trackingNo: updatedData.trackingNo,
                    destination: updatedData.destinationWarehouse,
-                   shippingRate: updatedData.shippingRate 
+                   shippingRate: updatedData.shippingRate // Raw RMB Rate
                }
            } as Product;
        }));

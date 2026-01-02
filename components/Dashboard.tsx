@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, 
@@ -215,7 +216,17 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
 
       // Inventory
       const lowStockCount = products.filter(p => p.stock < 50).length;
-      const totalStockVal = products.reduce((acc, p) => acc + ((p.financials?.costOfGoods || 0) * p.stock), 0);
+      
+      // FIXED: Total Stock Value Calculation (RMB Cost -> USD Asset Value)
+      const totalStockValUSD = products.reduce((acc, p) => {
+          const rate = p.exchangeRate || 7.2;
+          const costRMB = p.financials?.costOfGoods || 0;
+          const shipUSD = p.financials?.shippingCost || 0; // Already in USD from SKU Editor
+          // We value asset at Cost (Landed Cost in USD)
+          const landedCostUSD = (costRMB / rate) + shipUSD;
+          return acc + (landedCostUSD * p.stock);
+      }, 0);
+
       const activeSKUs = products.filter(p => p.status === 'Active').length;
 
       // Logistics
@@ -230,7 +241,9 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
 
       return { 
           totalRev, totalExp, netProfit, profitMargin, 
-          lowStockCount, totalStockVal, activeSKUs,
+          lowStockCount, 
+          totalStockValUSD, 
+          activeSKUs,
           activeShipments, delayedShipments,
           activeCollabs, marketROI
       };
@@ -300,7 +313,7 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
       {/* 2. Strategic KPI Matrix */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPIWidget 
-              title="净利润 (Net Profit)"
+              title="净利润 (Net Profit USD)"
               value={`$${metrics.netProfit.toLocaleString()}`}
               subValue={`${metrics.profitMargin.toFixed(1)}% 利润率`}
               trend="15.4%"
@@ -311,8 +324,8 @@ const Dashboard: React.FC<DashboardProps> = ({ products, shipments, transactions
               delay={0}
           />
           <KPIWidget 
-              title="库存总资产 (Assets)"
-              value={`$${(metrics.totalStockVal / 1000).toFixed(1)}k`}
+              title="库存总资产 (Assets USD)"
+              value={`$${(metrics.totalStockValUSD / 1000).toFixed(1)}k`}
               subValue={`${metrics.activeSKUs} 活跃 SKU`}
               trend="2.1%"
               trendUp={true}

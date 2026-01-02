@@ -1,11 +1,11 @@
 
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, Currency } from '../types';
 import { 
   X, Save, History, Box, Layers, Truck, 
   DollarSign, TrendingUp, Calculator, Package, 
-  Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText, CheckCircle2, Clock
+  Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText, CheckCircle2, Clock,
+  RefreshCcw, ArrowRightLeft
 } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
@@ -14,14 +14,14 @@ interface SKUDetailEditorProps {
   onClose: () => void;
   onSave: (updatedProduct: any) => void;
   onDelete?: () => void;
-  onChangeView?: (view: string) => void; // New prop
+  onChangeView?: (view: string) => void; 
 }
 
 // Complex Interface for the detailed form state
 interface SKUFormData {
   // Remark Field
   note: string;
-  imageUrl?: string; // Allow editing image here too
+  imageUrl?: string; 
 
   // M1: Product & Supply Chain
   lifecycle: 'Growing' | 'Stable' | 'Declining';
@@ -33,36 +33,39 @@ interface SKUFormData {
   // M2: Procurement (CRM)
   supplierName: string;
   supplierContact: string;
-  unitCost: number; // Purchase Price
-  unitWeight: number; // kg
+  unitCost: number; // NOW: Treated as RMB/Base Currency
+  unitWeight: number; 
   dailySales: number;
 
   // M3: Boxing & Inbound
-  boxLength: number; // cm
+  boxLength: number; 
   boxWidth: number;
   boxHeight: number;
-  boxWeight: number; // kg
+  boxWeight: number; 
   itemsPerBox: number;
   restockCartons: number;
-  totalRestockUnits: number; // Manual Override capability
+  totalRestockUnits: number; 
   inboundId: string;
-  inboundStatus: 'Pending' | 'Received'; // NEW STATUS
+  inboundStatus: 'Pending' | 'Received'; 
 
   // M4: First Leg Logistics
   transportMethod: 'Air' | 'Sea' | 'Rail' | 'Truck';
   carrier: string;
   trackingNo: string;
-  shippingRate: number; // per kg
+  shippingRate: number; // NOW: Treated as RMB/kg
   destinationWarehouse: string;
 
-  // M5: TikTok Cost Structure (Requested)
-  sellingPrice: number;
+  // M5: TikTok Cost Structure
+  sellingPrice: number; // USD
   platformCommission: number; // %
   influencerCommission: number; // %
   orderFixedFee: number; // $
   returnRate: number; // %
   lastMileShipping: number; // $
   adCostPerUnit: number; // $
+
+  // NEW: Exchange Rate
+  exchangeRate: number; 
 }
 
 const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete, onChangeView }) => {
@@ -77,7 +80,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     safetyStockDays: 14,
     restockDate: product.restockDate || new Date().toISOString().split('T')[0],
     supplierName: product.supplier || '未指定供应商',
-    supplierContact: '', // Not persisted in Product but could be
+    supplierContact: '', 
     unitCost: product.financials?.costOfGoods || 0,
     unitWeight: product.unitWeight || 0.5,
     dailySales: product.dailySales || 0,
@@ -87,17 +90,16 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     boxWeight: product.boxWeight || 12,
     itemsPerBox: product.itemsPerBox || 24,
     restockCartons: product.restockCartons || 10,
-    // Initialize Total Units (Standard calc as default)
     totalRestockUnits: (product.restockCartons || 10) * (product.itemsPerBox || 24),
     inboundId: product.inboundId || `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-    inboundStatus: product.inboundStatus || 'Pending', // Initialize status
+    inboundStatus: product.inboundStatus || 'Pending', 
     transportMethod: product.logistics?.method || 'Sea',
     carrier: product.logistics?.carrier || '',
     trackingNo: product.logistics?.trackingNo || '',
-    shippingRate: product.logistics?.shippingRate || 1.5,
+    shippingRate: product.logistics?.shippingRate || 12, // Default typically higher in RMB
     destinationWarehouse: product.logistics?.destination || '',
     
-    // New TikTok Cost Structure Initialization
+    // Financials
     sellingPrice: product.financials?.sellingPrice || product.price,
     platformCommission: product.platformCommission ?? 2,
     influencerCommission: product.influencerCommission ?? 15,
@@ -105,36 +107,47 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     returnRate: product.returnRate ?? 3,
     lastMileShipping: product.lastMileShipping ?? 0,
     adCostPerUnit: product.financials?.adCost || 2,
+
+    // Exchange Rate (Default 7.2 if not set previously)
+    exchangeRate: (product as any).exchangeRate || 7.2
   });
 
   // --- Real-time Calculations ---
   const metrics = useMemo(() => {
+    // Exchange Rate Safety
+    const rate = formData.exchangeRate || 1;
+
     // 1. Inventory Analysis
-    // USE THE STATE VALUE for Total Units (allowing manual override)
     const totalRestockUnits = formData.totalRestockUnits;
     const currentAvailableDays = Math.floor(product.stock / (formData.dailySales || 1));
     
-    // 2. Logistics Calcs (Volume still depends on Cartons)
-    const singleBoxVol = (formData.boxLength * formData.boxWidth * formData.boxHeight) / 6000; // Volumetric divisor
+    // 2. Logistics Calcs (RMB Logic)
+    const singleBoxVol = (formData.boxLength * formData.boxWidth * formData.boxHeight) / 6000; 
     const totalVolWeight = singleBoxVol * formData.restockCartons;
     const totalRealWeight = formData.boxWeight * formData.restockCartons;
     const chargeableWeight = Math.max(totalVolWeight, totalRealWeight);
-    const totalShippingCost = chargeableWeight * formData.shippingRate;
     
-    // Cost allocation uses the Total Units (which might be non-standard)
-    const unitShippingCost = totalRestockUnits > 0 ? totalShippingCost / totalRestockUnits : 0;
+    // Shipping Cost (RMB)
+    const totalShippingCostRMB = chargeableWeight * formData.shippingRate;
+    const unitShippingCostRMB = totalRestockUnits > 0 ? totalShippingCostRMB / totalRestockUnits : 0;
     
-    // 3. Profit Analysis (Updated for TikTok Cost Structure)
+    // CONVERT TO USD
+    const unitShippingCostUSD = unitShippingCostRMB / rate;
+    const unitCostUSD = formData.unitCost / rate;
+
+    // 3. Profit Analysis (USD Base)
     const revenue = formData.sellingPrice;
     
-    // Fees
+    // Fees (USD)
     const platformFee = revenue * (formData.platformCommission / 100);
     const influencerFee = revenue * (formData.influencerCommission / 100);
-    const estimatedReturnCost = revenue * (formData.returnRate / 100); // Simple estimation: loss of revenue %
+    const estimatedReturnCost = revenue * (formData.returnRate / 100);
     
-    const totalUnitCost = 
-        formData.unitCost + 
-        unitShippingCost + 
+    // Total Unit Cost (USD)
+    // Formula: (Purchase(RMB) / Rate) + (Shipping(RMB) / Rate) + SalesFees(USD)
+    const totalUnitCostUSD = 
+        unitCostUSD + 
+        unitShippingCostUSD + 
         platformFee + 
         influencerFee + 
         formData.orderFixedFee + 
@@ -142,7 +155,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         estimatedReturnCost + 
         formData.adCostPerUnit;
 
-    const unitProfit = revenue - totalUnitCost;
+    const unitProfit = revenue - totalUnitCostUSD;
     const netMargin = revenue > 0 ? (unitProfit / revenue) * 100 : 0;
     const totalStockProfit = unitProfit * product.stock;
 
@@ -150,15 +163,17 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       totalRestockUnits,
       currentAvailableDays,
       chargeableWeight,
-      totalShippingCost,
-      unitShippingCost,
-      totalUnitCost,
+      totalShippingCostRMB,
+      unitShippingCostRMB,
+      unitShippingCostUSD, // Exported for display
+      unitCostUSD,         // Exported for display
+      totalUnitCostUSD,
       unitProfit,
       netMargin,
       totalStockProfit,
       cbm: (formData.boxLength * formData.boxWidth * formData.boxHeight * formData.restockCartons) / 1000000,
+      rate,
       
-      // Breakdown for chart/list
       breakdown: {
           platformFee,
           influencerFee,
@@ -174,9 +189,6 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     setFormData(prev => {
         const updates: any = { [name]: numVal };
         
-        // Smart Linkage: If Cartons or Items/Box change, auto-recalculate Total
-        // But if user manually edits Total later, we respect that.
-        // Re-editing Cartons/Items will "snap" Total back to standard calculation.
         if (name === 'restockCartons') {
             updates.totalRestockUnits = (numVal as number) * prev.itemsPerBox;
         }
@@ -189,10 +201,10 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   };
 
   const handleSave = () => {
-      // Pass both the form data AND the calculated metrics to the parent
       onSave({
           ...formData,
-          unitShippingCost: metrics.unitShippingCost // Crucial: Save the calculated unit cost
+          unitShippingCost: metrics.unitShippingCostUSD, // Save normalized USD value
+          exchangeRate: formData.exchangeRate // Persist rate
       });
   };
 
@@ -215,7 +227,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
               </h2>
               <p className="text-xs text-gray-400 mt-1 flex items-center gap-2">
                  <AlertCircle size={12} className="text-neon-blue"/> 
-                 调整参数以重新校准智能补货建议。
+                 采购与头程运费为人民币，销售为美金，系统自动根据汇率折算。
               </p>
             </div>
           </div>
@@ -299,8 +311,19 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         <InputGroup label="联系方式" name="supplierContact" value={formData.supplierContact} type="text" onChange={handleChange} />
                         
                         <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
-                            <InputGroup label="采购单价 ($)" name="unitCost" value={formData.unitCost} highlight="text-neon-blue" onChange={handleChange} />
+                            {/* Updated Label to show currency explicitly */}
+                            <InputGroup 
+                                label="采购单价 (¥ CNY)" 
+                                name="unitCost" 
+                                value={formData.unitCost} 
+                                highlight="text-neon-blue" 
+                                onChange={handleChange} 
+                            />
                             <InputGroup label="单件重量 (kg)" name="unitWeight" value={formData.unitWeight} onChange={handleChange} />
+                        </div>
+                        {/* Exchange Preview */}
+                        <div className="text-[10px] text-gray-500 text-right -mt-2">
+                            ≈ ${metrics.unitCostUSD.toFixed(2)} USD
                         </div>
                         
                         <div className="bg-white/5 rounded-xl p-3 flex items-center justify-between border border-white/5">
@@ -417,16 +440,26 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                          
                          <div className="p-4 bg-neon-yellow/5 border border-neon-yellow/10 rounded-xl space-y-3">
                              <div className="grid grid-cols-2 gap-4">
-                                 {/* Explicit Label Change */}
-                                 <InputGroup label="头程运费单价 ($/kg)" name="shippingRate" value={formData.shippingRate} onChange={handleChange} />
+                                 {/* Explicit Label Change to CNY */}
+                                 <InputGroup 
+                                    label="头程运费单价 (¥/kg)" 
+                                    name="shippingRate" 
+                                    value={formData.shippingRate} 
+                                    onChange={handleChange} 
+                                 />
                                  <div className="space-y-1">
                                     <label className="text-[10px] text-gray-500 font-bold">计费重</label>
                                     <div className="text-sm font-bold text-white font-mono">{metrics.chargeableWeight.toFixed(1)} kg</div>
                                  </div>
                              </div>
+                             {/* Preview exchange */}
+                             <div className="text-[10px] text-gray-500 text-left -mt-2">
+                                ≈ ${metrics.unitShippingCostUSD.toFixed(2)} USD /件
+                             </div>
+
                              <div className="pt-2 border-t border-neon-yellow/10 flex justify-between items-center">
-                                 <span className="text-xs font-bold text-neon-yellow">总运费</span>
-                                 <span className="text-lg font-bold text-white font-display">${metrics.totalShippingCost.toFixed(2)}</span>
+                                 <span className="text-xs font-bold text-neon-yellow">总运费 (RMB)</span>
+                                 <span className="text-lg font-bold text-white font-display">¥{metrics.totalShippingCostRMB.toFixed(2)}</span>
                              </div>
                          </div>
                          
@@ -485,8 +518,20 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         {/* Background Effect */}
                         <div className="absolute top-0 right-0 w-40 h-40 bg-neon-green opacity-10 blur-[50px] pointer-events-none"></div>
 
+                        {/* NEW: Exchange Rate Input */}
+                        <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/40 rounded-lg px-2 py-1 border border-white/10 z-20">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1"><ArrowRightLeft size={10}/> 汇率</span>
+                            <input 
+                                type="number"
+                                name="exchangeRate"
+                                value={formData.exchangeRate}
+                                onChange={handleChange}
+                                className="w-12 bg-transparent text-xs font-bold text-white text-right outline-none focus:text-neon-blue"
+                            />
+                        </div>
+
                         <h3 className="text-sm font-bold text-neon-green uppercase tracking-widest mb-8 flex items-center gap-2 relative z-10">
-                            <Calculator size={16} /> 单品利润分析
+                            <Calculator size={16} /> 单品利润分析 (USD)
                         </h3>
 
                         <div className="relative z-10 text-center space-y-2 mb-10">
@@ -499,7 +544,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                              {/* ADDED: Total Profit */}
                              <div className="text-sm font-bold text-neon-green/80 flex items-center justify-center gap-2 mt-2">
                                 <span>总利润预测:</span>
-                                <span>+${metrics.totalStockProfit.toLocaleString()}</span>
+                                <span>+${metrics.totalStockProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                              </div>
 
                              <div className={`text-sm font-bold inline-flex items-center gap-1 px-3 py-1 mt-3 rounded-full ${metrics.netMargin > 15 ? 'bg-neon-green/10 text-neon-green' : 'bg-neon-pink/10 text-neon-pink'}`}>
@@ -514,18 +559,18 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                 <span className="text-white font-bold">${formData.sellingPrice.toFixed(2)}</span>
                             </div>
                              <div className="flex justify-between text-xs">
-                                <span className="text-gray-500">总成本</span>
-                                <span className="text-neon-pink font-bold">-${metrics.totalUnitCost.toFixed(2)}</span>
+                                <span className="text-gray-500">总成本 (USD折算)</span>
+                                <span className="text-neon-pink font-bold">-${metrics.totalUnitCostUSD.toFixed(2)}</span>
                             </div>
                             <div className="h-1 bg-white/10 rounded-full overflow-hidden w-full">
-                                <div className="h-full bg-neon-pink" style={{ width: `${Math.min((metrics.totalUnitCost / formData.sellingPrice) * 100, 100)}%` }}></div>
+                                <div className="h-full bg-neon-pink" style={{ width: `${Math.min((metrics.totalUnitCostUSD / formData.sellingPrice) * 100, 100)}%` }}></div>
                             </div>
                         </div>
 
                         {/* Breakdown */}
                         <div className="mt-8 grid grid-cols-2 gap-2">
-                             <CostItem label="货值" value={formData.unitCost} color="bg-blue-500" />
-                             <CostItem label="头程运费" value={metrics.unitShippingCost} color="bg-yellow-500" />
+                             <CostItem label={`货值 (¥${formData.unitCost})`} value={metrics.unitCostUSD} color="bg-blue-500" />
+                             <CostItem label="头程运费" value={metrics.unitShippingCostUSD} color="bg-yellow-500" />
                              <CostItem label="平台/达人佣金" value={metrics.breakdown.platformFee + metrics.breakdown.influencerFee} color="bg-purple-500" />
                              <CostItem label="尾程/定费" value={formData.lastMileShipping + formData.orderFixedFee} color="bg-orange-500" />
                              <CostItem label="广告/退货" value={formData.adCostPerUnit + metrics.breakdown.estimatedReturnCost} color="bg-red-500" />
@@ -535,12 +580,12 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     {/* Total Stock Profit */}
                     <section className="glass-card p-6 flex items-center justify-between border-white/10">
                         <div>
-                             <div className="text-[10px] text-gray-500 font-bold uppercase">库存总货值</div>
-                             <div className="text-xl font-bold text-white">${(metrics.totalUnitCost * product.stock).toLocaleString()}</div>
+                             <div className="text-[10px] text-gray-500 font-bold uppercase">库存总货值 (USD)</div>
+                             <div className="text-xl font-bold text-white">${(metrics.totalUnitCostUSD * product.stock).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                         </div>
                         <div className="text-right">
                              <div className="text-[10px] text-gray-500 font-bold uppercase">潜在总利润</div>
-                             <div className="text-xl font-bold text-neon-green">+${metrics.totalStockProfit.toLocaleString()}</div>
+                             <div className="text-xl font-bold text-neon-green">+${metrics.totalStockProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                         </div>
                     </section>
 

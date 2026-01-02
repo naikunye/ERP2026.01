@@ -113,6 +113,9 @@ export interface Product {
   orderFixedFee?: number;
   returnRate?: number;
   lastMileShipping?: number;
+  
+  // Financial Config
+  exchangeRate?: number; // USD:CNY Rate
 }
 
 export interface ShipmentItem {
