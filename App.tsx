@@ -600,6 +600,9 @@ const App: React.FC = () => {
 
            return {
                ...p,
+               name: updatedData.name, // Persist Name
+               variants: updatedData.variants, // Persist Variants Array
+               
                note: updatedData.note,
                imageUrl: updatedData.imageUrl !== undefined ? updatedData.imageUrl : p.imageUrl, 
                supplier: updatedData.supplierName,

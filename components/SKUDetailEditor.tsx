@@ -1,11 +1,11 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Product, Currency } from '../types';
+import { Product, Currency, ProductVariant } from '../types';
 import { 
   X, Save, History, Box, Layers, Truck, 
   DollarSign, TrendingUp, Calculator, Package, 
   Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText, CheckCircle2, Clock,
-  RefreshCcw, ArrowRightLeft, LayoutGrid, ChevronDown, ChevronUp
+  RefreshCcw, ArrowRightLeft, LayoutGrid, ChevronDown, ChevronUp, Edit3
 } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
@@ -19,6 +19,10 @@ interface SKUDetailEditorProps {
 
 // Complex Interface for the detailed form state
 interface SKUFormData {
+  // Identity (Added for editing)
+  name: string;
+  variants: ProductVariant[];
+
   // Remark Field
   note: string;
   imageUrl?: string; 
@@ -74,48 +78,70 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   const [showVariants, setShowVariants] = useState(true);
 
   // Initialize with product data + defaults for missing fields
-  const [formData, setFormData] = useState<SKUFormData>({
-    note: product.note || '',
-    imageUrl: product.imageUrl,
-    lifecycle: 'Growing',
-    leadTimeProduction: 15,
-    leadTimeShipping: 30,
-    safetyStockDays: 14,
-    restockDate: product.restockDate || new Date().toISOString().split('T')[0],
-    supplierName: product.supplier || '未指定供应商',
-    supplierContact: '', 
-    unitCost: product.financials?.costOfGoods || 0,
-    unitWeight: product.unitWeight || 0.5,
-    dailySales: product.dailySales || 0,
-    boxLength: product.boxLength || 50,
-    boxWidth: product.boxWidth || 40,
-    boxHeight: product.boxHeight || 30,
-    boxWeight: product.boxWeight || 12,
-    itemsPerBox: product.itemsPerBox || 24,
-    restockCartons: product.restockCartons || 10,
-    // CRITICAL FIX: Prioritize stored 'totalRestockUnits' if available, else auto-calculate
-    totalRestockUnits: product.totalRestockUnits || ((product.restockCartons || 10) * (product.itemsPerBox || 24)),
-    variantRestockMap: product.variantRestockMap || {}, // Init variant map
-    inboundId: product.inboundId || `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-    inboundStatus: product.inboundStatus || 'Pending', 
-    transportMethod: product.logistics?.method || 'Sea',
-    carrier: product.logistics?.carrier || '',
-    trackingNo: product.logistics?.trackingNo || '',
-    shippingRate: product.logistics?.shippingRate || 12, // Default typically higher in RMB
-    manualChargeableWeight: product.logistics?.manualChargeableWeight || 0, 
-    destinationWarehouse: product.logistics?.destination || '',
-    
-    // Financials
-    sellingPrice: product.financials?.sellingPrice || product.price,
-    platformCommission: product.platformCommission ?? 2,
-    influencerCommission: product.influencerCommission ?? 15,
-    orderFixedFee: product.orderFixedFee ?? 0.3,
-    returnRate: product.returnRate ?? 3,
-    lastMileShipping: product.lastMileShipping ?? 0,
-    adCostPerUnit: product.financials?.adCost || 2,
+  const [formData, setFormData] = useState<SKUFormData>(() => {
+      // Logic for Total Units Initialization:
+      // 1. If variants exist and have values, SUM them up (Highest Priority).
+      // 2. Else if a manual total was saved, use it.
+      // 3. Else fallback to Cartons * ItemsPerBox.
+      
+      const savedMap = product.variantRestockMap || {};
+      const variantSum = Object.values(savedMap).reduce((a, b) => a + b, 0);
+      const hasVariants = product.hasVariants && (product.variants?.length || 0) > 0;
+      
+      let initialTotal = 0;
+      if (hasVariants && variantSum > 0) {
+          initialTotal = variantSum;
+      } else {
+          initialTotal = product.totalRestockUnits || ((product.restockCartons || 10) * (product.itemsPerBox || 24));
+      }
 
-    // Exchange Rate (Default 7.2 if not set previously)
-    exchangeRate: (product as any).exchangeRate || 7.2
+      return {
+        name: product.name, // Editable Name
+        variants: product.variants ? JSON.parse(JSON.stringify(product.variants)) : [], // Deep copy for editing
+
+        note: product.note || '',
+        imageUrl: product.imageUrl,
+        lifecycle: 'Growing',
+        leadTimeProduction: 15,
+        leadTimeShipping: 30,
+        safetyStockDays: 14,
+        restockDate: product.restockDate || new Date().toISOString().split('T')[0],
+        supplierName: product.supplier || '未指定供应商',
+        supplierContact: '', 
+        unitCost: product.financials?.costOfGoods || 0,
+        unitWeight: product.unitWeight || 0.5,
+        dailySales: product.dailySales || 0,
+        boxLength: product.boxLength || 50,
+        boxWidth: product.boxWidth || 40,
+        boxHeight: product.boxHeight || 30,
+        boxWeight: product.boxWeight || 12,
+        itemsPerBox: product.itemsPerBox || 24,
+        restockCartons: product.restockCartons || 10,
+        
+        totalRestockUnits: initialTotal, 
+        variantRestockMap: savedMap,
+        
+        inboundId: product.inboundId || `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+        inboundStatus: product.inboundStatus || 'Pending', 
+        transportMethod: product.logistics?.method || 'Sea',
+        carrier: product.logistics?.carrier || '',
+        trackingNo: product.logistics?.trackingNo || '',
+        shippingRate: product.logistics?.shippingRate || 12, 
+        manualChargeableWeight: product.logistics?.manualChargeableWeight || 0, 
+        destinationWarehouse: product.logistics?.destination || '',
+        
+        // Financials
+        sellingPrice: product.financials?.sellingPrice || product.price,
+        platformCommission: product.platformCommission ?? 2,
+        influencerCommission: product.influencerCommission ?? 15,
+        orderFixedFee: product.orderFixedFee ?? 0.3,
+        returnRate: product.returnRate ?? 3,
+        lastMileShipping: product.lastMileShipping ?? 0,
+        adCostPerUnit: product.financials?.adCost || 2,
+
+        // Exchange Rate
+        exchangeRate: (product as any).exchangeRate || 7.2
+      };
   });
 
   // --- Real-time Calculations ---
@@ -229,6 +255,13 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       });
   };
 
+  const handleVariantNameChange = (variantId: string, newName: string) => {
+      setFormData(prev => ({
+          ...prev,
+          variants: prev.variants.map(v => v.id === variantId ? { ...v, name: newName } : v)
+      }));
+  };
+
   const handleSave = () => {
       // Force sync the calculated shipping cost
       onSave({
@@ -244,24 +277,33 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         
         {/* --- Header --- */}
         <div className="h-20 border-b border-white/10 flex items-center justify-between px-8 bg-white/5 backdrop-blur-xl z-20">
-          <div className="flex items-center gap-6">
-            <div className="w-10 h-10 rounded-lg bg-neon-blue/20 border border-neon-blue/30 flex items-center justify-center text-neon-blue">
+          <div className="flex items-center gap-6 flex-1 mr-8">
+            <div className="w-10 h-10 rounded-lg bg-neon-blue/20 border border-neon-blue/30 flex items-center justify-center text-neon-blue shrink-0">
                 <Box size={20} />
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                编辑：{product.name}
-                <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/10 text-gray-400 border border-white/10 font-mono">
-                    {product.sku}
-                </span>
-              </h2>
+            <div className="flex-1 min-w-0">
+              {/* EDITABLE HEADER NAME */}
+              <div className="flex items-center gap-3">
+                  <span className="text-xl font-bold text-gray-500 shrink-0 select-none">编辑:</span>
+                  <input
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleChange}
+                      className="bg-transparent border-b border-transparent hover:border-white/20 focus:border-neon-blue text-xl font-bold text-white w-full focus:outline-none transition-all placeholder-gray-600 px-1"
+                      placeholder="输入产品名称..."
+                  />
+                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/10 text-gray-400 border border-white/10 font-mono shrink-0">
+                      {product.sku}
+                  </span>
+              </div>
               <p className="text-xs text-gray-400 mt-1 flex items-center gap-2">
                  <AlertCircle size={12} className="text-neon-blue"/> 
                  采购与头程运费为人民币，销售为美金，系统自动根据汇率折算。
               </p>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 shrink-0">
              <button className="px-4 py-2 rounded-xl border border-white/10 hover:bg-white/5 text-gray-400 text-xs font-bold flex items-center gap-2 transition-all">
                 <History size={14} /> 历史记录
              </button>
@@ -414,8 +456,8 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         </div>
                     </div>
 
-                    {/* NEW: Variant Allocation Section */}
-                    {product.hasVariants && (product.variants?.length || 0) > 0 && (
+                    {/* NEW: Variant Allocation Section (Editable) */}
+                    {product.hasVariants && (formData.variants?.length || 0) > 0 && (
                         <div className="mb-6 border border-white/10 rounded-xl bg-black/20 overflow-hidden">
                             <div 
                                 className="flex items-center justify-between px-3 py-2 bg-white/5 cursor-pointer hover:bg-white/10 transition-colors"
@@ -429,9 +471,19 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                             
                             {showVariants && (
                                 <div className="p-2 space-y-1">
-                                    {product.variants!.map(variant => (
+                                    {formData.variants.map(variant => (
                                         <div key={variant.id} className="grid grid-cols-12 gap-2 items-center text-xs p-1">
-                                            <div className="col-span-5 truncate text-gray-300" title={variant.name}>{variant.name}</div>
+                                            {/* EDITABLE VARIANT NAME */}
+                                            <div className="col-span-5 relative group/edit">
+                                                <input
+                                                    type="text"
+                                                    value={variant.name}
+                                                    onChange={(e) => handleVariantNameChange(variant.id, e.target.value)}
+                                                    className="w-full bg-transparent border-b border-transparent hover:border-white/20 focus:border-neon-purple text-gray-300 focus:text-white outline-none transition-colors pr-4 truncate focus:overflow-visible focus:z-10 focus:bg-black/80"
+                                                    title="Click to edit name"
+                                                />
+                                                <Edit3 size={8} className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-600 opacity-0 group-hover/edit:opacity-100 pointer-events-none" />
+                                            </div>
                                             <div className="col-span-3 text-right text-gray-500 text-[10px]">Stock: {variant.stock}</div>
                                             <div className="col-span-4">
                                                 <input 
