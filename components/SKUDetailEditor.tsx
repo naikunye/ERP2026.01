@@ -91,14 +91,15 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     boxWeight: product.boxWeight || 12,
     itemsPerBox: product.itemsPerBox || 24,
     restockCartons: product.restockCartons || 10,
-    totalRestockUnits: (product.restockCartons || 10) * (product.itemsPerBox || 24),
+    // CRITICAL FIX: Prioritize stored 'totalRestockUnits' if available, else auto-calculate
+    totalRestockUnits: product.totalRestockUnits || ((product.restockCartons || 10) * (product.itemsPerBox || 24)),
     inboundId: product.inboundId || `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
     inboundStatus: product.inboundStatus || 'Pending', 
     transportMethod: product.logistics?.method || 'Sea',
     carrier: product.logistics?.carrier || '',
     trackingNo: product.logistics?.trackingNo || '',
     shippingRate: product.logistics?.shippingRate || 12, // Default typically higher in RMB
-    manualChargeableWeight: product.logistics?.manualChargeableWeight || 0, // CORRECTED: Initialize from product
+    manualChargeableWeight: product.logistics?.manualChargeableWeight || 0, 
     destinationWarehouse: product.logistics?.destination || '',
     
     // Financials

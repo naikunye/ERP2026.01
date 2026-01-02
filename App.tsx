@@ -610,6 +610,7 @@ const App: React.FC = () => {
                boxWeight: updatedData.boxWeight,
                itemsPerBox: updatedData.itemsPerBox,
                restockCartons: updatedData.restockCartons,
+               totalRestockUnits: updatedData.totalRestockUnits, // Added: Persist non-standard restock qty
 
                // New TikTok Fields Persisted
                platformCommission: updatedData.platformCommission,
