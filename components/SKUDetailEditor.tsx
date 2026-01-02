@@ -53,6 +53,7 @@ interface SKUFormData {
   carrier: string;
   trackingNo: string;
   shippingRate: number; // NOW: Treated as RMB/kg
+  manualChargeableWeight: number; // NEW: Manual Override
   destinationWarehouse: string;
 
   // M5: TikTok Cost Structure
@@ -97,6 +98,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     carrier: product.logistics?.carrier || '',
     trackingNo: product.logistics?.trackingNo || '',
     shippingRate: product.logistics?.shippingRate || 12, // Default typically higher in RMB
+    manualChargeableWeight: 0, // Default 0 means auto-calc
     destinationWarehouse: product.logistics?.destination || '',
     
     // Financials
@@ -125,7 +127,12 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     const singleBoxVol = (formData.boxLength * formData.boxWidth * formData.boxHeight) / 6000; 
     const totalVolWeight = singleBoxVol * formData.restockCartons;
     const totalRealWeight = formData.boxWeight * formData.restockCartons;
-    const chargeableWeight = Math.max(totalVolWeight, totalRealWeight);
+    
+    // Auto-calculated weight
+    const autoChargeableWeight = Math.max(totalVolWeight, totalRealWeight);
+    
+    // FINAL Chargeable Weight (Use manual if set, otherwise auto)
+    const chargeableWeight = formData.manualChargeableWeight > 0 ? formData.manualChargeableWeight : autoChargeableWeight;
     
     // Shipping Cost (RMB)
     const totalShippingCostRMB = chargeableWeight * formData.shippingRate;
@@ -165,6 +172,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       totalRestockUnits,
       currentAvailableDays,
       chargeableWeight,
+      autoChargeableWeight, // Export for placeholder reference
       totalShippingCostRMB,
       unitShippingCostRMB,
       unitShippingCostUSD, // Exported for display and SAVING
@@ -450,11 +458,26 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                     value={formData.shippingRate} 
                                     onChange={handleChange} 
                                  />
+                                 
+                                 {/* NEW: Manual Chargeable Weight Input */}
                                  <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold">计费重</label>
-                                    <div className="text-sm font-bold text-white font-mono">{metrics.chargeableWeight.toFixed(1)} kg</div>
+                                    <label className="text-[10px] text-gray-500 font-bold flex items-center gap-1">
+                                        计费总重 (kg) 
+                                        <span className="text-[9px] font-normal text-gray-600 bg-white/10 px-1 rounded" title="根据材积计算的理论值">
+                                            Auto: {metrics.autoChargeableWeight.toFixed(1)}
+                                        </span>
+                                    </label>
+                                    <input 
+                                        type="number"
+                                        name="manualChargeableWeight"
+                                        value={formData.manualChargeableWeight || ''}
+                                        onChange={handleChange}
+                                        placeholder={metrics.autoChargeableWeight.toFixed(1)}
+                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white font-mono outline-none focus:border-neon-yellow transition-colors placeholder-gray-600"
+                                    />
                                  </div>
                              </div>
+                             
                              {/* Preview exchange */}
                              <div className="text-[10px] text-gray-500 text-left -mt-2">
                                 ≈ ${metrics.unitShippingCostUSD.toFixed(2)} USD /件
