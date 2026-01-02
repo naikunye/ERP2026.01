@@ -36,7 +36,7 @@ export interface InventoryLog {
 
 // 核心物流数据结构
 export interface LogisticsInfo {
-  method: 'Air' | 'Sea' | 'Rail';
+  method: 'Air' | 'Sea' | 'Rail' | 'Truck';
   carrier: string;
   trackingNo: string;
   status: 'In Production' | 'In Transit' | 'Customs' | 'Delivered' | 'Pending' | 'Exception' | 'Out for Delivery'; // Added Out for Delivery
@@ -106,6 +106,13 @@ export interface Product {
   seoTitle?: string;
   seoKeywords?: string[];
   marketingHook?: string;
+
+  // TikTok Cost Structure Specifics
+  platformCommission?: number;
+  influencerCommission?: number;
+  orderFixedFee?: number;
+  returnRate?: number;
+  lastMileShipping?: number;
 }
 
 export interface ShipmentItem {

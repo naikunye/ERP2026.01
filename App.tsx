@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -564,6 +565,11 @@ const App: React.FC = () => {
     if (editingSKU) {
        setProducts(prev => prev.map(p => {
            if (p.id !== editingSKU.id) return p;
+           
+           // Calculate platform fee based on commission if present
+           const commissionRate = (updatedData.platformCommission || 0) + (updatedData.influencerCommission || 0);
+           const calculatedPlatformFee = (updatedData.sellingPrice * commissionRate) / 100;
+
            return {
                ...p,
                note: updatedData.note,
@@ -582,14 +588,22 @@ const App: React.FC = () => {
                itemsPerBox: updatedData.itemsPerBox,
                restockCartons: updatedData.restockCartons,
 
+               // New TikTok Fields Persisted
+               platformCommission: updatedData.platformCommission,
+               influencerCommission: updatedData.influencerCommission,
+               orderFixedFee: updatedData.orderFixedFee,
+               returnRate: updatedData.returnRate,
+               lastMileShipping: updatedData.lastMileShipping,
+
                financials: {
                    ...p.financials!,
                    costOfGoods: updatedData.unitCost,
                    sellingPrice: updatedData.sellingPrice,
                    shippingCost: updatedData.unitShippingCost || p.financials?.shippingCost || 0, 
-                   otherCost: updatedData.fulfillmentFee || 0,
+                   // Map new fields to aggregate financials for backward compatibility
+                   otherCost: (updatedData.lastMileShipping || 0) + (updatedData.orderFixedFee || 0) + ((updatedData.sellingPrice * (updatedData.returnRate || 0)) / 100),
                    adCost: updatedData.adCostPerUnit || 0,
-                   platformFee: (updatedData.sellingPrice * (updatedData.tiktokCommission || 0)) / 100
+                   platformFee: calculatedPlatformFee
                },
                logistics: {
                    ...p.logistics!,

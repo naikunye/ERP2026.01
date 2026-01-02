@@ -1,3 +1,5 @@
+
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, Currency } from '../types';
 import { 
@@ -47,26 +49,24 @@ interface SKUFormData {
   inboundStatus: 'Pending' | 'Received'; // NEW STATUS
 
   // M4: First Leg Logistics
-  transportMethod: 'Air' | 'Sea';
+  transportMethod: 'Air' | 'Sea' | 'Rail' | 'Truck';
   carrier: string;
   trackingNo: string;
   shippingRate: number; // per kg
   destinationWarehouse: string;
 
-  // M5: Market & Sales
+  // M5: TikTok Cost Structure (Requested)
   sellingPrice: number;
-  tiktokCommission: number; // %
-  fulfillmentFee: number; // fixed amount
-  adCostPerUnit: number; // CPA
+  platformCommission: number; // %
+  influencerCommission: number; // %
+  orderFixedFee: number; // $
+  returnRate: number; // %
+  lastMileShipping: number; // $
+  adCostPerUnit: number; // $
 }
 
 const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete, onChangeView }) => {
   
-  // Calculate initial commission from existing financials if available
-  const initialCommission = (product.financials?.platformFee && product.financials?.sellingPrice) 
-        ? (product.financials.platformFee / product.financials.sellingPrice) * 100 
-        : 5;
-
   // Initialize with product data + defaults for missing fields
   const [formData, setFormData] = useState<SKUFormData>({
     note: product.note || '',
@@ -96,10 +96,15 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     trackingNo: product.logistics?.trackingNo || '',
     shippingRate: product.logistics?.shippingRate || 1.5,
     destinationWarehouse: product.logistics?.destination || '',
+    
+    // New TikTok Cost Structure Initialization
     sellingPrice: product.financials?.sellingPrice || product.price,
-    tiktokCommission: parseFloat(initialCommission.toFixed(2)),
-    fulfillmentFee: product.financials?.otherCost || 4.5,
-    adCostPerUnit: product.financials?.adCost || 8.0,
+    platformCommission: product.platformCommission ?? 2,
+    influencerCommission: product.influencerCommission ?? 15,
+    orderFixedFee: product.orderFixedFee ?? 0.3,
+    returnRate: product.returnRate ?? 3,
+    lastMileShipping: product.lastMileShipping ?? 0,
+    adCostPerUnit: product.financials?.adCost || 2,
   });
 
   // --- Real-time Calculations ---
@@ -119,10 +124,24 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     // Cost allocation uses the Total Units (which might be non-standard)
     const unitShippingCost = totalRestockUnits > 0 ? totalShippingCost / totalRestockUnits : 0;
     
-    // 3. Profit Analysis
+    // 3. Profit Analysis (Updated for TikTok Cost Structure)
     const revenue = formData.sellingPrice;
-    const commissionCost = (formData.sellingPrice * formData.tiktokCommission) / 100;
-    const totalUnitCost = formData.unitCost + unitShippingCost + commissionCost + formData.fulfillmentFee + formData.adCostPerUnit;
+    
+    // Fees
+    const platformFee = revenue * (formData.platformCommission / 100);
+    const influencerFee = revenue * (formData.influencerCommission / 100);
+    const estimatedReturnCost = revenue * (formData.returnRate / 100); // Simple estimation: loss of revenue %
+    
+    const totalUnitCost = 
+        formData.unitCost + 
+        unitShippingCost + 
+        platformFee + 
+        influencerFee + 
+        formData.orderFixedFee + 
+        formData.lastMileShipping + 
+        estimatedReturnCost + 
+        formData.adCostPerUnit;
+
     const unitProfit = revenue - totalUnitCost;
     const netMargin = revenue > 0 ? (unitProfit / revenue) * 100 : 0;
     const totalStockProfit = unitProfit * product.stock;
@@ -137,7 +156,14 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       unitProfit,
       netMargin,
       totalStockProfit,
-      cbm: (formData.boxLength * formData.boxWidth * formData.boxHeight * formData.restockCartons) / 1000000
+      cbm: (formData.boxLength * formData.boxWidth * formData.boxHeight * formData.restockCartons) / 1000000,
+      
+      // Breakdown for chart/list
+      breakdown: {
+          platformFee,
+          influencerFee,
+          estimatedReturnCost
+      }
     };
   }, [formData, product.stock]);
 
@@ -408,12 +434,14 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     </div>
                 </section>
 
-                {/* Module 5: Market Intel */}
+                {/* Module 5: TikTok Cost Structure (UPDATED) */}
                 <section className="glass-card p-6 border-l-4 border-l-neon-pink group hover:border-white/20 transition-all">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-                        <Share2 size={16} className="text-neon-pink" /> 市场与 TikTok 成本
+                        <Share2 size={16} className="text-neon-pink" /> TIKTOK COST STRUCTURE
                     </h3>
+                    
                     <div className="space-y-5">
+                         {/* Sales Price */}
                          <div className="flex items-center gap-4">
                               <InputGroup label="销售价 (USD $)" name="sellingPrice" value={formData.sellingPrice} highlight="text-neon-green text-xl" onChange={handleChange} />
                               <button 
@@ -424,37 +452,24 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                               </button>
                          </div>
                          
-                         <div className="space-y-3 pt-2">
-                             <div className="flex justify-between items-center">
-                                 <span className="text-xs text-gray-400">佣金 ({formData.tiktokCommission}%)</span>
-                                 <input 
-                                    name="tiktokCommission"
-                                    type="number"
-                                    value={formData.tiktokCommission}
-                                    onChange={handleChange}
-                                    className="w-16 h-6 bg-transparent text-right text-xs font-bold text-white border-b border-white/20 outline-none focus:border-neon-pink"
-                                 />
+                         <div className="pt-2 space-y-4">
+                             {/* Row 1: Commissions */}
+                             <div className="grid grid-cols-2 gap-4">
+                                 <InputGroup label="平台佣金 (%)" name="platformCommission" value={formData.platformCommission} onChange={handleChange} />
+                                 <InputGroup label="达人佣金 (%)" name="influencerCommission" value={formData.influencerCommission} onChange={handleChange} />
                              </div>
-                             <div className="flex justify-between items-center">
-                                 <span className="text-xs text-gray-400">履约费 ($)</span>
-                                 <input 
-                                    name="fulfillmentFee"
-                                    type="number"
-                                    value={formData.fulfillmentFee}
-                                    onChange={handleChange}
-                                    className="w-16 h-6 bg-transparent text-right text-xs font-bold text-white border-b border-white/20 outline-none focus:border-neon-pink"
-                                 />
+                             
+                             {/* Row 2: Fixed Fee */}
+                             <InputGroup label="每单固定费 ($)" name="orderFixedFee" value={formData.orderFixedFee} onChange={handleChange} />
+
+                             {/* Row 3: Return & Last Mile */}
+                             <div className="grid grid-cols-2 gap-4">
+                                 <InputGroup label="预估退货率 (%)" name="returnRate" value={formData.returnRate} onChange={handleChange} />
+                                 <InputGroup label="尾程派送费 ($)" name="lastMileShipping" value={formData.lastMileShipping} onChange={handleChange} />
                              </div>
-                             <div className="flex justify-between items-center">
-                                 <span className="text-xs text-gray-400">广告费 (CPA) ($)</span>
-                                 <input 
-                                    name="adCostPerUnit"
-                                    type="number"
-                                    value={formData.adCostPerUnit}
-                                    onChange={handleChange}
-                                    className="w-16 h-6 bg-transparent text-right text-xs font-bold text-white border-b border-white/20 outline-none focus:border-neon-pink"
-                                 />
-                             </div>
+
+                             {/* Row 4: Ads */}
+                             <InputGroup label="预估广告费 ($)" name="adCostPerUnit" value={formData.adCostPerUnit} onChange={handleChange} />
                          </div>
                     </div>
                 </section>
@@ -503,16 +518,17 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                 <span className="text-neon-pink font-bold">-${metrics.totalUnitCost.toFixed(2)}</span>
                             </div>
                             <div className="h-1 bg-white/10 rounded-full overflow-hidden w-full">
-                                <div className="h-full bg-neon-pink" style={{ width: `${(metrics.totalUnitCost / formData.sellingPrice) * 100}%` }}></div>
+                                <div className="h-full bg-neon-pink" style={{ width: `${Math.min((metrics.totalUnitCost / formData.sellingPrice) * 100, 100)}%` }}></div>
                             </div>
                         </div>
 
                         {/* Breakdown */}
                         <div className="mt-8 grid grid-cols-2 gap-2">
-                             <CostItem label="货值" value={formData.unitCost} total={metrics.totalUnitCost} color="bg-blue-500" />
-                             <CostItem label="运费" value={metrics.unitShippingCost} total={metrics.totalUnitCost} color="bg-yellow-500" />
-                             <CostItem label="履约" value={formData.fulfillmentFee} total={metrics.totalUnitCost} color="bg-purple-500" />
-                             <CostItem label="广告" value={formData.adCostPerUnit} total={metrics.totalUnitCost} color="bg-red-500" />
+                             <CostItem label="货值" value={formData.unitCost} color="bg-blue-500" />
+                             <CostItem label="头程运费" value={metrics.unitShippingCost} color="bg-yellow-500" />
+                             <CostItem label="平台/达人佣金" value={metrics.breakdown.platformFee + metrics.breakdown.influencerFee} color="bg-purple-500" />
+                             <CostItem label="尾程/定费" value={formData.lastMileShipping + formData.orderFixedFee} color="bg-orange-500" />
+                             <CostItem label="广告/退货" value={formData.adCostPerUnit + metrics.breakdown.estimatedReturnCost} color="bg-red-500" />
                         </div>
                     </section>
                     
@@ -570,11 +586,11 @@ const InputGroup = ({ label, name, value, onChange, type="number", highlight="",
     </div>
 );
 
-const CostItem = ({ label, value, total, color }: any) => (
+const CostItem = ({ label, value, color }: any) => (
     <div className="bg-white/5 p-2 rounded-lg border border-white/5">
         <div className="flex items-center gap-1.5 mb-1">
             <div className={`w-1.5 h-1.5 rounded-full ${color}`}></div>
-            <span className="text-[10px] text-gray-400">{label}</span>
+            <span className="text-[10px] text-gray-400 truncate">{label}</span>
         </div>
         <div className="text-xs font-bold text-white">${value.toFixed(2)}</div>
     </div>

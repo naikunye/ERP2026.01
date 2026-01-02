@@ -20,7 +20,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isPOModalOpen, setIsPOModalOpen] = useState(false);
-  const [poDraft, setPoDraft] = useState<{ id: string, qty: number, cost: number }[]>([]);
+  const [poDraft, setPoDraft] = useState<{ id: string, name: string, sku: string, qty: number, cost: number }[]>([]);
   const [supplierName, setSupplierName] = useState('Default Supplier');
 
   const filteredData = products.filter(p => 
