@@ -229,7 +229,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               <div className="col-span-2">产品详情 / 箱规</div>
               <div className="col-span-2">物流状态 / 费率</div>
               <div className="col-span-2">库存健康度 (DOI)</div>
-              <div className="col-span-1">采购成本(RMB) / 售价(USD)</div>
+              <div className="col-span-1">成本构成 (RMB)</div>
               <div className="col-span-1">利润透视(USD)</div>
               <div className="col-span-2 text-center">操作</div>
           </div>
@@ -261,9 +261,14 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  const urgencyText = isCritical ? 'text-neon-pink' : (isLowStock ? 'text-neon-yellow' : 'text-neon-green');
                  
                  const totalPotentialProfitUSD = unitProfitUSD * item.stock;
-                 const costOfGoodsRMB = item.financials?.costOfGoods || 0; // RMB
-                 const shippingCostUSD = item.financials?.shippingCost || 0; // USD
                  const isSelected = selectedIds.has(item.id);
+
+                 // --- COST CALCULATION (RMB) ---
+                 const exchangeRate = item.exchangeRate || 7.2;
+                 const costOfGoodsRMB = item.financials?.costOfGoods || 0; // Raw RMB
+                 const shippingCostUSD = item.financials?.shippingCost || 0; // Raw USD
+                 const shippingCostRMB = shippingCostUSD * exchangeRate; // Convert to RMB
+                 const totalUnitCostRMB = costOfGoodsRMB + shippingCostRMB;
 
                  return (
                   <div key={item.id} onClick={() => onEditSKU && onEditSKU(item)} className={`glass-card grid grid-cols-12 items-center p-0 min-h-[110px] hover:border-white/20 transition-all group relative overflow-visible cursor-pointer ${isSelected ? 'border-neon-blue/30 bg-neon-blue/5' : ''}`}>
@@ -376,15 +381,20 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                            </div>
                       </div>
 
-                      {/* 5. Cost/Price */}
-                      <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
-                          <div className="flex flex-col">
-                              <span className="text-[9px] text-gray-500 uppercase">采购成本 (RMB)</span>
-                              <span className="text-xs font-bold text-white font-mono">¥{costOfGoodsRMB.toFixed(2)}</span>
+                      {/* 5. Cost Structure (Modified) */}
+                      <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-1">
+                          <div className="flex justify-between items-center">
+                              <span className="text-[9px] text-gray-500">采购</span>
+                              <span className="text-[10px] font-bold text-white font-mono">¥{costOfGoodsRMB.toFixed(1)}</span>
                           </div>
-                          <div className="flex flex-col">
-                              <span className="text-[9px] text-gray-500 uppercase">销售价 (USD)</span>
-                              <span className="text-xs font-bold text-neon-green font-mono">${item.financials?.sellingPrice.toFixed(2) || '0.00'}</span>
+                          <div className="flex justify-between items-center">
+                              <span className="text-[9px] text-gray-500">头程</span>
+                              <span className="text-[10px] text-gray-400 font-mono">¥{shippingCostRMB.toFixed(1)}</span>
+                          </div>
+                          <div className="h-px w-full bg-white/10 my-1"></div>
+                          <div className="flex justify-between items-center">
+                              <span className="text-[9px] text-neon-yellow font-bold">总计</span>
+                              <span className="text-xs font-bold text-neon-yellow font-mono">¥{totalUnitCostRMB.toFixed(1)}</span>
                           </div>
                       </div>
 
