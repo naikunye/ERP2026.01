@@ -213,6 +213,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [isInitializing, setIsInitializing] = useState(false);
+  const [initStatusMsg, setInitStatusMsg] = useState('');
 
   // Storage Stats
   const [storageUsage, setStorageUsage] = useState({ usedKB: 0, percent: 0 });
@@ -447,6 +448,57 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       }
   };
 
+  const authenticateAdmin = async () => {
+      // Strategy 1: Try new SDK method (v0.23+ Servers)
+      try {
+          console.log("Auth Strategy 1: _superusers collection");
+          await pb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
+          return true;
+      } catch (e: any) {
+          console.warn("Strategy 1 Failed:", e.message);
+          
+          // If the error is simply invalid login, stop here.
+          if (e.status === 400) throw e;
+          
+          // Strategy 2: Legacy SDK Method (for very old codebases, unlikely with v0.26 but good to check)
+          if ((pb as any).admins && typeof (pb as any).admins.authWithPassword === 'function') {
+              try {
+                  console.log("Auth Strategy 2: Legacy pb.admins");
+                  await (pb as any).admins.authWithPassword(adminEmail, adminPassword);
+                  return true;
+              } catch (legacyErr) {
+                  console.warn("Strategy 2 Failed:", legacyErr);
+              }
+          }
+
+          // Strategy 3: Manual Fetch fallback (For Old Servers v0.22- accessed by New SDK)
+          // New SDK doesn't expose admins service, but old server requires it.
+          try {
+              console.log("Auth Strategy 3: Manual Fetch to /api/admins/auth-with-password");
+              const resp = await fetch(`${serverUrlInput}/api/admins/auth-with-password`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ identity: adminEmail, password: adminPassword })
+              });
+              
+              if (!resp.ok) {
+                  const errData = await resp.json();
+                  throw new Error(errData.message || "Admin API auth failed");
+              }
+              
+              const data = await resp.json();
+              // Manually inject token into SDK
+              pb.authStore.save(data.token, data.admin);
+              return true;
+          } catch (manualErr: any) {
+              console.warn("Strategy 3 Failed:", manualErr);
+              // If strategy 3 fails, we throw the original error from Strategy 1 if it was a 400 (Bad Request/Wrong Password)
+              // or throw the manual error.
+              throw manualErr;
+          }
+      }
+  };
+
   const handleInitSchema = async () => {
       if (!adminEmail || !adminPassword) {
           if (onNotify) onNotify('error', 'Auth Error', '请输入 Admin Email 和 Password');
@@ -458,20 +510,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       }
 
       setIsInitializing(true);
+      setInitStatusMsg("Authenticating Admin...");
+      
       try {
-          // 1. Authenticate as Admin (Compatible with V0.21 Legacy and V0.23+ Newer)
-          // Newer SDKs might remove `pb.admins` entirely, so we check for its existence.
-          if ((pb as any).admins && typeof (pb as any).admins.authWithPassword === 'function') {
-              try {
-                  await (pb as any).admins.authWithPassword(adminEmail, adminPassword);
-              } catch (legacyErr) {
-                  console.warn("Legacy admin auth failed, trying new _superusers...", legacyErr);
-                  await pb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
-              }
-          } else {
-              // Direct fallback for new SDKs
-              await pb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
-          }
+          // 1. Universal Auth
+          await authenticateAdmin();
+          
+          setInitStatusMsg("Creating Schemas...");
           
           // 2. Iterate and create collections
           let createdCount = 0;
@@ -494,6 +539,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                           deleteRule: null
                       });
                       createdCount++;
+                  } else {
+                      // Permission error or other?
+                      console.warn(`Check collection ${def.name} failed:`, e);
                   }
               }
           }
@@ -526,13 +574,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       .join(', ');
                   if (fieldErrors) msg += ` (${fieldErrors})`;
               }
-          } else if (e.originalError) {
-              msg += ` (${e.originalError.message})`;
           }
 
-          if (onNotify) onNotify('error', '初始化失败', msg);
+          if (onNotify) onNotify('error', '初始化失败 (Init Failed)', msg);
       } finally {
           setIsInitializing(false);
+          setInitStatusMsg("");
       }
   };
 
@@ -823,7 +870,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       className="w-full md:w-auto md:self-start px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2 mt-2"
                   >
                       {isInitializing ? <Loader2 size={16} className="animate-spin"/> : <Key size={16}/>}
-                      {isInitializing ? '正在创建数据表...' : '一键创建所有数据表 (Initialize Schema)'}
+                      {isInitializing ? (initStatusMsg || '正在处理...') : '一键创建所有数据表 (Initialize Schema)'}
                   </button>
               </div>
           </div>
