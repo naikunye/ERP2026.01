@@ -167,51 +167,95 @@ const App: React.FC = () => {
         return;
     }
     
-    if(!confirm('⚠️ 警告：此操作会将您电脑上的所有数据写入服务器。\n\n• 如果服务器为空，这是正确的初始化步骤。\n• 如果服务器已有数据，可能会创建重复项。\n\n确定要开始上传吗？')) return;
+    if(!confirm('⚠️ 智能同步：此操作将把本地数据推送到服务器。\n\n系统会自动检查 SKU 和运单号，避免产生重复数据。\n\n确定开始吗？')) return;
 
     setIsLoading(true);
     let successCount = 0;
+    let updateCount = 0;
     let failCount = 0;
-    let lastError: any = null;
     
     // Helper to sanitize payload for legacy PB servers
     const sanitizeForUpload = (item: any) => {
-        // 1. Remove System Fields
         const { id, created, updated, collectionId, collectionName, expand, ...rest } = item;
-        
-        // 2. Ensure Types (Legacy servers crash if number field gets a string)
         const clean: any = { ...rest };
         
-        // Product/Financials specific cleaning
+        // Product/Financials specific cleaning to ensure Numbers are Numbers
         if (clean.price !== undefined) clean.price = Number(clean.price) || 0;
         if (clean.stock !== undefined) clean.stock = Number(clean.stock) || 0;
-        // Recursively clean financials if exists
         if (clean.financials) {
             clean.financials.costOfGoods = Number(clean.financials.costOfGoods) || 0;
             clean.financials.sellingPrice = Number(clean.financials.sellingPrice) || 0;
             clean.financials.shippingCost = Number(clean.financials.shippingCost) || 0;
         }
-        
         return clean;
     };
 
-    // Helper to upload a list and update IDs
-    const uploadBatch = async (collectionName: string, items: any[], setItems: React.Dispatch<React.SetStateAction<any[]>>) => {
+    // Helper: Build a lookup map of existing items on server to prevent duplicates
+    // Products -> map by SKU
+    // Shipments -> map by TrackingNo
+    // Others -> map by ID (if it looks like a valid PB ID) or skip dedup if no unique key
+    const fetchExistingMap = async (col: string, keyField: string) => {
+        try {
+            const list = await pb.collection(col).getFullList({ fields: `id,${keyField}` });
+            const map = new Map<string, string>();
+            list.forEach((item: any) => {
+                if(item[keyField]) map.set(String(item[keyField]), item.id);
+            });
+            return map;
+        } catch(e) { return new Map(); }
+    };
+
+    const uploadBatch = async (
+        collectionName: string, 
+        items: any[], 
+        setItems: React.Dispatch<React.SetStateAction<any[]>>,
+        dedupKey: string | null = null
+    ) => {
+        // 1. Pre-fetch server state for deduplication
+        let existingMap = new Map<string, string>();
+        if (dedupKey) {
+            existingMap = await fetchExistingMap(collectionName, dedupKey);
+        }
+
         const newItems = [...items];
+        
         for (let i = 0; i < newItems.length; i++) {
             const item = newItems[i];
-            
-            // Update progress
             setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
 
             try {
                 const payload = sanitizeForUpload(item);
-                const res = await pb.collection(collectionName).create(payload);
-                newItems[i] = { ...item, id: res.id }; // Update local state with real server ID
-                successCount++;
+                let res;
+                let isUpdate = false;
+
+                // CHECK DUPLICATE
+                let serverId = existingMap.get(String(item[dedupKey]));
+                
+                // Also check if the item.id itself is already a valid server ID (15 chars)
+                if (!serverId && item.id && item.id.length === 15 && !item.id.includes('-')) {
+                     // Potential existing ID, try update directly
+                     serverId = item.id;
+                }
+
+                if (serverId) {
+                    // Update existing
+                    try {
+                        res = await pb.collection(collectionName).update(serverId, payload);
+                        isUpdate = true;
+                    } catch(e) {
+                        // If update fails (e.g. 404), fallback to create
+                        res = await pb.collection(collectionName).create(payload);
+                    }
+                } else {
+                    // Create new
+                    res = await pb.collection(collectionName).create(payload);
+                }
+
+                newItems[i] = { ...item, id: res.id }; // Update local ID
+                if(isUpdate) updateCount++; else successCount++;
+
             } catch (e: any) {
                 failCount++;
-                lastError = e;
                 console.warn(`Failed item in ${collectionName}:`, e);
             }
         }
@@ -222,38 +266,28 @@ const App: React.FC = () => {
         const totalItems = products.length + shipments.length + transactions.length + influencers.length + tasks.length + competitors.length + messages.length;
         setUploadProgress({ current: 0, total: totalItems });
 
-        await uploadBatch('products', products, setProducts);
-        await uploadBatch('shipments', shipments, setShipments);
-        await uploadBatch('transactions', transactions, setTransactions);
-        await uploadBatch('influencers', influencers, setInfluencers);
-        await uploadBatch('tasks', tasks, setTasks);
-        await uploadBatch('competitors', competitors, setCompetitors);
-        await uploadBatch('messages', messages, setMessages);
+        // Use smart dedup keys
+        await uploadBatch('products', products, setProducts, 'sku');
+        await uploadBatch('shipments', shipments, setShipments, 'trackingNo');
+        await uploadBatch('influencers', influencers, setInfluencers, 'handle');
         
-        if (successCount > 0) {
-            addNotification('success', '上传完成', `成功写入: ${successCount} 条数据。`);
-            saveLocal('products', products); // Force re-save with new IDs
-        } else if (failCount > 0) {
-            // Detailed Error Analysis
-            let errorMsg = '部分数据上传失败';
-            let desc = `失败数: ${failCount}。请检查控制台详情。`;
-            
-            if (lastError?.status === 404) {
-                errorMsg = '集合不存在 (404)';
-                desc = '请先点击红色的“初始化数据库结构”按钮！';
-            } else if (lastError?.status === 400) {
-                errorMsg = '数据格式错误 (400)';
-                desc = '服务器拒绝了部分字段，可能因类型不匹配。';
-            }
-
-            addNotification('error', errorMsg, desc);
-        } else {
-            addNotification('info', '无数据需上传', '本地数据为空。');
-        }
+        // For these, we just try to upload. If ID exists it updates, if not it creates.
+        await uploadBatch('transactions', transactions, setTransactions, 'id'); 
+        await uploadBatch('tasks', tasks, setTasks, 'id');
+        await uploadBatch('competitors', competitors, setCompetitors, 'asin');
+        await uploadBatch('messages', messages, setMessages, 'id');
+        
+        addNotification(
+            failCount > 0 ? 'warning' : 'success', 
+            '同步完成', 
+            `新增: ${successCount}, 更新: ${updateCount}, 失败: ${failCount}`
+        );
+        
+        saveLocal('products', products); // Force re-save with new IDs
 
     } catch (e) {
         console.error(e);
-        addNotification('error', '同步中断', '未知网络错误。');
+        addNotification('error', '同步中断', '网络错误，请稍后重试。');
     } finally {
         setIsLoading(false);
         setUploadProgress({ current: 0, total: 0 });
@@ -482,7 +516,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="text-center">
                     <div className="text-neon-blue font-bold text-xl animate-pulse mb-2">正在同步数据到云端服务器...</div>
-                    <div className="text-gray-400 text-sm">Legacy Sync Protocol Active</div>
+                    <div className="text-gray-400 text-sm">Smart Sync Protocol Active</div>
                     <div className="text-gray-500 text-xs mt-2">{uploadProgress.current} / {uploadProgress.total} Items</div>
                 </div>
             </div>
