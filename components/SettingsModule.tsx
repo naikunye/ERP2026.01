@@ -4,7 +4,7 @@ import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key, ExternalLink, XCircle, Terminal, Info
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key, ExternalLink, XCircle, Terminal, Info, ArrowDown
 } from 'lucide-react';
 import { pb, updateServerUrl, isCloudConnected } from '../services/pocketbase';
 import PocketBase from 'pocketbase';
@@ -218,6 +218,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [isInitializing, setIsInitializing] = useState(false);
   const [initStatusMsg, setInitStatusMsg] = useState('');
   const [detailedError, setDetailedError] = useState<string | null>(null);
+  
+  // ADDED: Track if init was just successful
+  const [initSuccess, setInitSuccess] = useState(false);
 
   // Storage Stats
   const [storageUsage, setStorageUsage] = useState({ usedKB: 0, percent: 0 });
@@ -457,6 +460,8 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const handleInitSchema = async () => {
       setDetailedError(null);
+      setInitSuccess(false);
+      
       if (!adminEmail || !adminPassword) {
           setDetailedError("请输入 Admin Email 和 Password");
           return;
@@ -638,8 +643,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           
           updateServerUrl(targetUrl);
           pb.authStore.save(authToken, adminModel);
+          setInitSuccess(true); // Mark success to show the "Now Upload" hint
 
-          if (onNotify) onNotify('success', '初始化成功', `Collections Ready: ${createdCount} created.`);
+          if (onNotify) onNotify('success', '结构创建成功', `Collections Ready: ${createdCount} created.`);
 
       } catch (e: any) {
           console.error("Init Error:", e);
@@ -803,6 +809,19 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
               </div>
           </div>
 
+          {initSuccess && (
+              <div className="bg-neon-green/10 border border-neon-green/30 p-4 rounded-xl flex items-center justify-between animate-pulse">
+                  <div className="flex items-center gap-3">
+                      <CheckCircle2 size={24} className="text-neon-green"/>
+                      <div>
+                          <h4 className="text-sm font-bold text-white">数据库结构创建成功！</h4>
+                          <p className="text-xs text-gray-300">现在请点击下方的 <strong className="text-neon-green">全量推送到云端</strong> 按钮，将您的本地数据上传到服务器。</p>
+                      </div>
+                  </div>
+                  <ArrowDown size={24} className="text-neon-green animate-bounce mr-10"/>
+              </div>
+          )}
+
           {!currentOnlineStatus && (
             <div className="bg-neon-yellow/10 border border-neon-yellow/20 p-4 rounded-xl flex items-start gap-3">
                 <AlertCircle size={20} className="text-neon-yellow shrink-0 mt-0.5" />
@@ -838,22 +857,30 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
               {/* Push to Cloud */}
               {onSyncToCloud && currentOnlineStatus && (
-                  <div className="glass-card p-8 flex flex-col items-center justify-center text-center space-y-4 group hover:border-neon-green/30 transition-all border-neon-green/10 bg-neon-green/5">
+                  <div className={`glass-card p-8 flex flex-col items-center justify-center text-center space-y-4 group transition-all relative overflow-hidden ${
+                      initSuccess 
+                      ? 'border-2 border-neon-green shadow-glow-green bg-neon-green/5' 
+                      : 'hover:border-neon-green/30 border-neon-green/10 bg-neon-green/5'
+                  }`}>
                       <div className="w-16 h-16 rounded-full bg-neon-green/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
                           <ArrowUpCircle size={32} className="text-neon-green" />
                       </div>
                       <div>
                           <h2 className="text-lg font-bold text-white mb-1">全量推送到云端 (Push)</h2>
                           <p className="text-xs text-gray-400 px-6">
-                              将所有本地数据上传到腾讯云。请在首次连接空服务器时使用。
+                              将所有本地数据上传到腾讯云。请在初始化结构后使用此功能。
                           </p>
                       </div>
                       <button 
                         onClick={onSyncToCloud}
-                        className="mt-2 px-6 py-2 bg-neon-green text-black font-bold rounded-lg text-xs transition-all flex items-center gap-2 shadow-glow-green hover:scale-105"
+                        className="mt-2 px-6 py-2 bg-neon-green text-black font-bold rounded-lg text-xs transition-all flex items-center gap-2 shadow-glow-green hover:scale-105 z-10"
                       >
                           <Upload size={14} /> 开始上传
                       </button>
+                      
+                      {initSuccess && (
+                          <div className="absolute inset-0 bg-neon-green/5 animate-pulse pointer-events-none"></div>
+                      )}
                   </div>
               )}
 

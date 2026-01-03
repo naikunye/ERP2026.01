@@ -29,6 +29,7 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isCloudOnline, setIsCloudOnline] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   
   // --- DATA GUARD STATE ---
   // Critical: Prevents saving empty state to localStorage during initial render
@@ -110,7 +111,7 @@ const App: React.FC = () => {
                       addNotification('success', '云端数据已同步', '界面已更新为服务器最新状态');
                   } else {
                       // If cloud is empty, warn user they might need to push
-                      addNotification('info', '已连接新服务器', '服务器数据为空。请在设置中点击“上传本地数据”以初始化云端。');
+                      addNotification('info', '已连接新服务器', '服务器暂无数据。请前往“设置”点击“全量推送到云端”以同步本地数据。');
                   }
               } catch (error) {
                   // console.error("Cloud Sync Error", error);
@@ -136,11 +137,13 @@ const App: React.FC = () => {
   const saveToCloud = async (collection: string, data: any, id?: string) => {
       if (!isCloudOnline) return { id: data.id || Date.now().toString() };
       try {
+          // Remove local-only or system fields before sending
+          const { id: localId, created, updated, collectionId, collectionName, expand, ...cleanPayload } = data;
+          
           if (id && !id.startsWith('new_') && !id.startsWith('PROD-') && !id.startsWith('IMP-') && id.length > 10) {
-              return await pb.collection(collection).update(id, data);
+              return await pb.collection(collectionName || collection).update(id, cleanPayload);
           } else {
-              const { id: _, ...payload } = data; // Drop local ID for cloud creation
-              return await pb.collection(collection).create(payload);
+              return await pb.collection(collectionName || collection).create(cleanPayload);
           }
       } catch (err: any) {
           // console.error("Cloud Save Failed:", err);
@@ -164,21 +167,45 @@ const App: React.FC = () => {
         return;
     }
     
-    if(!confirm('⚠️ 警告：这将把当前电脑的所有本地数据上传到腾讯云服务器。\n\n如果是首次连接空服务器，请点击确定。\n如果服务器已有数据，可能会产生重复项。\n\n是否继续？')) return;
+    if(!confirm('⚠️ 警告：此操作会将您电脑上的所有数据写入服务器。\n\n• 如果服务器为空，这是正确的初始化步骤。\n• 如果服务器已有数据，可能会创建重复项。\n\n确定要开始上传吗？')) return;
 
     setIsLoading(true);
     let successCount = 0;
     let failCount = 0;
     let lastError: any = null;
     
+    // Helper to sanitize payload for legacy PB servers
+    const sanitizeForUpload = (item: any) => {
+        // 1. Remove System Fields
+        const { id, created, updated, collectionId, collectionName, expand, ...rest } = item;
+        
+        // 2. Ensure Types (Legacy servers crash if number field gets a string)
+        const clean: any = { ...rest };
+        
+        // Product/Financials specific cleaning
+        if (clean.price !== undefined) clean.price = Number(clean.price) || 0;
+        if (clean.stock !== undefined) clean.stock = Number(clean.stock) || 0;
+        // Recursively clean financials if exists
+        if (clean.financials) {
+            clean.financials.costOfGoods = Number(clean.financials.costOfGoods) || 0;
+            clean.financials.sellingPrice = Number(clean.financials.sellingPrice) || 0;
+            clean.financials.shippingCost = Number(clean.financials.shippingCost) || 0;
+        }
+        
+        return clean;
+    };
+
     // Helper to upload a list and update IDs
     const uploadBatch = async (collectionName: string, items: any[], setItems: React.Dispatch<React.SetStateAction<any[]>>) => {
         const newItems = [...items];
         for (let i = 0; i < newItems.length; i++) {
             const item = newItems[i];
+            
+            // Update progress
+            setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
+
             try {
-                // Strip local system fields and try create
-                const { id, created, updated, ...payload } = item; 
+                const payload = sanitizeForUpload(item);
                 const res = await pb.collection(collectionName).create(payload);
                 newItems[i] = { ...item, id: res.id }; // Update local state with real server ID
                 successCount++;
@@ -192,6 +219,9 @@ const App: React.FC = () => {
     };
 
     try {
+        const totalItems = products.length + shipments.length + transactions.length + influencers.length + tasks.length + competitors.length + messages.length;
+        setUploadProgress({ current: 0, total: totalItems });
+
         await uploadBatch('products', products, setProducts);
         await uploadBatch('shipments', shipments, setShipments);
         await uploadBatch('transactions', transactions, setTransactions);
@@ -201,22 +231,19 @@ const App: React.FC = () => {
         await uploadBatch('messages', messages, setMessages);
         
         if (successCount > 0) {
-            addNotification('success', '上传完成', `成功: ${successCount} 条, 失败: ${failCount} 条。`);
+            addNotification('success', '上传完成', `成功写入: ${successCount} 条数据。`);
             saveLocal('products', products); // Force re-save with new IDs
         } else if (failCount > 0) {
             // Detailed Error Analysis
-            let errorMsg = '数据上传被拒绝。';
-            let desc = '请检查服务器日志或数据格式。';
+            let errorMsg = '部分数据上传失败';
+            let desc = `失败数: ${failCount}。请检查控制台详情。`;
             
-            if (lastError?.status === 403) {
-                errorMsg = '权限不足 (403 Forbidden)';
-                desc = '请在 PocketBase 后台 -> Collections -> API Rules 中，将 Create/Write 权限设为 Public (留空)，或者在前端配置管理员账号。';
-            } else if (lastError?.status === 404) {
-                errorMsg = '集合不存在 (404 Not Found)';
-                desc = '请在下方“管理员专区”先初始化数据库结构。';
+            if (lastError?.status === 404) {
+                errorMsg = '集合不存在 (404)';
+                desc = '请先点击红色的“初始化数据库结构”按钮！';
             } else if (lastError?.status === 400) {
-                errorMsg = '数据格式错误 (400 Bad Request)';
-                desc = '字段校验失败。';
+                errorMsg = '数据格式错误 (400)';
+                desc = '服务器拒绝了部分字段，可能因类型不匹配。';
             }
 
             addNotification('error', errorMsg, desc);
@@ -229,6 +256,7 @@ const App: React.FC = () => {
         addNotification('error', '同步中断', '未知网络错误。');
     } finally {
         setIsLoading(false);
+        setUploadProgress({ current: 0, total: 0 });
     }
   };
 
@@ -390,10 +418,7 @@ const App: React.FC = () => {
           if (isCloudOnline) {
               // Note: This tries to save one by one, might be slow. 
               // The new "Sync to Cloud" button is better for bulk.
-              data.forEach(async p => {
-                  try { await saveToCloud('products', p); } catch(e) {}
-              });
-              addNotification('info', '后台同步中', '正在尝试将导入数据推送到服务器');
+              addNotification('info', '本地已导入', '请前往设置点击“全量推送到云端”以同步服务器。');
           } else {
               addNotification('success', '已导入本地', '数据已安全保存到浏览器');
           }
@@ -448,9 +473,18 @@ const App: React.FC = () => {
   return (
     <div className={`flex h-screen w-full bg-[#050510] text-white font-sans selection:bg-neon-blue selection:text-black overflow-hidden theme-${currentTheme}`}>
         {isLoading && (
-            <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4 animate-fade-in">
-                <div className="w-12 h-12 border-4 border-neon-blue border-t-transparent rounded-full animate-spin"></div>
-                <div className="text-neon-blue font-bold text-lg animate-pulse">正在上传数据到云端...</div>
+            <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center gap-6 animate-fade-in">
+                <div className="relative">
+                    <div className="w-16 h-16 border-4 border-white/10 border-t-neon-blue rounded-full animate-spin"></div>
+                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold">
+                        {Math.round((uploadProgress.current / (uploadProgress.total || 1)) * 100)}%
+                    </div>
+                </div>
+                <div className="text-center">
+                    <div className="text-neon-blue font-bold text-xl animate-pulse mb-2">正在同步数据到云端服务器...</div>
+                    <div className="text-gray-400 text-sm">Legacy Sync Protocol Active</div>
+                    <div className="text-gray-500 text-xs mt-2">{uploadProgress.current} / {uploadProgress.total} Items</div>
+                </div>
             </div>
         )}
         
@@ -460,7 +494,7 @@ const App: React.FC = () => {
         <div className="flex-1 ml-[280px] p-8 h-full flex flex-col overflow-hidden relative">
             {!isCloudOnline && (
                 <div className="absolute top-0 left-0 right-0 bg-yellow-600/20 text-yellow-400 text-[10px] font-bold text-center py-1 z-50 pointer-events-none backdrop-blur-sm">
-                    ⚠️ 离线模式: 数据将保存在本地
+                    ⚠️ 离线模式: 数据仅保存在本地浏览器
                 </div>
             )}
             
