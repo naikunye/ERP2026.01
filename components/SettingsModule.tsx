@@ -166,7 +166,7 @@ const COLLECTIONS_SCHEMA = [
 ];
 
 // ------------------------------------------------------------------
-// HELPER FUNCTIONS (Improved)
+// HELPER FUNCTIONS (Advanced)
 // ------------------------------------------------------------------
 
 const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
@@ -183,36 +183,69 @@ const parseCleanNum = (val: any): number => {
     return 0;
 };
 
-// Robust deep finder for arrays
-const findLargestArray = (obj: any): any[] => {
-    if (!obj) return [];
-    if (Array.isArray(obj)) return obj;
-    
-    let largest: any[] = [];
-    const stack = [obj];
-    let iterations = 0;
-    
-    // Safety break to prevent infinite loops on circular structures
-    while(stack.length > 0 && iterations < 500) { 
-        const current = stack.pop();
-        iterations++;
-        
+// --- HEURISTIC SCORING ALGORITHM ---
+const findDataArrayHeuristic = (json: any): any[] => {
+    const candidates: { array: any[], score: number, path: string }[] = [];
+
+    const analyze = (current: any, path: string = 'root') => {
+        if (!current || typeof current !== 'object') return;
+
         if (Array.isArray(current)) {
-            if (current.length > largest.length) largest = current;
-            continue; // Don't dig inside arrays of objects for now, assume the array itself is the list
-        }
-        
-        if (typeof current === 'object' && current !== null) {
-            Object.values(current).forEach(val => {
-                if (Array.isArray(val)) {
-                    if (val.length > largest.length) largest = val;
-                } else if (typeof val === 'object' && val !== null) {
-                    stack.push(val);
+            let score = 0;
+            if (current.length > 0) {
+                // Sample up to 5 items to check for "Product-likeness"
+                const sampleSize = Math.min(current.length, 5);
+                let objectCount = 0;
+                let keywordHits = 0;
+
+                for (let i = 0; i < sampleSize; i++) {
+                    const item = current[i];
+                    if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+                        objectCount++;
+                        const keys = Object.keys(item).map(k => k.toLowerCase());
+                        const valuesStr = JSON.stringify(item).toLowerCase();
+
+                        // High Value Keys (Strong indicators of Product Data)
+                        if (keys.some(k => k === 'sku' || k === 'id' || k === '_id' || k.includes('product'))) keywordHits += 10;
+                        if (keys.some(k => k.includes('name') || k.includes('title'))) keywordHits += 5;
+                        if (keys.some(k => k.includes('price') || k.includes('cost') || k.includes('amount'))) keywordHits += 5;
+                        if (keys.some(k => k.includes('stock') || k.includes('qty') || k.includes('quantity'))) keywordHits += 5;
+                        if (keys.some(k => k.includes('image') || k.includes('img') || k.includes('pic'))) keywordHits += 3;
+                        
+                        // Content heuristics
+                        if (valuesStr.includes('http')) keywordHits += 1;
+                    }
                 }
-            });
+
+                // Formula: Average Keyword Score * Log(Length)
+                // We prioritize arrays that contain objects with rich product data fields
+                if (objectCount > 0) {
+                    const avgScore = keywordHits / objectCount;
+                    score = avgScore * Math.log10(current.length + 1);
+                }
+            }
+            candidates.push({ array: current, score, path });
+            // Don't recurse into arrays, usually products are not nested inside other product lists
+            return;
         }
+
+        // Recurse into object keys
+        Object.keys(current).forEach(key => {
+            analyze(current[key], `${path}.${key}`);
+        });
+    };
+
+    analyze(json);
+
+    // Sort by score descending
+    candidates.sort((a, b) => b.score - a.score);
+
+    if (candidates.length > 0) {
+        console.log("Import Candidates:", candidates.slice(0, 3)); // Debug log
+        return candidates[0].array;
     }
-    return largest;
+    
+    return [];
 };
 
 const findValueGreedy = (obj: any, aliases: string[], exclude: string[] = []): any => {
@@ -297,13 +330,10 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
     if(onNotify) onNotify('success', '备份已下载', '请妥善保管此 JSON 文件，这是您数据的唯一永久存档。');
   };
 
-  // --- RE-IMPLEMENTED IMPORT LOGIC ---
+  // --- IMPROVED IMPORT LOGIC ---
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('Deep Scan: 正在扫描数据结构...');
-    
-    // Relaxed Check: Allow almost any file, try to parse as text/json
-    // Users might rename .txt to .json or use excel exports
+    setImportMessage('Running Heuristic Scan (智能特征分析)...');
     
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -313,18 +343,16 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         try {
             json = JSON.parse(text);
         } catch (parseError) {
-            throw new Error("文件不是有效的 JSON 格式。请检查是否是 .csv 或 .xlsx 改名？必须导出为 JSON。");
+            throw new Error("文件解析失败。请确保文件是有效的 JSON 格式 (建议 UTF-8 编码)。");
         }
 
-        // --- DEEP ARRAY SCAN ---
-        const arr = findLargestArray(json);
+        // --- HEURISTIC ARRAY SCAN ---
+        const arr = findDataArrayHeuristic(json);
         
         if (!arr || arr.length === 0) {
-            throw new Error("在 JSON 中找不到任何数组数据 (No array found in JSON structure).");
+            throw new Error("未能识别出有效的产品数据列表。请检查 JSON 结构是否包含 sku/name/price 等字段。");
         }
         
-        console.log(`Found largest array with ${arr.length} items`);
-
         const sanitized: Product[] = arr.map((raw: any) => {
             // Enhanced Aliases
             const inboundId = raw.inboundId || findValueGreedy(raw, 
@@ -439,7 +467,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条 (已智能识别字段)`);
+        setImportMessage(`AI 识别成功: ${sanitized.length} 条数据已加载`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
@@ -448,7 +476,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       } catch (err: any) {
         console.error("Import Error:", err);
         setImportStatus('error');
-        setImportMessage(`导入失败: ${err.message}`);
+        setImportMessage(`导入中断: ${err.message}`);
       }
     };
     reader.readAsText(file);
