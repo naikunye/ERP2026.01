@@ -139,10 +139,10 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   };
 
   return (
-    <div className="h-full flex flex-col w-full relative animate-fade-in overflow-hidden">
+    <div className="h-full flex flex-col w-full relative animate-fade-in overflow-hidden min-h-0">
       
       {/* 1. Header & Summary Stats (Fixed Height) */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end border-b border-white/10 pb-6 shrink-0 px-2">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end border-b border-white/10 pb-6 shrink-0 px-2 min-h-0">
         <div className="md:col-span-6">
            <h1 className="text-[32px] font-display font-bold text-white tracking-tight leading-none flex items-center gap-3">
               智能备货清单 
@@ -178,7 +178,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       </div>
 
       {/* 2. Controls & Actions (Fixed Height) */}
-      <div className="flex justify-between items-center py-4 bg-[#050510]/80 border-b border-white/5 shrink-0 z-20 px-2">
+      <div className="flex justify-between items-center py-4 bg-[#050510]/80 border-b border-white/5 shrink-0 z-20 px-2 min-h-0">
           <div className="relative w-[400px] group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon-blue transition-colors" size={18} />
               <input 
@@ -216,7 +216,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       </div>
 
       {/* 3. The List (Card Table) - SCROLLABLE AREA */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar relative px-2 pb-20">
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative px-2 pb-20 min-h-0">
           
           {/* Header Row */}
           <div className="grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12 sticky top-0 bg-[#050510] z-10 border-b border-white/5 mb-2">
