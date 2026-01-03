@@ -81,7 +81,9 @@ const COLLECTIONS_SCHEMA = [
             { name: 'items', type: 'json' },
             { name: 'riskReason', type: 'text' },
             { name: 'customsStatus', type: 'text' },
-            { name: 'lastUpdate', type: 'text' }
+            { name: 'lastUpdate', type: 'text' },
+            { name: 'vesselName', type: 'text' },
+            { name: 'containerNo', type: 'text' }
         ]
     },
     {
@@ -559,10 +561,21 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   debugLogs.push(`>> Creating collection '${def.name}'...`);
                   
                   // Payload A: Legacy (v0.22-) uses 'schema' property
+                  // ENHANCEMENT: Populate missing legacy fields (required, system, options)
+                  const legacySchema = def.schema.map(f => ({
+                      system: false,
+                      id: '',
+                      name: f.name,
+                      type: f.type,
+                      required: false,
+                      unique: false,
+                      options: {}
+                  }));
+
                   const payloadLegacy = {
                       name: def.name,
                       type: def.type,
-                      schema: def.schema, 
+                      schema: legacySchema, 
                       listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null
                   };
 
@@ -570,7 +583,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   const payloadModern = {
                       name: def.name,
                       type: def.type,
-                      fields: def.schema, // v0.23+ 'fields' has similar structure to old 'schema' array
+                      fields: def.schema, 
                       listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null
                   };
 
@@ -584,7 +597,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   // If Legacy fails (400 Bad Request usually), try Modern
                   if (!createResp.ok) {
                       const errText = await createResp.text();
-                      debugLogs.push(`>> Legacy Create Failed: ${createResp.status} - ${errText.substring(0, 50)}...`);
+                      debugLogs.push(`>> Legacy Create Failed: ${createResp.status} - ${errText.substring(0, 300)}...`);
                       
                       debugLogs.push(`>> Attempting Modern Create (fields)...`);
                       createResp = await fetch(`${targetUrl}/api/collections`, {
