@@ -4,8 +4,9 @@ import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog
 } from 'lucide-react';
+import { pb, updateServerUrl, isCloudConnected } from '../services/pocketbase';
 
 interface SettingsModuleProps {
   currentTheme: Theme;
@@ -64,12 +65,23 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Server Config State
+  const [serverUrlInput, setServerUrlInput] = useState(localStorage.getItem('custom_server_url') || 'http://119.28.72.106:8090');
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
+  const [currentOnlineStatus, setCurrentOnlineStatus] = useState(false);
+
   // Storage Stats
   const [storageUsage, setStorageUsage] = useState({ usedKB: 0, percent: 0 });
 
   useEffect(() => {
       calculateStorage();
+      checkCurrentConnection();
   }, [currentData]);
+
+  const checkCurrentConnection = async () => {
+      const status = await isCloudConnected();
+      setCurrentOnlineStatus(status);
+  };
 
   const calculateStorage = () => {
       let total = 0;
@@ -125,7 +137,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         const sanitized: Product[] = arr.map((raw: any) => {
             
             // --- A. IDENTITY (Direct Restore Priority) ---
-            // If importing a backup, use the fields directly. If importing fresh JSON, use greedy find.
             const inboundId = raw.inboundId || findValueGreedy(raw, 
                 ['lx', 'ib', '入库', '货件', 'fba', 'shipment', 'inbound', '批次', 'batch', 'po_no', '单号'],
                 ['sku', 'tracking', '快递', 'carrier', '配送']
@@ -148,7 +159,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 ['采购', '成本', 'cost', 'purchase', 'buying', '进货', '费率', 'rate']
             ));
 
-            // --- C. LOGISTICS & SPECS (Updated for "头程运费单价") ---
+            // --- C. LOGISTICS & SPECS ---
             let shippingCost = parseCleanNum(raw.financials?.shippingCost || findValueGreedy(raw, 
                 [
                     '头程运费单价', '头运费单价', '运费单价', '头程单价', // Highest priority
@@ -164,7 +175,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 ['箱', 'carton', 'box', '装箱']
             ));
 
-            // Boxing Info - PRIORITIZE RAW KEYS
+            // Boxing Info
             const itemsPerBox = parseCleanNum(raw.itemsPerBox || findValueGreedy(raw, 
                 ['itemsPerBox', 'per_box', 'boxing', '装箱数', '每箱', '单箱', 'pcs_per', 'quantity_per', '装箱'],
                 []
@@ -203,8 +214,8 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 boxWeight: boxWeight,
                 itemsPerBox,
                 restockCartons,
-                totalRestockUnits: parseCleanNum(raw.totalRestockUnits), // Explicit Restore
-                variantRestockMap: raw.variantRestockMap || {}, // Explicit Restore
+                totalRestockUnits: parseCleanNum(raw.totalRestockUnits), 
+                variantRestockMap: raw.variantRestockMap || {}, 
                 inboundId: String(inboundId || ''), 
                 inboundStatus: raw.inboundStatus || 'Pending',
                 restockDate: raw.restockDate,
@@ -226,7 +237,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                     shippingCost: shippingCost,
                     otherCost: parseCleanNum(raw.financials?.otherCost || findValueGreedy(raw, ['otherCost', '杂费'])),
                     sellingPrice: price, 
-                    platformFee: parseCleanNum(raw.financials?.platformFee || 0), // Kept for legacy compatibility
+                    platformFee: parseCleanNum(raw.financials?.platformFee || 0),
                     adCost: parseCleanNum(raw.financials?.adCost || findValueGreedy(raw, ['adCost', '广告'])),
                 },
                 logistics: {
@@ -279,6 +290,34 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       }
   };
 
+  const handleConnectServer = async () => {
+      setConnectionStatus('checking');
+      try {
+          // Temporarily set baseUrl to check
+          const originalUrl = pb.baseUrl;
+          pb.baseUrl = serverUrlInput;
+          const health = await pb.health.check({ requestKey: null });
+          
+          if (health.code === 200) {
+              setConnectionStatus('success');
+              // Save and update
+              updateServerUrl(serverUrlInput);
+              if (onNotify) onNotify('success', '连接成功', '已切换至腾讯云服务器，页面即将刷新...');
+              setTimeout(() => {
+                  window.location.reload();
+              }, 1500);
+          } else {
+              setConnectionStatus('error');
+              pb.baseUrl = originalUrl; // Revert
+              if (onNotify) onNotify('error', '连接失败', '服务器返回异常状态，请检查地址。');
+          }
+      } catch (e) {
+          setConnectionStatus('error');
+          console.error(e);
+          if (onNotify) onNotify('error', '连接超时', '无法连接到服务器，请检查 IP 和端口是否正确 (例如: http://IP:8090)');
+      }
+  };
+
   const themes = [
       { id: 'neon', name: 'Neon Glass', desc: '赛博朋克深色 (Default)', icon: Zap, color: 'text-neon-blue', bg: 'bg-black' },
       { id: 'ivory', name: 'Ivory Air', desc: '极简主义浅色 (Light)', icon: Sun, color: 'text-yellow-500', bg: 'bg-gray-100' },
@@ -316,7 +355,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                           : 'bg-white/5 border-white/10 hover:border-white/30'
                       }`}
                   >
-                      {/* Theme Preview Dot */}
                       <div className={`absolute top-4 right-4 w-3 h-3 rounded-full ${t.bg} border border-white/20 shadow-sm`}></div>
 
                       <div className="flex justify-between items-start mb-4">
@@ -328,7 +366,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       <h3 className={`text-lg font-bold mb-1 ${currentTheme === 'ivory' && t.id === 'ivory' ? 'text-black' : 'text-white'}`}>{t.name}</h3>
                       <p className="text-xs text-gray-500">{t.desc}</p>
                       
-                      {/* Active Glow */}
                       {currentTheme === t.id && (
                           <div className="absolute right-[-20px] bottom-[-20px] w-24 h-24 bg-neon-blue/10 rounded-full blur-xl"></div>
                       )}
@@ -339,7 +376,51 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
       <div className="border-t border-white/10 my-8"></div>
 
-      {/* 2. Data Management Section */}
+      {/* 2. Cloud Server Connection (NEW) */}
+      <section className="space-y-4">
+          <h2 className="text-sm font-bold text-neon-blue uppercase tracking-widest flex items-center gap-2">
+              <CloudCog size={16} /> 云服务器配置 (Cloud Server)
+          </h2>
+          <div className="glass-card p-6 border-neon-blue/30 bg-neon-blue/5">
+              <div className="flex flex-col md:flex-row gap-6 items-end">
+                  <div className="flex-1 space-y-2 w-full">
+                      <label className="text-xs font-bold text-gray-400 uppercase">PocketBase 服务器地址 (API URL)</label>
+                      <div className="relative group">
+                          <Server className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon-blue" size={16} />
+                          <input 
+                              type="text" 
+                              value={serverUrlInput}
+                              onChange={(e) => setServerUrlInput(e.target.value)}
+                              placeholder="http://119.28.72.106:8090"
+                              className="w-full h-12 pl-10 pr-4 bg-black/40 border border-white/10 rounded-xl text-white font-mono text-sm focus:border-neon-blue outline-none transition-all"
+                          />
+                      </div>
+                      <p className="text-[10px] text-gray-500">
+                          当前状态: <span className={currentOnlineStatus ? "text-neon-green font-bold" : "text-gray-400"}>{currentOnlineStatus ? "● 在线 (Online)" : "○ 离线 (Offline)"}</span>
+                      </p>
+                  </div>
+                  <button 
+                      onClick={handleConnectServer}
+                      disabled={connectionStatus === 'checking'}
+                      className={`h-12 px-6 rounded-xl font-bold text-sm shadow-lg flex items-center gap-2 transition-all shrink-0 ${
+                          connectionStatus === 'checking' 
+                          ? 'bg-gray-700 text-gray-400 cursor-wait' 
+                          : connectionStatus === 'success'
+                          ? 'bg-neon-green text-black hover:scale-105'
+                          : 'bg-neon-blue text-black hover:scale-105'
+                      }`}
+                  >
+                      {connectionStatus === 'checking' && <Loader2 size={16} className="animate-spin"/>}
+                      {connectionStatus === 'success' && <CheckCircle2 size={16}/>}
+                      {connectionStatus === 'idle' || connectionStatus === 'error' ? '连接并保存' : '连接成功'}
+                  </button>
+              </div>
+          </div>
+      </section>
+
+      <div className="border-t border-white/10 my-8"></div>
+
+      {/* 3. Data Management Section */}
       <section className="space-y-4">
           <div className="flex justify-between items-center">
               <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
@@ -365,17 +446,18 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
               </div>
           </div>
 
-          <div className="bg-neon-blue/10 border border-neon-blue/20 p-4 rounded-xl flex items-start gap-3">
-              <AlertCircle size={20} className="text-neon-blue shrink-0 mt-0.5" />
-              <div>
-                  <h4 className="text-sm font-bold text-white mb-1">重要提示：数据存储在本地浏览器中</h4>
-                  <p className="text-xs text-gray-300 leading-relaxed">
-                      本系统采用 Local Storage 技术，数据不会上传到云端服务器。
-                      <br/>如果您清理浏览器缓存或更换电脑，数据将会丢失。
-                      <strong className="text-neon-blue"> 请务必定期点击下方的“本地备份导出”按钮，将数据保存到您的电脑硬盘中。</strong>
-                  </p>
-              </div>
-          </div>
+          {!currentOnlineStatus && (
+            <div className="bg-neon-yellow/10 border border-neon-yellow/20 p-4 rounded-xl flex items-start gap-3">
+                <AlertCircle size={20} className="text-neon-yellow shrink-0 mt-0.5" />
+                <div>
+                    <h4 className="text-sm font-bold text-white mb-1">离线模式警告</h4>
+                    <p className="text-xs text-gray-300 leading-relaxed">
+                        您当前未连接到服务器。所有数据仅保存在浏览器本地。
+                        <strong className="text-neon-yellow"> 请务必定期导出备份，或在上方配置服务器地址进行连接。</strong>
+                    </p>
+                </div>
+            </div>
+          )}
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Export Card */}
@@ -443,18 +525,11 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
               </div>
           </div>
-          
-           {/* System Status Footer inside Settings */}
-          <div className="flex justify-center items-center gap-8 pt-4 opacity-50">
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <Server size={12} /> 服务器状态: <span className="text-gray-600">离线 (Client-Side Only)</span>
-              </div>
-          </div>
       </section>
 
       <div className="border-t border-white/10 my-8"></div>
 
-      {/* 3. About / Notifications */}
+      {/* 4. About / Notifications */}
       <section className="space-y-4">
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
               <Shield size={16} /> 关于系统
@@ -466,7 +541,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 7.3.0 (Storage Guard) • 离线就绪</p>
+                      <p className="text-xs text-gray-500">Version 7.3.0 (Storage Guard)</p>
                   </div>
               </div>
               <div className="flex gap-3">
