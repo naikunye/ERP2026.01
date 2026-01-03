@@ -264,8 +264,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
     if(onNotify) onNotify('success', '备份已下载', '请妥善保管此 JSON 文件，这是您数据的唯一永久存档。');
   };
 
-  // ... (Keep existing processFile, handleFileSelect, etc. unchanged)
-  // Re-including processFile for completeness as requested by format
   const processFile = (file: File) => {
     setImportStatus('processing');
     setImportMessage('V7.3 引擎启动: 正在恢复深度数据结构...');
@@ -288,15 +286,114 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         }
         
         const sanitized: Product[] = arr.map((raw: any) => {
-            // ... (Mapping logic kept same as previous versions)
-            // Simplified for brevity in this output block, assume previous logic persists
+            const inboundId = raw.inboundId || findValueGreedy(raw, 
+                ['lx', 'ib', '入库', '货件', 'fba', 'shipment', 'inbound', '批次', 'batch', 'po_no', '单号'],
+                ['sku', 'tracking', '快递', 'carrier', '配送']
+            );
+
+            const id = raw.id || findValueGreedy(raw, ['product_id', 'sys_id', 'id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
+            const sku = raw.sku || findValueGreedy(raw, ['sku', 'msku', '编码', 'item_no', 'model']) || 'UNKNOWN';
+            const name = raw.name || findValueGreedy(raw, ['name', 'title', '名称', '标题', '品名']) || 'Unnamed Product';
+            const supplier = raw.supplier || findValueGreedy(raw, ['supplier', 'vendor', '供应商', '厂家']);
+            const note = raw.note || findValueGreedy(raw, ['note', 'remark', '备注', '说明']);
+
+            const unitCost = parseCleanNum(raw.financials?.costOfGoods || findValueGreedy(raw, 
+                ['采购单价', '含税单价', '未税', '进货价', '成本', 'purchase', 'cost', 'buying', 'sourcing', '单价'],
+                ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping', '费率', 'rate']
+            ));
+
+            const price = parseCleanNum(
+                raw.financials?.sellingPrice || 
+                raw.price || 
+                findValueGreedy(raw, 
+                    ['销售价', '售价', '定价', '标准价', 'selling', 'retail', 'sale_price', 'listing', 'msrp'],
+                    ['采购', '成本', 'cost', 'purchase', 'buying', '进货', '费率', 'rate']
+                )
+            );
+
+            let shippingCost = parseCleanNum(raw.financials?.shippingCost || findValueGreedy(raw, 
+                [
+                    '头程运费单价', '头运费单价', '运费单价', '头程单价', 
+                    'shipping_unit_price', 'freight_unit_price',
+                    'shippingCost', 'freight', '运费', '头程', '物流费',
+                    '海运费', '空运费', '费率', 'rate', 'kg_price', '$/kg', 'shipping', 'logistics'
+                ],
+                []
+            ));
+
+            const stock = parseCleanNum(raw.stock || findValueGreedy(raw, 
+                ['stock', 'qty', 'quantity', '库存', '现有', '总数', 'amount', 'total', 'on_hand', 'available'],
+                ['箱', 'carton', 'box', '装箱']
+            ));
+
+            const itemsPerBox = parseCleanNum(raw.itemsPerBox || findValueGreedy(raw, 
+                ['itemsPerBox', 'per_box', 'boxing', '装箱数', '每箱', '单箱', 'pcs_per', 'quantity_per', '装箱'],
+                []
+            ));
+
+            const restockCartons = parseCleanNum(raw.restockCartons || findValueGreedy(raw, 
+                ['restockCartons', 'cartons', 'box_count', '箱数', '件数', 'ctns', 'total_boxes'],
+                ['per', '装箱', '每箱'] 
+            ));
+
+            const unitWeight = parseCleanNum(raw.unitWeight || findValueGreedy(raw, ['unitWeight', 'weight', '重量', 'kg']));
+            const boxWeight = parseCleanNum(raw.boxWeight || findValueGreedy(raw, ['boxWeight', '箱重', 'gross_weight']));
+
             return {
-                ...raw,
-                id: raw.id || `IMP-${Math.random().toString(36).substr(2,9)}`,
-                // Ensure defaults
-                price: parseCleanNum(raw.price),
-                stock: parseCleanNum(raw.stock),
-            } as Product;
+                id,
+                sku: String(sku),
+                name: String(name),
+                description: raw.description || '',
+                price: price || (unitCost > 0 ? unitCost * 3 : 0),
+                stock,
+                currency: raw.currency || Currency.USD,
+                status: raw.status || ProductStatus.Draft,
+                category: raw.category || 'General',
+                marketplaces: Array.isArray(raw.marketplaces) ? raw.marketplaces : [],
+                imageUrl: raw.imageUrl || '',
+                lastUpdated: new Date().toISOString(),
+                supplier: String(supplier || ''),
+                note: String(note || ''),
+                unitWeight,
+                boxLength: Number(raw.boxLength) || 0,
+                boxWidth: Number(raw.boxWidth) || 0,
+                boxHeight: Number(raw.boxHeight) || 0,
+                boxWeight: boxWeight,
+                itemsPerBox,
+                restockCartons,
+                totalRestockUnits: parseCleanNum(raw.totalRestockUnits), 
+                variantRestockMap: raw.variantRestockMap || {}, 
+                inboundId: String(inboundId || ''), 
+                inboundStatus: raw.inboundStatus || 'Pending',
+                restockDate: raw.restockDate,
+                platformCommission: parseCleanNum(raw.platformCommission || findValueGreedy(raw, ['platformFee', '佣金'])),
+                influencerCommission: parseCleanNum(raw.influencerCommission),
+                orderFixedFee: parseCleanNum(raw.orderFixedFee),
+                returnRate: parseCleanNum(raw.returnRate),
+                lastMileShipping: parseCleanNum(raw.lastMileShipping),
+                exchangeRate: parseCleanNum(raw.exchangeRate) || 7.2,
+                hasVariants: raw.hasVariants || false,
+                variants: Array.isArray(raw.variants) ? raw.variants : [],
+                financials: {
+                    costOfGoods: unitCost,
+                    shippingCost: shippingCost,
+                    otherCost: parseCleanNum(raw.financials?.otherCost || findValueGreedy(raw, ['otherCost', '杂费'])),
+                    sellingPrice: price, 
+                    platformFee: parseCleanNum(raw.financials?.platformFee || 0),
+                    adCost: parseCleanNum(raw.financials?.adCost || findValueGreedy(raw, ['adCost', '广告'])),
+                },
+                logistics: {
+                    method: raw.logistics?.method || 'Sea',
+                    carrier: raw.logistics?.carrier || '',
+                    trackingNo: raw.logistics?.trackingNo || '',
+                    status: raw.logistics?.status || 'Pending',
+                    origin: '',
+                    destination: '',
+                    shippingRate: parseCleanNum(raw.logistics?.shippingRate),
+                    manualChargeableWeight: parseCleanNum(raw.logistics?.manualChargeableWeight)
+                },
+                dailySales: parseCleanNum(raw.dailySales || findValueGreedy(raw, ['dailySales', '日销', 'sales']))
+            };
         });
 
         onImportData(sanitized);
