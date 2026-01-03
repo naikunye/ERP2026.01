@@ -113,8 +113,8 @@ const App: React.FC = () => {
                       addNotification('info', '已连接新服务器', '服务器数据为空。请在设置中点击“上传本地数据”以初始化云端。');
                   }
               } catch (error) {
-                  console.error("Cloud Sync Error", error);
-                  addNotification('warning', '数据拉取部分失败', '请检查 PocketBase 集合权限');
+                  // console.error("Cloud Sync Error", error);
+                  // Silent fail is fine here, user will see offline status or 404s when pushing
               }
           }
       };
@@ -179,10 +179,6 @@ const App: React.FC = () => {
             try {
                 // Strip local system fields and try create
                 const { id, created, updated, ...payload } = item; 
-                
-                // Special handling for legacy/local ID formats to prevent them from being sent if schema doesn't support them
-                // PocketBase handles 'id' if sent, but it must be 15 chars. We strip it above.
-                
                 const res = await pb.collection(collectionName).create(payload);
                 newItems[i] = { ...item, id: res.id }; // Update local state with real server ID
                 successCount++;
@@ -201,6 +197,8 @@ const App: React.FC = () => {
         await uploadBatch('transactions', transactions, setTransactions);
         await uploadBatch('influencers', influencers, setInfluencers);
         await uploadBatch('tasks', tasks, setTasks);
+        await uploadBatch('competitors', competitors, setCompetitors);
+        await uploadBatch('messages', messages, setMessages);
         
         if (successCount > 0) {
             addNotification('success', '上传完成', `成功: ${successCount} 条, 失败: ${failCount} 条。`);
@@ -215,10 +213,10 @@ const App: React.FC = () => {
                 desc = '请在 PocketBase 后台 -> Collections -> API Rules 中，将 Create/Write 权限设为 Public (留空)，或者在前端配置管理员账号。';
             } else if (lastError?.status === 404) {
                 errorMsg = '集合不存在 (404 Not Found)';
-                desc = '请确保服务器已创建 products, shipments 等对应集合 (Collections)。';
+                desc = '请在下方“管理员专区”先初始化数据库结构。';
             } else if (lastError?.status === 400) {
                 errorMsg = '数据格式错误 (400 Bad Request)';
-                desc = '字段校验失败。请检查 Schema 是否包含 required 字段或 unique 约束。';
+                desc = '字段校验失败。';
             }
 
             addNotification('error', errorMsg, desc);
@@ -467,7 +465,7 @@ const App: React.FC = () => {
             )}
             
             {/* FORCE CONTENT TO TAKE FULL HEIGHT AND MANAGE ITS OWN SCROLL */}
-            <div className="flex-1 w-full h-full min-h-0 relative overflow-y-auto custom-scrollbar">
+            <div className="absolute inset-0 top-0 bottom-0 left-0 right-0 overflow-y-auto custom-scrollbar p-8">
                 {renderContent()}
             </div>
         </div>

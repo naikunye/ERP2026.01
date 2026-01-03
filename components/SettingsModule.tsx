@@ -4,7 +4,7 @@ import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key
 } from 'lucide-react';
 import { pb, updateServerUrl, isCloudConnected } from '../services/pocketbase';
 
@@ -15,35 +15,173 @@ interface SettingsModuleProps {
   onImportData: (data: Product[]) => void;
   onNotify?: (type: any, title: string, message: string) => void;
   onResetData?: () => void;
-  onSyncToCloud?: () => void; // New prop for manual push
+  onSyncToCloud?: () => void;
 }
 
 // ------------------------------------------------------------------
-// CORE MATCHING ENGINE V7.3 (Refined for Full Backup Restoration)
+// SCHEMA DEFINITIONS FOR AUTO-INIT
+// ------------------------------------------------------------------
+const COLLECTIONS_SCHEMA = [
+    {
+        name: 'products',
+        type: 'base',
+        schema: [
+            { name: 'sku', type: 'text', required: false },
+            { name: 'name', type: 'text', required: false },
+            { name: 'description', type: 'text' },
+            { name: 'price', type: 'number' },
+            { name: 'stock', type: 'number' },
+            { name: 'category', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'imageUrl', type: 'text' },
+            { name: 'supplier', type: 'text' },
+            { name: 'note', type: 'text' },
+            { name: 'inboundId', type: 'text' },
+            { name: 'inboundStatus', type: 'text' },
+            { name: 'financials', type: 'json' },
+            { name: 'logistics', type: 'json' },
+            { name: 'variants', type: 'json' },
+            { name: 'marketplaces', type: 'json' },
+            { name: 'seoKeywords', type: 'json' },
+            { name: 'unitWeight', type: 'number' },
+            { name: 'boxLength', type: 'number' },
+            { name: 'boxWidth', type: 'number' },
+            { name: 'boxHeight', type: 'number' },
+            { name: 'boxWeight', type: 'number' },
+            { name: 'itemsPerBox', type: 'number' },
+            { name: 'restockCartons', type: 'number' },
+            { name: 'totalRestockUnits', type: 'number' },
+            { name: 'variantRestockMap', type: 'json' },
+            { name: 'platformCommission', type: 'number' },
+            { name: 'influencerCommission', type: 'number' },
+            { name: 'orderFixedFee', type: 'number' },
+            { name: 'returnRate', type: 'number' },
+            { name: 'lastMileShipping', type: 'number' },
+            { name: 'exchangeRate', type: 'number' },
+            { name: 'dailySales', type: 'number' },
+            { name: 'restockDate', type: 'text' },
+        ]
+    },
+    {
+        name: 'shipments',
+        type: 'base',
+        schema: [
+            { name: 'trackingNo', type: 'text' },
+            { name: 'carrier', type: 'text' },
+            { name: 'method', type: 'text' },
+            { name: 'origin', type: 'text' },
+            { name: 'destination', type: 'text' },
+            { name: 'etd', type: 'text' },
+            { name: 'eta', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'progress', type: 'number' },
+            { name: 'weight', type: 'number' },
+            { name: 'cartons', type: 'number' },
+            { name: 'items', type: 'json' },
+            { name: 'riskReason', type: 'text' },
+            { name: 'customsStatus', type: 'text' },
+            { name: 'lastUpdate', type: 'text' }
+        ]
+    },
+    {
+        name: 'transactions',
+        type: 'base',
+        schema: [
+            { name: 'date', type: 'text' },
+            { name: 'type', type: 'text' },
+            { name: 'category', type: 'text' },
+            { name: 'amount', type: 'number' },
+            { name: 'description', type: 'text' },
+            { name: 'status', type: 'text' }
+        ]
+    },
+    {
+        name: 'influencers',
+        type: 'base',
+        schema: [
+            { name: 'name', type: 'text' },
+            { name: 'handle', type: 'text' },
+            { name: 'platform', type: 'text' },
+            { name: 'followers', type: 'number' },
+            { name: 'engagementRate', type: 'number' },
+            { name: 'region', type: 'text' },
+            { name: 'category', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'avatarUrl', type: 'text' },
+            { name: 'cost', type: 'number' },
+            { name: 'gmv', type: 'number' },
+            { name: 'roi', type: 'number' },
+            { name: 'sampleSku', type: 'text' }
+        ]
+    },
+    {
+        name: 'tasks',
+        type: 'base',
+        schema: [
+            { name: 'title', type: 'text' },
+            { name: 'desc', type: 'text' },
+            { name: 'priority', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'assignee', type: 'text' },
+            { name: 'dueDate', type: 'text' },
+            { name: 'tags', type: 'json' }
+        ]
+    },
+    {
+        name: 'competitors',
+        type: 'base',
+        schema: [
+            { name: 'asin', type: 'text' },
+            { name: 'brand', type: 'text' },
+            { name: 'name', type: 'text' },
+            { name: 'price', type: 'number' },
+            { name: 'rating', type: 'number' },
+            { name: 'reviewCount', type: 'number' },
+            { name: 'imageUrl', type: 'text' },
+            { name: 'dailySalesEst', type: 'number' },
+            { name: 'lastUpdate', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'priceHistory', type: 'json' },
+            { name: 'keywords', type: 'json' }
+        ]
+    },
+    {
+        name: 'messages',
+        type: 'base',
+        schema: [
+            { name: 'platform', type: 'text' },
+            { name: 'customerName', type: 'text' },
+            { name: 'subject', type: 'text' },
+            { name: 'content', type: 'text' },
+            { name: 'timestamp', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'sentiment', type: 'text' },
+            { name: 'orderId', type: 'text' },
+            { name: 'aiDraft', type: 'text' }
+        ]
+    }
+];
+
+// ------------------------------------------------------------------
+// HELPER FUNCTIONS
 // ------------------------------------------------------------------
 
-// 1. Helper: Normalize keys to remove noise
 const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
 
-// 2. Helper: Extract Number from messy strings (e.g. "¥ 12.5" -> 12.5, "10箱" -> 10)
 const parseCleanNum = (val: any): number => {
     if (val === undefined || val === null) return 0;
     if (typeof val === 'number') return val;
     if (typeof val === 'string') {
-        // Remove commas first (1,000 -> 1000)
         const cleanStr = val.replace(/,/g, '');
-        // Match the first valid float number found
         const match = cleanStr.match(/-?\d+(\.\d+)?/);
         return match ? parseFloat(match[0]) : 0;
     }
     return 0;
 };
 
-// 3. Helper: The Greedy Finder (Header Matching)
 const findValueGreedy = (obj: any, aliases: string[], exclude: string[] = []): any => {
     if (!obj) return undefined;
     const keys = Object.keys(obj);
-    
     for (const alias of aliases) {
         const nAlias = normalize(alias);
         for (const key of keys) {
@@ -71,6 +209,11 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
   const [currentOnlineStatus, setCurrentOnlineStatus] = useState(false);
 
+  // Admin Init State
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [isInitializing, setIsInitializing] = useState(false);
+
   // Storage Stats
   const [storageUsage, setStorageUsage] = useState({ usedKB: 0, percent: 0 });
 
@@ -91,7 +234,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
               total += ((localStorage[x].length + x.length) * 2);
           }
       }
-      // Approx 5MB limit usually (5 * 1024 * 1024 bytes)
       const maxBytes = 5 * 1024 * 1024;
       const usedKB = total / 1024;
       const percent = Math.min((total / maxBytes) * 100, 100);
@@ -132,12 +274,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             throw new Error("无有效数据");
         }
         
-        // ------------------------------------------------
-        // V7.3 MAPPING CONFIGURATION
-        // ------------------------------------------------
         const sanitized: Product[] = arr.map((raw: any) => {
-            
-            // --- A. IDENTITY (Direct Restore Priority) ---
             const inboundId = raw.inboundId || findValueGreedy(raw, 
                 ['lx', 'ib', '入库', '货件', 'fba', 'shipment', 'inbound', '批次', 'batch', 'po_no', '单号'],
                 ['sku', 'tracking', '快递', 'carrier', '配送']
@@ -149,7 +286,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const supplier = raw.supplier || findValueGreedy(raw, ['supplier', 'vendor', '供应商', '厂家']);
             const note = raw.note || findValueGreedy(raw, ['note', 'remark', '备注', '说明']);
 
-            // --- B. FINANCIALS ---
             const unitCost = parseCleanNum(raw.financials?.costOfGoods || findValueGreedy(raw, 
                 ['采购单价', '含税单价', '未税', '进货价', '成本', 'purchase', 'cost', 'buying', 'sourcing', '单价'],
                 ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping', '费率', 'rate']
@@ -164,10 +300,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 )
             );
 
-            // --- C. LOGISTICS & SPECS ---
             let shippingCost = parseCleanNum(raw.financials?.shippingCost || findValueGreedy(raw, 
                 [
-                    '头程运费单价', '头运费单价', '运费单价', '头程单价', // Highest priority
+                    '头程运费单价', '头运费单价', '运费单价', '头程单价', 
                     'shipping_unit_price', 'freight_unit_price',
                     'shippingCost', 'freight', '运费', '头程', '物流费',
                     '海运费', '空运费', '费率', 'rate', 'kg_price', '$/kg', 'shipping', 'logistics'
@@ -180,7 +315,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 ['箱', 'carton', 'box', '装箱']
             ));
 
-            // Boxing Info
             const itemsPerBox = parseCleanNum(raw.itemsPerBox || findValueGreedy(raw, 
                 ['itemsPerBox', 'per_box', 'boxing', '装箱数', '每箱', '单箱', 'pcs_per', 'quantity_per', '装箱'],
                 []
@@ -194,7 +328,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const unitWeight = parseCleanNum(raw.unitWeight || findValueGreedy(raw, ['unitWeight', 'weight', '重量', 'kg']));
             const boxWeight = parseCleanNum(raw.boxWeight || findValueGreedy(raw, ['boxWeight', '箱重', 'gross_weight']));
 
-            // --- D. RECONSTRUCT ---
             return {
                 id,
                 sku: String(sku),
@@ -210,8 +343,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 lastUpdated: new Date().toISOString(),
                 supplier: String(supplier || ''),
                 note: String(note || ''),
-                
-                // --- CRITICAL RESTORE FIELDS ---
                 unitWeight,
                 boxLength: Number(raw.boxLength) || 0,
                 boxWidth: Number(raw.boxWidth) || 0,
@@ -224,19 +355,14 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 inboundId: String(inboundId || ''), 
                 inboundStatus: raw.inboundStatus || 'Pending',
                 restockDate: raw.restockDate,
-                
-                // TikTok Fees
                 platformCommission: parseCleanNum(raw.platformCommission || findValueGreedy(raw, ['platformFee', '佣金'])),
                 influencerCommission: parseCleanNum(raw.influencerCommission),
                 orderFixedFee: parseCleanNum(raw.orderFixedFee),
                 returnRate: parseCleanNum(raw.returnRate),
                 lastMileShipping: parseCleanNum(raw.lastMileShipping),
                 exchangeRate: parseCleanNum(raw.exchangeRate) || 7.2,
-
-                // Nested Objects
                 hasVariants: raw.hasVariants || false,
                 variants: Array.isArray(raw.variants) ? raw.variants : [],
-
                 financials: {
                     costOfGoods: unitCost,
                     shippingCost: shippingCost,
@@ -311,13 +437,72 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
               }, 1500);
           } else {
               setConnectionStatus('error');
-              pb.baseUrl = originalUrl; // Revert
+              pb.baseUrl = originalUrl;
               if (onNotify) onNotify('error', '连接失败', '服务器返回异常状态，请检查地址。');
           }
       } catch (e) {
           setConnectionStatus('error');
           console.error(e);
           if (onNotify) onNotify('error', '连接超时', '无法连接到服务器，请检查 IP 和端口是否正确 (例如: http://IP:8090)');
+      }
+  };
+
+  const handleInitSchema = async () => {
+      if (!adminEmail || !adminPassword) {
+          if (onNotify) onNotify('error', 'Auth Error', '请输入 Admin Email 和 Password');
+          return;
+      }
+      if (!currentOnlineStatus) {
+          if (onNotify) onNotify('error', 'Connection Error', '请先连接到 PocketBase 服务器');
+          return;
+      }
+
+      setIsInitializing(true);
+      try {
+          // 1. Authenticate as Admin
+          await pb.admins.authWithPassword(adminEmail, adminPassword);
+          
+          // 2. Iterate and create collections
+          let createdCount = 0;
+          for (const def of COLLECTIONS_SCHEMA) {
+              try {
+                  // Check if exists (will throw 404 if not)
+                  await pb.collections.getOne(def.name);
+              } catch (e: any) {
+                  if (e.status === 404) {
+                      // Create it
+                      await pb.collections.create({
+                          name: def.name,
+                          type: def.type,
+                          schema: def.schema,
+                          // Make it public readable/writable for demo convenience (User can lock it down later)
+                          listRule: "",
+                          viewRule: "",
+                          createRule: "",
+                          updateRule: "",
+                          deleteRule: ""
+                      });
+                      createdCount++;
+                  }
+              }
+          }
+
+          // 3. Cleanup
+          pb.authStore.clear(); // Logout admin
+          
+          if (onNotify) {
+              if (createdCount > 0) {
+                  onNotify('success', '初始化成功', `成功创建 ${createdCount} 个数据集合 (Collections)。现在可以尝试推送到云端了。`);
+              } else {
+                  onNotify('info', '无需操作', '所有数据集合已存在。');
+              }
+          }
+
+      } catch (e: any) {
+          console.error(e);
+          if (onNotify) onNotify('error', '初始化失败', e.message || '请检查管理员账号密码或网络。');
+      } finally {
+          setIsInitializing(false);
       }
   };
 
@@ -379,7 +564,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
       <div className="border-t border-white/10 my-8"></div>
 
-      {/* 2. Cloud Server Connection (NEW) */}
+      {/* 2. Cloud Server Connection */}
       <section className="space-y-4">
           <h2 className="text-sm font-bold text-neon-blue uppercase tracking-widest flex items-center gap-2">
               <CloudCog size={16} /> 云服务器配置 (Cloud Server)
@@ -429,7 +614,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
               <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                   <Database size={16} /> 数据与备份 (Data & Backup)
               </h2>
-              {/* Storage Usage Meter */}
               <div className="flex items-center gap-3 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5">
                   <HardDrive size={14} className={storageUsage.percent > 90 ? 'text-neon-pink' : 'text-gray-400'} />
                   <div className="flex flex-col items-end">
@@ -463,7 +647,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           )}
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Export Card */}
+              {/* Export */}
               <div className="glass-card p-8 flex flex-col items-center justify-center text-center space-y-4 group hover:border-neon-blue/30 transition-all">
                   <div className="w-16 h-16 rounded-full bg-neon-blue/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
                       <Download size={32} className="text-neon-blue" />
@@ -482,7 +666,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </button>
               </div>
 
-              {/* Push to Cloud Card (NEW) */}
+              {/* Push to Cloud */}
               {onSyncToCloud && currentOnlineStatus && (
                   <div className="glass-card p-8 flex flex-col items-center justify-center text-center space-y-4 group hover:border-neon-green/30 transition-all border-neon-green/10 bg-neon-green/5">
                       <div className="w-16 h-16 rounded-full bg-neon-green/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
@@ -503,7 +687,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
               )}
 
-              {/* Import Card */}
+              {/* Import */}
               <div className="glass-card p-8 flex flex-col items-center justify-center text-center space-y-4 group hover:border-neon-purple/30 transition-all relative overflow-hidden">
                   {importStatus === 'processing' && (
                       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
@@ -553,11 +737,63 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
       <div className="border-t border-white/10 my-8"></div>
 
-      {/* 4. About / Notifications */}
+      {/* 4. Admin Zone: Schema Init */}
       <section className="space-y-4">
-          <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-              <Shield size={16} /> 关于系统
+          <h2 className="text-sm font-bold text-red-500 uppercase tracking-widest flex items-center gap-2">
+              <Lock size={16} /> 管理员专区 (Admin Zone)
           </h2>
+          <div className="glass-card p-6 border-red-500/20 bg-red-500/5">
+              <div className="flex flex-col gap-4">
+                  <div className="flex items-start gap-3 mb-2">
+                      <AlertTriangle size={24} className="text-red-500 shrink-0"/>
+                      <div>
+                          <h3 className="text-white font-bold">服务器初始化 (Server Initialization)</h3>
+                          <p className="text-xs text-gray-400 mt-1">
+                              如果您遇到 "404 Collection Not Found" 错误，请在此处初始化数据库结构。
+                              这将自动在 PocketBase 中创建 Products, Shipments 等所有必要的数据表。
+                          </p>
+                      </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">Admin Email</label>
+                          <input 
+                              type="email"
+                              value={adminEmail}
+                              onChange={(e) => setAdminEmail(e.target.value)}
+                              placeholder="admin@example.com"
+                              className="w-full h-10 bg-black/40 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-red-500 outline-none"
+                          />
+                      </div>
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">Password</label>
+                          <input 
+                              type="password"
+                              value={adminPassword}
+                              onChange={(e) => setAdminPassword(e.target.value)}
+                              placeholder="••••••••"
+                              className="w-full h-10 bg-black/40 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-red-500 outline-none"
+                          />
+                      </div>
+                  </div>
+                  
+                  <button 
+                      onClick={handleInitSchema}
+                      disabled={isInitializing}
+                      className="w-full md:w-auto md:self-start px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2 mt-2"
+                  >
+                      {isInitializing ? <Loader2 size={16} className="animate-spin"/> : <Key size={16}/>}
+                      {isInitializing ? '正在创建数据表...' : '一键创建所有数据表 (Initialize Schema)'}
+                  </button>
+              </div>
+          </div>
+      </section>
+
+      <div className="border-t border-white/10 my-8"></div>
+
+      {/* 5. About */}
+      <section className="space-y-4">
           <div className="glass-card p-6 flex justify-between items-center">
               <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center">
