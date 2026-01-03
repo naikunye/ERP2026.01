@@ -17,7 +17,7 @@ interface SettingsModuleProps {
 }
 
 // ------------------------------------------------------------------
-// CORE MATCHING ENGINE V7.2 (Terminology Alignment: Unit Shipping Cost)
+// CORE MATCHING ENGINE V7.3 (Refined for Full Backup Restoration)
 // ------------------------------------------------------------------
 
 // 1. Helper: Normalize keys to remove noise
@@ -100,7 +100,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('V7.2 引擎启动: 正在校准头程运费单价...');
+    setImportMessage('V7.3 引擎启动: 正在恢复深度数据结构...');
     
     if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
         setImportStatus('error');
@@ -120,49 +120,36 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
         }
         
         // ------------------------------------------------
-        // V7.2 MAPPING CONFIGURATION
+        // V7.3 MAPPING CONFIGURATION
         // ------------------------------------------------
         const sanitized: Product[] = arr.map((raw: any) => {
             
-            // --- A. IDENTITY (Deep Scan for Lingxing/Inbound IDs) ---
-            let inboundId = findValueGreedy(raw, 
+            // --- A. IDENTITY (Direct Restore Priority) ---
+            // If importing a backup, use the fields directly. If importing fresh JSON, use greedy find.
+            const inboundId = raw.inboundId || findValueGreedy(raw, 
                 ['lx', 'ib', '入库', '货件', 'fba', 'shipment', 'inbound', '批次', 'batch', 'po_no', '单号'],
                 ['sku', 'tracking', '快递', 'carrier', '配送']
             );
 
-            // Deep content scan fallback
-            if (!inboundId || String(inboundId).length < 5 || String(inboundId).toLowerCase() === 'unknown') {
-                const rawValues = Object.values(raw);
-                for (const v of rawValues) {
-                    if (typeof v === 'string') {
-                        const cleanVal = v.trim().toUpperCase();
-                        if (cleanVal.includes('LX:') || cleanVal.startsWith('IB') || (cleanVal.startsWith('FBA') && cleanVal.length > 8)) {
-                            inboundId = v; 
-                            break;
-                        }
-                    }
-                }
-            }
-
-            const id = findValueGreedy(raw, ['product_id', 'sys_id', 'id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
-            const sku = findValueGreedy(raw, ['sku', 'msku', '编码', 'item_no', 'model']) || 'UNKNOWN';
-            const name = findValueGreedy(raw, ['name', 'title', '名称', '标题', '品名']) || 'Unnamed Product';
-            const supplier = findValueGreedy(raw, ['supplier', 'vendor', '供应商', '厂家']);
-            const note = findValueGreedy(raw, ['note', 'remark', '备注', '说明']);
+            const id = raw.id || findValueGreedy(raw, ['product_id', 'sys_id', 'id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
+            const sku = raw.sku || findValueGreedy(raw, ['sku', 'msku', '编码', 'item_no', 'model']) || 'UNKNOWN';
+            const name = raw.name || findValueGreedy(raw, ['name', 'title', '名称', '标题', '品名']) || 'Unnamed Product';
+            const supplier = raw.supplier || findValueGreedy(raw, ['supplier', 'vendor', '供应商', '厂家']);
+            const note = raw.note || findValueGreedy(raw, ['note', 'remark', '备注', '说明']);
 
             // --- B. FINANCIALS ---
-            const unitCost = parseCleanNum(findValueGreedy(raw, 
+            const unitCost = parseCleanNum(raw.financials?.costOfGoods || findValueGreedy(raw, 
                 ['采购单价', '含税单价', '未税', '进货价', '成本', 'purchase', 'cost', 'buying', 'sourcing', '单价'],
                 ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping', '费率', 'rate']
             ));
 
-            const price = parseCleanNum(findValueGreedy(raw, 
+            const price = parseCleanNum(raw.price || findValueGreedy(raw, 
                 ['销售价', '售价', '定价', '标准价', 'selling', 'retail', 'sale_price', 'listing', 'msrp'],
                 ['采购', '成本', 'cost', 'purchase', 'buying', '进货', '费率', 'rate']
             ));
 
             // --- C. LOGISTICS & SPECS (Updated for "头程运费单价") ---
-            let shippingCost = parseCleanNum(findValueGreedy(raw, 
+            let shippingCost = parseCleanNum(raw.financials?.shippingCost || findValueGreedy(raw, 
                 [
                     '头程运费单价', '头运费单价', '运费单价', '头程单价', // Highest priority
                     'shipping_unit_price', 'freight_unit_price',
@@ -172,39 +159,24 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 []
             ));
 
-            // Fallback: Check strictly for keys containing 'rate', '单价' or '$/kg' combined with 'logistics' context
-            if (shippingCost === 0) {
-                 const keys = Object.keys(raw);
-                 for (const k of keys) {
-                     const nk = k.toLowerCase();
-                     if (
-                         (nk.includes('运') || nk.includes('物流') || nk.includes('头程')) && 
-                         (nk.includes('单价') || nk.includes('rate') || nk.includes('/kg'))
-                     ) {
-                         shippingCost = parseCleanNum(raw[k]);
-                         if (shippingCost > 0) break;
-                     }
-                 }
-            }
-
-            const stock = parseCleanNum(findValueGreedy(raw, 
+            const stock = parseCleanNum(raw.stock || findValueGreedy(raw, 
                 ['stock', 'qty', 'quantity', '库存', '现有', '总数', 'amount', 'total', 'on_hand', 'available'],
                 ['箱', 'carton', 'box', '装箱']
             ));
 
-            // Boxing Info
-            const itemsPerBox = parseCleanNum(findValueGreedy(raw, 
+            // Boxing Info - PRIORITIZE RAW KEYS
+            const itemsPerBox = parseCleanNum(raw.itemsPerBox || findValueGreedy(raw, 
                 ['itemsPerBox', 'per_box', 'boxing', '装箱数', '每箱', '单箱', 'pcs_per', 'quantity_per', '装箱'],
                 []
             ));
 
-            const restockCartons = parseCleanNum(findValueGreedy(raw, 
+            const restockCartons = parseCleanNum(raw.restockCartons || findValueGreedy(raw, 
                 ['restockCartons', 'cartons', 'box_count', '箱数', '件数', 'ctns', 'total_boxes'],
                 ['per', '装箱', '每箱'] 
             ));
 
-            const unitWeight = parseCleanNum(findValueGreedy(raw, ['unitWeight', 'weight', '重量', 'kg']));
-            const boxWeight = parseCleanNum(findValueGreedy(raw, ['boxWeight', '箱重', 'gross_weight']));
+            const unitWeight = parseCleanNum(raw.unitWeight || findValueGreedy(raw, ['unitWeight', 'weight', '重量', 'kg']));
+            const boxWeight = parseCleanNum(raw.boxWeight || findValueGreedy(raw, ['boxWeight', '箱重', 'gross_weight']));
 
             // --- D. RECONSTRUCT ---
             return {
@@ -218,12 +190,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 status: raw.status || ProductStatus.Draft,
                 category: raw.category || 'General',
                 marketplaces: Array.isArray(raw.marketplaces) ? raw.marketplaces : [],
-                variants: [],
                 imageUrl: raw.imageUrl || '',
                 lastUpdated: new Date().toISOString(),
                 supplier: String(supplier || ''),
                 note: String(note || ''),
                 
+                // --- CRITICAL RESTORE FIELDS ---
                 unitWeight,
                 boxLength: Number(raw.boxLength) || 0,
                 boxWidth: Number(raw.boxWidth) || 0,
@@ -231,31 +203,49 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 boxWeight: boxWeight,
                 itemsPerBox,
                 restockCartons,
+                totalRestockUnits: parseCleanNum(raw.totalRestockUnits), // Explicit Restore
+                variantRestockMap: raw.variantRestockMap || {}, // Explicit Restore
                 inboundId: String(inboundId || ''), 
+                inboundStatus: raw.inboundStatus || 'Pending',
+                restockDate: raw.restockDate,
+                
+                // TikTok Fees
+                platformCommission: parseCleanNum(raw.platformCommission || findValueGreedy(raw, ['platformFee', '佣金'])),
+                influencerCommission: parseCleanNum(raw.influencerCommission),
+                orderFixedFee: parseCleanNum(raw.orderFixedFee),
+                returnRate: parseCleanNum(raw.returnRate),
+                lastMileShipping: parseCleanNum(raw.lastMileShipping),
+                exchangeRate: parseCleanNum(raw.exchangeRate) || 7.2,
+
+                // Nested Objects
+                hasVariants: raw.hasVariants || false,
+                variants: Array.isArray(raw.variants) ? raw.variants : [],
 
                 financials: {
                     costOfGoods: unitCost,
                     shippingCost: shippingCost,
-                    otherCost: parseCleanNum(findValueGreedy(raw, ['otherCost', '杂费'])),
+                    otherCost: parseCleanNum(raw.financials?.otherCost || findValueGreedy(raw, ['otherCost', '杂费'])),
                     sellingPrice: price, 
-                    platformFee: parseCleanNum(findValueGreedy(raw, ['platformFee', '佣金'])),
-                    adCost: parseCleanNum(findValueGreedy(raw, ['adCost', '广告'])),
+                    platformFee: parseCleanNum(raw.financials?.platformFee || 0), // Kept for legacy compatibility
+                    adCost: parseCleanNum(raw.financials?.adCost || findValueGreedy(raw, ['adCost', '广告'])),
                 },
                 logistics: {
                     method: raw.logistics?.method || 'Sea',
                     carrier: raw.logistics?.carrier || '',
                     trackingNo: raw.logistics?.trackingNo || '',
-                    status: 'Pending',
+                    status: raw.logistics?.status || 'Pending',
                     origin: '',
-                    destination: ''
+                    destination: '',
+                    shippingRate: parseCleanNum(raw.logistics?.shippingRate),
+                    manualChargeableWeight: parseCleanNum(raw.logistics?.manualChargeableWeight)
                 },
-                dailySales: parseCleanNum(findValueGreedy(raw, ['dailySales', '日销', 'sales']))
+                dailySales: parseCleanNum(raw.dailySales || findValueGreedy(raw, ['dailySales', '日销', 'sales']))
             };
         });
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条 (头程运费单价/领星单号 已识别)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条 (变体/箱规/成本 已恢复)`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
@@ -279,7 +269,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const handleCheckUpdate = () => {
       if (onNotify) {
-          onNotify('info', '系统已是最新', '当前版本: V.7.2.0 (Stable)');
+          onNotify('info', '系统已是最新', '当前版本: V.7.3.0 (Stable)');
       }
   };
 

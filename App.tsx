@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import AnalyticsModule from './components/AnalyticsModule';
@@ -18,22 +19,44 @@ import Copilot from './components/Copilot';
 import CommandPalette from './components/CommandPalette';
 import { 
     Product, Shipment, Transaction, Influencer, Task, Notification, Theme, 
-    ProductStatus, Currency, Competitor, CustomerMessage 
+    ProductStatus, Currency, Competitor, CustomerMessage, InventoryLog 
 } from './types';
+import { pb, isCloudConnected } from './services/pocketbase';
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [currentTheme, setCurrentTheme] = useState<Theme>('neon');
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isCloudOnline, setIsCloudOnline] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   
-  // Data State
-  const [products, setProducts] = useState<Product[]>([]);
-  const [shipments, setShipments] = useState<Shipment[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [influencers, setInfluencers] = useState<Influencer[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [competitors, setCompetitors] = useState<Competitor[]>([]);
-  const [messages, setMessages] = useState<CustomerMessage[]>([]);
+  // --- DATA GUARD STATE ---
+  // Critical: Prevents saving empty state to localStorage during initial render
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // --- PERSISTENCE HELPERS ---
+  const saveLocal = (key: string, data: any) => {
+      // SECURITY CHECK: Never overwrite local storage with empty array if we haven't confirmed data load
+      if (!isDataLoaded && (!data || data.length === 0)) return;
+      try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {}
+  };
+
+  const loadLocal = (key: string, defaultVal: any = []) => {
+      try {
+          const d = localStorage.getItem(key);
+          return d ? JSON.parse(d) : defaultVal;
+      } catch (e) { return defaultVal; }
+  };
+
+  // --- DATA STATE (Initialize immediately from LocalStorage) ---
+  const [products, setProducts] = useState<Product[]>(() => loadLocal('products'));
+  const [shipments, setShipments] = useState<Shipment[]>(() => loadLocal('shipments'));
+  const [transactions, setTransactions] = useState<Transaction[]>(() => loadLocal('transactions'));
+  const [influencers, setInfluencers] = useState<Influencer[]>(() => loadLocal('influencers'));
+  const [tasks, setTasks] = useState<Task[]>(() => loadLocal('tasks'));
+  const [competitors, setCompetitors] = useState<Competitor[]>(() => loadLocal('competitors'));
+  const [messages, setMessages] = useState<CustomerMessage[]>(() => loadLocal('messages'));
+  const [inventoryLogs, setInventoryLogs] = useState<InventoryLog[]>([]);
 
   // UI State
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -51,66 +74,159 @@ const App: React.FC = () => {
       setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
+  // --- INIT & SYNC ENGINE ---
+  useEffect(() => {
+      // 1. Mark data as loaded immediately so existing local data is respected
+      setIsDataLoaded(true);
+
+      const initSystem = async () => {
+          const connected = await isCloudConnected();
+          setIsCloudOnline(connected);
+
+          if (connected) {
+              try {
+                  const [p, s, t, i, k, c, m, l] = await Promise.all([
+                      pb.collection('products').getFullList({ sort: '-created' }),
+                      pb.collection('shipments').getFullList({ sort: '-created' }),
+                      pb.collection('transactions').getFullList({ sort: '-date' }),
+                      pb.collection('influencers').getFullList({ sort: '-created' }),
+                      pb.collection('tasks').getFullList({ sort: '-created' }),
+                      pb.collection('competitors').getFullList({ sort: '-created' }),
+                      pb.collection('messages').getFullList({ sort: '-created' }),
+                      pb.collection('inventory_logs').getFullList({ sort: '-created', page: 1, perPage: 100 }),
+                  ]);
+
+                  // Only overwrite local state if cloud has data (prevent wiping local work with empty cloud)
+                  if (p.length > 0) {
+                      setProducts(p.map(item => ({ ...item, id: item.id } as unknown as Product)));
+                      setShipments(s.map(item => ({ ...item, id: item.id } as unknown as Shipment)));
+                      setTransactions(t.map(item => ({ ...item, id: item.id } as unknown as Transaction)));
+                      setInfluencers(i.map(item => ({ ...item, id: item.id } as unknown as Influencer)));
+                      setTasks(k.map(item => ({ ...item, id: item.id } as unknown as Task)));
+                      setCompetitors(c.map(item => ({ ...item, id: item.id } as unknown as Competitor)));
+                      setMessages(m.map(item => ({ ...item, id: item.id } as unknown as CustomerMessage)));
+                      setInventoryLogs(l.map(item => ({ ...item, id: item.id } as unknown as InventoryLog)));
+                      
+                      addNotification('success', '云端数据已同步', '界面已更新为服务器最新状态');
+                  }
+              } catch (error) {
+                  console.error("Cloud Sync Error", error);
+              }
+          }
+      };
+
+      initSystem();
+  }, []);
+
+  // --- DATA PERSISTENCE EFFECTS (With Guard) ---
+  useEffect(() => { if(isDataLoaded) saveLocal('products', products); }, [products, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('shipments', shipments); }, [shipments, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('transactions', transactions); }, [transactions, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('influencers', influencers); }, [influencers, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('tasks', tasks); }, [tasks, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('competitors', competitors); }, [competitors, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('messages', messages); }, [messages, isDataLoaded]);
+
+  // --- CRUD WRAPPERS ---
+
+  const saveToCloud = async (collection: string, data: any, id?: string) => {
+      if (!isCloudOnline) return { id: data.id || Date.now().toString() };
+      try {
+          if (id && !id.startsWith('new_') && !id.startsWith('PROD-') && !id.startsWith('IMP-')) {
+              return await pb.collection(collection).update(id, data);
+          } else {
+              const { id: _, ...payload } = data; // Drop local ID for cloud creation
+              return await pb.collection(collection).create(payload);
+          }
+      } catch (err: any) {
+          // console.error("Cloud Save Failed:", err);
+      }
+  };
+
+  const deleteFromCloud = async (collection: string, id: string) => {
+      if (!isCloudOnline) return;
+      try {
+          await pb.collection(collection).delete(id);
+      } catch (err: any) {
+          console.error("Cloud Delete Failed", err);
+      }
+  };
+
   // Product Handlers
-  const handleSaveProduct = (product: Product) => {
+  const handleSaveProduct = async (product: Product) => {
+    // 1. Optimistic Update (Immediate UI)
     setProducts(prev => {
         const exists = prev.find(p => p.id === product.id);
         if (exists) return prev.map(p => p.id === product.id ? product : p);
-        return [...prev, product];
+        return [product, ...prev];
     });
     setEditingProduct(null);
-    addNotification('success', 'Product Saved', `Asset ${product.sku} updated successfully.`);
+
+    // 2. Async Persist
+    const saved = await saveToCloud('products', product, products.find(p => p.id === product.id)?.id);
+    if (saved && saved.id !== product.id) {
+        // Update local ID with real Cloud ID
+        setProducts(prev => prev.map(p => p.id === product.id ? { ...p, id: saved.id } : p));
+    }
+    addNotification('success', '已保存', `SKU: ${product.sku}`);
   };
 
-  const handleSaveSKU = (updated: Product) => {
-      setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
+  const handleSaveSKU = async (updated: any) => {
+      if (!editingSKU) return;
+      const finalProduct = { ...editingSKU, ...updated };
+      
+      setProducts(prev => prev.map(p => p.id === editingSKU.id ? finalProduct : p));
       setEditingSKU(null);
-      addNotification('success', 'SKU Updated', `Details for ${updated.sku} saved.`);
+
+      await saveToCloud('products', finalProduct, editingSKU.id);
+      addNotification('success', 'SKU 更新', '详情已同步');
   };
 
-  const handleCloneSKU = (product: Product) => {
-      const newProduct = {
+  const handleCloneSKU = async (product: Product) => {
+      const newProductPayload = {
           ...product,
-          id: `PROD-${Date.now()}`,
           name: `${product.name} (Copy)`,
-          sku: `${product.sku}-COPY`,
-          stock: 0
+          sku: `${product.sku}-COPY-${Math.floor(Math.random()*1000)}`,
+          stock: 0,
+          id: `PROD-${Date.now()}` // Temp ID
       };
-      setProducts(prev => [newProduct, ...prev]);
-      addNotification('info', 'SKU Cloned', `Created copy of ${product.sku}`);
+      
+      setProducts(prev => [newProductPayload, ...prev]);
+      await saveToCloud('products', newProductPayload);
   };
 
-  const handleDeleteSKU = (id: string) => {
-      if(window.confirm('Are you sure you want to delete this asset?')) {
+  const handleDeleteSKU = async (id: string) => {
+      if(window.confirm('确定删除此资产吗？')) {
           setProducts(prev => prev.filter(p => p.id !== id));
           setEditingSKU(null);
-          addNotification('warning', 'Asset Deleted', 'Product removed from database.');
+          await deleteFromCloud('products', id);
+          addNotification('warning', '资产已删除', '已移除');
       }
   };
 
   // Task Handlers
-  const handleUpdateTasks = (updatedTasks: Task[]) => {
-      setTasks(updatedTasks);
+  const handleUpdateTasks = (newTasks: Task[]) => {
+      setTasks(newTasks);
   };
 
   // PO & Logistics Logic
-  const handleCreatePurchaseOrder = (items: any[], supplier: string) => {
+  const handleCreatePurchaseOrder = async (items: any[], supplier: string) => {
       const totalCost = items.reduce((sum, item) => sum + (item.quantity * item.cost), 0);
-      const newTx: Transaction = {
+      
+      const txPayload: Transaction = {
           id: `TX-PO-${Date.now()}`,
           date: new Date().toISOString().split('T')[0],
           type: 'Expense',
           category: 'COGS',
           amount: totalCost / 7.2, 
-          description: `Purchase Order for ${items.length} SKUs from ${supplier}`,
+          description: `Purchase Order - ${supplier}`,
           status: 'Pending'
       };
-      setTransactions(prev => [newTx, ...prev]);
       
-      const newShipment: Shipment = {
+      const shPayload: Shipment = {
           id: `SH-${Date.now()}`,
           trackingNo: `PO-${Date.now().toString().slice(-6)}`,
-          carrier: 'Supplier Delivery',
+          carrier: 'Supplier',
           method: 'Truck',
           origin: supplier,
           destination: 'Warehouse',
@@ -122,8 +238,13 @@ const App: React.FC = () => {
           cartons: 0,
           items: items.map(i => ({ skuId: i.skuId, skuCode: 'UNK', quantity: i.quantity }))
       };
-      setShipments(prev => [newShipment, ...prev]);
-      addNotification('success', 'Purchase Order Created', `Order placed with ${supplier}. Financials updated.`);
+
+      setTransactions(prev => [txPayload, ...prev]);
+      setShipments(prev => [shPayload, ...prev]);
+
+      await saveToCloud('transactions', txPayload);
+      await saveToCloud('shipments', shPayload);
+      addNotification('success', '采购单已生成', '本地与云端已记录');
   };
 
   const handleSyncToLogistics = (product: Product) => {
@@ -131,72 +252,74 @@ const App: React.FC = () => {
   };
 
   // Logistics Handlers
-  const handleAddShipment = (shipment: Shipment) => setShipments(prev => [shipment, ...prev]);
-  const handleUpdateShipment = (shipment: Shipment) => setShipments(prev => prev.map(s => s.id === shipment.id ? shipment : s));
-  const handleDeleteShipment = (id: string) => setShipments(prev => prev.filter(s => s.id !== id));
+  const handleAddShipment = async (shipment: Shipment) => {
+      setShipments(prev => [shipment, ...prev]);
+      await saveToCloud('shipments', shipment);
+  };
+  const handleUpdateShipment = async (shipment: Shipment) => {
+      setShipments(prev => prev.map(s => s.id === shipment.id ? shipment : s));
+      await saveToCloud('shipments', shipment, shipment.id);
+  };
+  const handleDeleteShipment = async (id: string) => {
+      setShipments(prev => prev.filter(s => s.id !== id));
+      await deleteFromCloud('shipments', id);
+  };
 
   // Influencer Handlers
-  const handleAddInfluencer = (inf: Influencer) => setInfluencers(prev => [inf, ...prev]);
-  const handleUpdateInfluencer = (inf: Influencer) => setInfluencers(prev => prev.map(i => i.id === inf.id ? inf : i));
-  const handleDeleteInfluencer = (id: string) => setInfluencers(prev => prev.filter(i => i.id !== id));
+  const handleAddInfluencer = async (inf: Influencer) => {
+      setInfluencers(prev => [inf, ...prev]);
+      await saveToCloud('influencers', inf);
+  };
+  const handleUpdateInfluencer = async (inf: Influencer) => {
+      setInfluencers(prev => prev.map(i => i.id === inf.id ? inf : i));
+      await saveToCloud('influencers', inf, inf.id);
+  };
+  const handleDeleteInfluencer = async (id: string) => {
+      setInfluencers(prev => prev.filter(i => i.id !== id));
+      await deleteFromCloud('influencers', id);
+  };
 
   // Finance Handlers
-  const handleAddTransaction = (tx: Transaction) => setTransactions(prev => [tx, ...prev]);
+  const handleAddTransaction = async (tx: Transaction) => {
+      setTransactions(prev => [tx, ...prev]);
+      await saveToCloud('transactions', tx);
+  };
 
   // Market Radar & Inbox Handlers
-  const handleAddCompetitor = (comp: Competitor) => setCompetitors(prev => [...prev, comp]);
-  const handleReplyMessage = (id: string, text: string) => {
+  const handleAddCompetitor = async (comp: Competitor) => {
+      setCompetitors(prev => [...prev, comp]);
+      await saveToCloud('competitors', comp);
+  };
+  const handleReplyMessage = async (id: string, text: string) => {
       setMessages(prev => prev.map(m => m.id === id ? { ...m, status: 'Replied' } : m));
-      addNotification('success', 'Reply Sent', 'Message sent to customer.');
+      await saveToCloud('messages', { status: 'Replied' }, id);
+      addNotification('success', '回复已发送', '状态已更新');
   };
 
   // Data Management
   const handleImportData = (data: Product[]) => {
-      setProducts(data);
-      addNotification('success', 'Data Imported', `Loaded ${data.length} products.`);
+      if(window.confirm(`确认导入 ${data.length} 条数据？`)) {
+          // Force update state immediately
+          setProducts(data);
+          // Manually triggering save to ensure it writes immediately even if effects are queued
+          try { localStorage.setItem('products', JSON.stringify(data)); } catch(e) {}
+          
+          if (isCloudOnline) {
+              data.forEach(async p => {
+                  try { await saveToCloud('products', p); } catch(e) {}
+              });
+              addNotification('info', '后台同步中', '正在尝试将导入数据推送到服务器');
+          } else {
+              addNotification('success', '已导入本地', '数据已安全保存到浏览器');
+          }
+      }
   };
 
   const handleResetData = () => {
-      const demoProducts: Product[] = [
-          {
-              id: 'p1', sku: 'AERO-H1-BLK', name: 'Aero ANC Headphones (Midnight)', price: 129.00, stock: 450, 
-              currency: Currency.USD, status: ProductStatus.Active, imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80',
-              category: 'Electronics', marketplaces: ['Amazon'], lastUpdated: new Date().toISOString(),
-              financials: { costOfGoods: 180, shippingCost: 4.5, otherCost: 0, sellingPrice: 129, platformFee: 19, adCost: 15 },
-              logistics: { method: 'Air', carrier: 'DHL', trackingNo: 'HK88291022', status: 'In Transit', origin: 'Shenzhen', destination: 'LAX' },
-              dailySales: 15
-          },
-          {
-              id: 'p2', sku: 'AERO-H1-WHT', name: 'Aero ANC Headphones (Ivory)', price: 129.00, stock: 20, 
-              currency: Currency.USD, status: ProductStatus.Active, imageUrl: 'https://images.unsplash.com/photo-1583394838336-acd977736f90?w=800&q=80',
-              category: 'Electronics', marketplaces: ['Amazon'], lastUpdated: new Date().toISOString(),
-              financials: { costOfGoods: 180, shippingCost: 4.5, otherCost: 0, sellingPrice: 129, platformFee: 19, adCost: 15 },
-              dailySales: 5
-          }
-      ];
-      setProducts(demoProducts);
-      setShipments([{
-          id: 's1', trackingNo: 'HK88291022', carrier: 'DHL', method: 'Air', origin: 'Shenzhen', destination: 'Los Angeles',
-          etd: '2023-10-01', eta: '2023-10-05', status: 'In Transit', progress: 65, weight: 450, cartons: 20, items: []
-      }]);
-      setTransactions([
-          { id: 't1', date: '2023-10-01', type: 'Revenue', category: 'Sales', amount: 4500, description: 'Amazon Settlement', status: 'Cleared' },
-          { id: 't2', date: '2023-10-02', type: 'Expense', category: 'Marketing', amount: 1200, description: 'TikTok Ads Q3', status: 'Cleared' }
-      ]);
-      setInfluencers([
-          { id: 'i1', name: 'Jessica Tech', handle: '@jessicatech', platform: 'TikTok', status: 'Content Live', followers: 450000, engagementRate: 5.2, cost: 500, gmv: 2400, roi: 4.8, region: 'USA', category: 'Tech', avatarUrl: 'https://ui-avatars.com/api/?name=Jessica+Tech&background=random', sampleSku: 'AERO-H1-BLK' }
-      ]);
-      setTasks([
-          { id: 'tsk1', title: 'Q4 Inventory Planning', desc: 'Review holiday sales forecast', priority: 'High', status: 'Todo', assignee: 'https://ui-avatars.com/api/?name=Admin', dueDate: '2023-10-15', tags: ['Planning'] }
-      ]);
-      setCompetitors([
-         { id: 'c1', asin: 'B08...', brand: 'Sony', name: 'WH-1000XM5', price: 348, priceHistory: Array(5).fill(0).map((_, i) => ({ date: `D-${5-i}`, price: 348 })), rating: 4.5, reviewCount: 2000, imageUrl: 'https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?w=150', dailySalesEst: 50, keywords: ['anc', 'headphones'], lastUpdate: 'Now', status: 'Tracking' }
-      ]);
-      setMessages([
-         { id: 'm1', platform: 'Amazon', customerName: 'John Doe', subject: 'Product Defect', content: 'The hinge broke after 2 days.', timestamp: '2h ago', status: 'Unread', sentiment: 'Negative', orderId: '123-456', aiDraft: 'Dear John,\n\nWe are very sorry to hear about the hinge issue. This is covered by our warranty. We can ship a replacement immediately. Please confirm your address.' }
-      ]);
-      
-      addNotification('info', 'System Reset', 'Loaded demo data.');
+      if (confirm("确认重置？这将清空本地数据。")) {
+          localStorage.clear();
+          window.location.reload();
+      }
   };
 
   // Keyboard Shortcuts
@@ -209,13 +332,6 @@ const App: React.FC = () => {
       }
       document.addEventListener('keydown', down);
       return () => document.removeEventListener('keydown', down);
-  }, []);
-
-  // Initial Load (if empty)
-  useEffect(() => {
-      if(products.length === 0) {
-          handleResetData();
-      }
   }, []);
 
   const renderContent = () => {
@@ -237,9 +353,26 @@ const App: React.FC = () => {
 
   return (
     <div className={`flex h-screen w-full bg-[#050510] text-white font-sans selection:bg-neon-blue selection:text-black overflow-hidden theme-${currentTheme}`}>
+        {isLoading && (
+            <div className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center gap-4">
+                <div className="w-10 h-10 border-4 border-neon-blue border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        )}
+        
         <Sidebar activeView={activeView} onChangeView={setActiveView} currentTheme={currentTheme} onThemeChange={setCurrentTheme} badges={{tasks: tasks.filter(t=>t.status==='Todo').length, orders: shipments.filter(s=>s.status==='Exception').length}} />
-        <div className="flex-1 ml-[280px] p-8 h-full overflow-hidden relative">
-            {renderContent()}
+        
+        {/* MAIN CONTENT AREA - FIXED LAYOUT FOR SCROLLING */}
+        <div className="flex-1 ml-[280px] p-8 h-full flex flex-col overflow-hidden relative">
+            {!isCloudOnline && (
+                <div className="absolute top-0 left-0 right-0 bg-yellow-600/20 text-yellow-400 text-[10px] font-bold text-center py-1 z-50 pointer-events-none backdrop-blur-sm">
+                    ⚠️ 离线模式: 数据将保存在本地
+                </div>
+            )}
+            
+            {/* FORCE CONTENT TO TAKE FULL HEIGHT AND MANAGE ITS OWN SCROLL */}
+            <div className="flex-1 w-full h-full min-h-0 relative">
+                {renderContent()}
+            </div>
         </div>
         
         {editingProduct && (
@@ -247,6 +380,7 @@ const App: React.FC = () => {
                 initialProduct={editingProduct} 
                 onClose={() => setEditingProduct(null)} 
                 onSave={handleSaveProduct} 
+                inventoryLogs={inventoryLogs.filter(l => l.productId === editingProduct.id)}
             />
         )}
         {editingSKU && (
