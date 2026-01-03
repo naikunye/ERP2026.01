@@ -346,6 +346,23 @@ const App: React.FC = () => {
       }
   };
 
+  // NEW: Bulk Delete Handler
+  const handleDeleteMultipleSKU = async (ids: string[]) => {
+      if(window.confirm(`确认批量删除这 ${ids.length} 个资产吗？\n此操作不可恢复。`)) {
+          // Optimistic Update
+          setProducts(prev => prev.filter(p => !ids.includes(p.id)));
+          setEditingSKU(null);
+          
+          // Background Sync
+          let successCount = 0;
+          for (const id of ids) {
+              await deleteFromCloud('products', id);
+              successCount++;
+          }
+          addNotification('warning', '批量删除完成', `成功移除 ${successCount} 个资产`);
+      }
+  };
+
   // Task Handlers
   const handleUpdateTasks = (newTasks: Task[]) => {
       setTasks(newTasks);
@@ -484,7 +501,17 @@ const App: React.FC = () => {
       case 'analytics': return <AnalyticsModule transactions={transactions} />;
       case 'marketing': return <MarketingModule />; 
       case 'tasks': return <TaskModule tasks={tasks} onUpdateTasks={handleUpdateTasks} />;
-      case 'restock': return <RestockModule products={products} onEditSKU={(p) => setEditingSKU(p)} onCloneSKU={handleCloneSKU} onDeleteSKU={handleDeleteSKU} onAddNew={() => setEditingProduct({} as Product)} onCreatePO={handleCreatePurchaseOrder} onSyncToLogistics={handleSyncToLogistics} />;
+      case 'restock': 
+        return <RestockModule 
+            products={products} 
+            onEditSKU={(p) => setEditingSKU(p)} 
+            onCloneSKU={handleCloneSKU} 
+            onDeleteSKU={handleDeleteSKU} 
+            onDeleteMultiple={handleDeleteMultipleSKU} // PASSED PROP
+            onAddNew={() => setEditingProduct({} as Product)} 
+            onCreatePO={handleCreatePurchaseOrder} 
+            onSyncToLogistics={handleSyncToLogistics} 
+        />;
       case 'orders': return <LogisticsModule shipments={shipments} products={products} onAddShipment={handleAddShipment} onUpdateShipment={handleUpdateShipment} onDeleteShipment={handleDeleteShipment} />;
       case 'influencers': return <InfluencerModule influencers={influencers} onAddInfluencer={handleAddInfluencer} onUpdateInfluencer={handleUpdateInfluencer} onDeleteInfluencer={handleDeleteInfluencer} onNotify={addNotification} />;
       case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;

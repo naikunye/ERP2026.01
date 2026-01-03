@@ -12,12 +12,13 @@ interface RestockModuleProps {
   onEditSKU?: (product: Product) => void;
   onCloneSKU?: (product: Product) => void;
   onDeleteSKU?: (productId: string) => void;
+  onDeleteMultiple?: (ids: string[]) => void;
   onAddNew?: () => void;
   onCreatePO?: (items: { skuId: string, quantity: number, cost: number }[], supplier: string) => void;
   onSyncToLogistics?: (product: Product) => void; 
 }
 
-const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCloneSKU, onDeleteSKU, onAddNew, onCreatePO, onSyncToLogistics }) => {
+const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCloneSKU, onDeleteSKU, onDeleteMultiple, onAddNew, onCreatePO, onSyncToLogistics }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isPOModalOpen, setIsPOModalOpen] = useState(false);
@@ -51,6 +52,15 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           setSelectedIds(new Set());
       } else {
           setSelectedIds(new Set(filteredData.map(p => p.id)));
+      }
+  };
+
+  // --- Actions ---
+  
+  const handleBatchDelete = () => {
+      if (onDeleteMultiple && selectedIds.size > 0) {
+          onDeleteMultiple(Array.from(selectedIds));
+          setSelectedIds(new Set()); // Clear selection regardless of result, assume success or re-select if needed
       }
   };
 
@@ -190,15 +200,28 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           </div>
           
           <div className="flex gap-3 items-center">
-              {/* Batch Action */}
+              {/* Batch Actions */}
               {selectedIds.size > 0 && (
-                  <button 
-                      onClick={handleOpenPO}
-                      className="h-12 px-6 rounded-xl bg-neon-green text-black font-bold text-sm shadow-glow-green hover:scale-105 transition-all flex items-center gap-2 animate-scale-in"
-                  >
-                      <ShoppingCart size={18} /> 
-                      生成采购单 ({selectedIds.size})
-                  </button>
+                  <>
+                      <button 
+                          onClick={handleOpenPO}
+                          className="h-12 px-6 rounded-xl bg-neon-green text-black font-bold text-sm shadow-glow-green hover:scale-105 transition-all flex items-center gap-2 animate-scale-in"
+                      >
+                          <ShoppingCart size={18} /> 
+                          生成采购单 ({selectedIds.size})
+                      </button>
+                      
+                      {onDeleteMultiple && (
+                          <button 
+                              onClick={handleBatchDelete}
+                              className="h-12 px-6 rounded-xl bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 font-bold text-sm transition-all flex items-center gap-2 animate-scale-in"
+                              title="批量删除选中项"
+                          >
+                              <Trash2 size={18} /> 
+                              批量删除 ({selectedIds.size})
+                          </button>
+                      )}
+                  </>
               )}
 
               <button className="h-12 px-5 rounded-xl border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white transition-colors flex items-center gap-2 text-xs font-bold">
