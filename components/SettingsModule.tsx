@@ -166,7 +166,7 @@ const COLLECTIONS_SCHEMA = [
 ];
 
 // ------------------------------------------------------------------
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS (Improved)
 // ------------------------------------------------------------------
 
 const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
@@ -175,11 +175,44 @@ const parseCleanNum = (val: any): number => {
     if (val === undefined || val === null) return 0;
     if (typeof val === 'number') return val;
     if (typeof val === 'string') {
-        const cleanStr = val.replace(/,/g, '');
+        // Remove currency symbols and thousands separators
+        const cleanStr = val.replace(/,/g, '').replace(/[¥$€£]/g, '');
         const match = cleanStr.match(/-?\d+(\.\d+)?/);
         return match ? parseFloat(match[0]) : 0;
     }
     return 0;
+};
+
+// Robust deep finder for arrays
+const findLargestArray = (obj: any): any[] => {
+    if (!obj) return [];
+    if (Array.isArray(obj)) return obj;
+    
+    let largest: any[] = [];
+    const stack = [obj];
+    let iterations = 0;
+    
+    // Safety break to prevent infinite loops on circular structures
+    while(stack.length > 0 && iterations < 500) { 
+        const current = stack.pop();
+        iterations++;
+        
+        if (Array.isArray(current)) {
+            if (current.length > largest.length) largest = current;
+            continue; // Don't dig inside arrays of objects for now, assume the array itself is the list
+        }
+        
+        if (typeof current === 'object' && current !== null) {
+            Object.values(current).forEach(val => {
+                if (Array.isArray(val)) {
+                    if (val.length > largest.length) largest = val;
+                } else if (typeof val === 'object' && val !== null) {
+                    stack.push(val);
+                }
+            });
+        }
+    }
+    return largest;
 };
 
 const findValueGreedy = (obj: any, aliases: string[], exclude: string[] = []): any => {
@@ -190,7 +223,8 @@ const findValueGreedy = (obj: any, aliases: string[], exclude: string[] = []): a
         for (const key of keys) {
             const nKey = normalize(key);
             if (exclude.some(ex => nKey.includes(normalize(ex)))) continue;
-            if (nKey.includes(nAlias)) {
+            // Exact match priority or inclusion
+            if (nKey === nAlias || nKey.includes(nAlias)) {
                 const val = obj[key];
                 if (val !== undefined && val !== null && val !== '') return val;
             }
@@ -219,7 +253,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [initStatusMsg, setInitStatusMsg] = useState('');
   const [detailedError, setDetailedError] = useState<string | null>(null);
   
-  // ADDED: Track if init was just successful
   const [initSuccess, setInitSuccess] = useState(false);
 
   // Storage Stats
@@ -264,41 +297,49 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
     if(onNotify) onNotify('success', '备份已下载', '请妥善保管此 JSON 文件，这是您数据的唯一永久存档。');
   };
 
+  // --- RE-IMPLEMENTED IMPORT LOGIC ---
   const processFile = (file: File) => {
     setImportStatus('processing');
-    setImportMessage('V7.3 引擎启动: 正在恢复深度数据结构...');
+    setImportMessage('Deep Scan: 正在扫描数据结构...');
     
-    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
-        setImportStatus('error');
-        setImportMessage('目前仅支持 .json 文件 (请将 Excel 另存为 JSON)');
-        return;
-    }
-
+    // Relaxed Check: Allow almost any file, try to parse as text/json
+    // Users might rename .txt to .json or use excel exports
+    
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
-        const json = JSON.parse(text);
-        const arr = Array.isArray(json) ? json : (json.products || json.items || json.data || []);
+        let json;
+        try {
+            json = JSON.parse(text);
+        } catch (parseError) {
+            throw new Error("文件不是有效的 JSON 格式。请检查是否是 .csv 或 .xlsx 改名？必须导出为 JSON。");
+        }
+
+        // --- DEEP ARRAY SCAN ---
+        const arr = findLargestArray(json);
         
-        if (!Array.isArray(arr) || arr.length === 0) {
-            throw new Error("无有效数据");
+        if (!arr || arr.length === 0) {
+            throw new Error("在 JSON 中找不到任何数组数据 (No array found in JSON structure).");
         }
         
+        console.log(`Found largest array with ${arr.length} items`);
+
         const sanitized: Product[] = arr.map((raw: any) => {
+            // Enhanced Aliases
             const inboundId = raw.inboundId || findValueGreedy(raw, 
                 ['lx', 'ib', '入库', '货件', 'fba', 'shipment', 'inbound', '批次', 'batch', 'po_no', '单号'],
                 ['sku', 'tracking', '快递', 'carrier', '配送']
             );
 
-            const id = raw.id || findValueGreedy(raw, ['product_id', 'sys_id', 'id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
-            const sku = raw.sku || findValueGreedy(raw, ['sku', 'msku', '编码', 'item_no', 'model']) || 'UNKNOWN';
-            const name = raw.name || findValueGreedy(raw, ['name', 'title', '名称', '标题', '品名']) || 'Unnamed Product';
-            const supplier = raw.supplier || findValueGreedy(raw, ['supplier', 'vendor', '供应商', '厂家']);
-            const note = raw.note || findValueGreedy(raw, ['note', 'remark', '备注', '说明']);
+            const id = raw.id || findValueGreedy(raw, ['product_id', 'sys_id', 'id', 'uuid', '_id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
+            const sku = raw.sku || findValueGreedy(raw, ['sku', 'msku', '编码', 'item_no', 'model', 'product_code', '货号']) || 'UNKNOWN';
+            const name = raw.name || findValueGreedy(raw, ['name', 'title', '名称', '标题', '品名', 'product_name']) || 'Unnamed Product';
+            const supplier = raw.supplier || findValueGreedy(raw, ['supplier', 'vendor', '供应商', '厂家', 'factory']);
+            const note = raw.note || findValueGreedy(raw, ['note', 'remark', '备注', '说明', 'desc']);
 
             const unitCost = parseCleanNum(raw.financials?.costOfGoods || findValueGreedy(raw, 
-                ['采购单价', '含税单价', '未税', '进货价', '成本', 'purchase', 'cost', 'buying', 'sourcing', '单价'],
+                ['采购单价', '含税单价', '未税', '进货价', '成本', 'purchase', 'cost', 'buying', 'sourcing', '单价', 'price_cost'],
                 ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping', '费率', 'rate']
             ));
 
@@ -306,7 +347,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 raw.financials?.sellingPrice || 
                 raw.price || 
                 findValueGreedy(raw, 
-                    ['销售价', '售价', '定价', '标准价', 'selling', 'retail', 'sale_price', 'listing', 'msrp'],
+                    ['销售价', '售价', '定价', '标准价', 'selling', 'retail', 'sale_price', 'listing', 'msrp', 'price'],
                     ['采购', '成本', 'cost', 'purchase', 'buying', '进货', '费率', 'rate']
                 )
             );
@@ -322,7 +363,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             ));
 
             const stock = parseCleanNum(raw.stock || findValueGreedy(raw, 
-                ['stock', 'qty', 'quantity', '库存', '现有', '总数', 'amount', 'total', 'on_hand', 'available'],
+                ['stock', 'qty', 'quantity', '库存', '现有', '总数', 'amount', 'total', 'on_hand', 'available', 'inv'],
                 ['箱', 'carton', 'box', '装箱']
             ));
 
@@ -398,7 +439,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条 (变体/箱规/成本 已恢复)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条 (已智能识别字段)`);
         
         setTimeout(() => { 
             setImportStatus('idle'); 
@@ -407,7 +448,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       } catch (err: any) {
         console.error("Import Error:", err);
         setImportStatus('error');
-        setImportMessage('JSON 解析失败，请检查文件格式');
+        setImportMessage(`导入失败: ${err.message}`);
       }
     };
     reader.readAsText(file);
@@ -963,7 +1004,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                           ref={fileInputRef} 
                           type="file" 
                           className="hidden" 
-                          accept=".json" 
+                          accept=".json,.txt,.csv" 
                           onChange={handleFileSelect} 
                       />
                       
