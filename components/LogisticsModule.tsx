@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Shipment, Product, ShipmentItem } from '../types';
 import { 
@@ -12,9 +13,10 @@ interface LogisticsModuleProps {
     products: Product[];
     onAddShipment: (shipment: Shipment) => void;
     onUpdateShipment: (shipment: Shipment) => void;
+    onDeleteShipment?: (id: string) => void;
 }
 
-const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, onAddShipment, onUpdateShipment }) => {
+const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, onAddShipment, onUpdateShipment, onDeleteShipment }) => {
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(shipments.length > 0 ? shipments[0].id : null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
@@ -516,6 +518,15 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
                                 >
                                     <Edit2 size={14} /> 更新状态
                                 </button>
+                                {onDeleteShipment && (
+                                    <button 
+                                        onClick={() => onDeleteShipment(selectedShipment.id)}
+                                        className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs font-bold text-gray-400 hover:text-red-500 hover:border-red-500/50 hover:bg-red-500/10 flex items-center justify-center transition-all"
+                                        title="删除运单"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                )}
                              </div>
                         </div>
 
