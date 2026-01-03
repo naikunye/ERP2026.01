@@ -459,18 +459,18 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
       setIsInitializing(true);
       try {
-          // 1. Authenticate as Admin (Try V0.21 Legacy first, then V0.23+ Fallback)
-          try {
-              await pb.admins.authWithPassword(adminEmail, adminPassword);
-          } catch (authError: any) {
-              console.warn("Legacy auth failed, trying v0.23+ _superusers collection...", authError);
+          // 1. Authenticate as Admin (Compatible with V0.21 Legacy and V0.23+ Newer)
+          // Newer SDKs might remove `pb.admins` entirely, so we check for its existence.
+          if ((pb as any).admins && typeof (pb as any).admins.authWithPassword === 'function') {
               try {
-                  // Fallback for newer PocketBase versions
+                  await (pb as any).admins.authWithPassword(adminEmail, adminPassword);
+              } catch (legacyErr) {
+                  console.warn("Legacy admin auth failed, trying new _superusers...", legacyErr);
                   await pb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
-              } catch (fallbackError: any) {
-                  // If both fail, throw the original error or a clearer message
-                  throw new Error(`认证失败: ${authError.message || fallbackError.message}`);
               }
+          } else {
+              // Direct fallback for new SDKs
+              await pb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
           }
           
           // 2. Iterate and create collections
@@ -486,12 +486,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                           name: def.name,
                           type: def.type,
                           schema: def.schema,
-                          // Make it public readable/writable for demo convenience (User can lock it down later)
-                          listRule: "",
-                          viewRule: "",
-                          createRule: "",
-                          updateRule: "",
-                          deleteRule: ""
+                          // IMPORTANT: Set rules to null (Public) to allow the app to write without being logged in as admin later
+                          listRule: null, 
+                          viewRule: null,
+                          createRule: null,
+                          updateRule: null,
+                          deleteRule: null
                       });
                       createdCount++;
                   }
@@ -514,16 +514,17 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           let msg = e.message || '未知错误';
           
           // Drill down into PocketBase detailed errors (data field)
-          if (e.response && e.response.data) {
+          if (e.response?.data) {
               const details = e.response.data;
+              if (details.message) {
+                  msg = details.message; // e.g. "Failed to authenticate"
+              }
               if (details.data) {
                   // Format field-specific errors
                   const fieldErrors = Object.entries(details.data)
                       .map(([k, v]: any) => `${k}: ${v.message}`)
                       .join(', ');
                   if (fieldErrors) msg += ` (${fieldErrors})`;
-              } else if (details.message) {
-                  msg = details.message;
               }
           } else if (e.originalError) {
               msg += ` (${e.originalError.message})`;
