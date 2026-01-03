@@ -139,10 +139,10 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   };
 
   return (
-    <div className="flex flex-col w-full relative animate-fade-in overflow-hidden" style={{ height: '100%' }}>
+    <div className="h-full flex flex-col w-full animate-fade-in overflow-hidden">
       
-      {/* 1. Header & Summary Stats (Fixed Height) */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end border-b border-white/10 pb-6 shrink-0 px-2">
+      {/* 1. Header Area (No Shrink) */}
+      <div className="shrink-0 grid grid-cols-1 md:grid-cols-12 gap-6 items-end border-b border-white/10 pb-6 px-2">
         <div className="md:col-span-6">
            <h1 className="text-[32px] font-display font-bold text-white tracking-tight leading-none flex items-center gap-3">
               智能备货清单 
@@ -177,8 +177,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
         </div>
       </div>
 
-      {/* 2. Controls & Actions (Fixed Height) */}
-      <div className="flex justify-between items-center py-4 bg-[#050510]/80 border-b border-white/5 shrink-0 z-20 px-2">
+      {/* 2. Controls Area (No Shrink) */}
+      <div className="shrink-0 flex justify-between items-center py-4 bg-[#050510]/80 border-b border-white/5 z-20 px-2">
           <div className="relative w-[400px] group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon-blue transition-colors" size={18} />
               <input 
@@ -215,11 +215,11 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           </div>
       </div>
 
-      {/* 3. The List (Card Table) - SCROLLABLE AREA */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar relative px-2 pb-20 min-h-0 w-full" style={{ isolation: 'isolate' }}>
+      {/* 3. The List Area (FLEX GROW TO FILL) */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative px-2 min-h-0 bg-[#050510]">
           
-          {/* Header Row */}
-          <div className="grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12 sticky top-0 bg-[#050510] z-10 border-b border-white/5 mb-2">
+          {/* Sticky Header Row */}
+          <div className="sticky top-0 bg-[#050510] z-30 grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12 border-b border-white/5 mb-2">
               <div className="col-span-2">SKU / 入库单 / 备注</div>
               <div className="col-span-2">产品详情 / 箱规</div>
               <div className="col-span-2">物流状态 / 费率</div>
@@ -236,7 +236,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               </button>
           </div>
 
-          {/* Data Rows */}
+          {/* Data Rows Container */}
           <div className="space-y-3 pb-10">
           {filteredData.length === 0 ? (
               <div className="text-center py-20 text-gray-500">

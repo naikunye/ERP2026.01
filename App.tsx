@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import AnalyticsModule from './components/AnalyticsModule';
@@ -28,10 +28,16 @@ const App: React.FC = () => {
   const [currentTheme, setCurrentTheme] = useState<Theme>('neon');
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isCloudOnline, setIsCloudOnline] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // Changed default to false for instant local load
+  const [isLoading, setIsLoading] = useState(false);
   
+  // --- DATA GUARD STATE ---
+  // Critical: Prevents saving empty state to localStorage during initial render
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
   // --- PERSISTENCE HELPERS ---
   const saveLocal = (key: string, data: any) => {
+      // SECURITY CHECK: Never overwrite local storage with empty array if we haven't confirmed data load
+      if (!isDataLoaded && (!data || data.length === 0)) return;
       try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {}
   };
 
@@ -68,11 +74,12 @@ const App: React.FC = () => {
       setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // --- SYNC ENGINE (Cloud Overlay) ---
+  // --- INIT & SYNC ENGINE ---
   useEffect(() => {
+      // 1. Mark data as loaded immediately so existing local data is respected
+      setIsDataLoaded(true);
+
       const initSystem = async () => {
-          // We don't block UI with loading anymore.
-          // Just verify cloud in background.
           const connected = await isCloudConnected();
           setIsCloudOnline(connected);
 
@@ -89,10 +96,8 @@ const App: React.FC = () => {
                       pb.collection('inventory_logs').getFullList({ sort: '-created', page: 1, perPage: 100 }),
                   ]);
 
-                  // Only overwrite local state if cloud has data (to prevent wiping local work with empty cloud)
-                  // OR if cloud is strictly the master. 
-                  // Logic: If cloud returns data, use it.
-                  if (p.length > 0 || s.length > 0) {
+                  // Only overwrite local state if cloud has data (prevent wiping local work with empty cloud)
+                  if (p.length > 0) {
                       setProducts(p.map(item => ({ ...item, id: item.id } as unknown as Product)));
                       setShipments(s.map(item => ({ ...item, id: item.id } as unknown as Shipment)));
                       setTransactions(t.map(item => ({ ...item, id: item.id } as unknown as Transaction)));
@@ -106,7 +111,6 @@ const App: React.FC = () => {
                   }
               } catch (error) {
                   console.error("Cloud Sync Error", error);
-                  // Keep using local data
               }
           }
       };
@@ -114,15 +118,14 @@ const App: React.FC = () => {
       initSystem();
   }, []);
 
-  // --- ALWAYS SYNC TO LOCAL STORAGE (Backup) ---
-  // This ensures that even if you are "Online", we keep a local backup for the next refresh.
-  useEffect(() => { saveLocal('products', products); }, [products]);
-  useEffect(() => { saveLocal('shipments', shipments); }, [shipments]);
-  useEffect(() => { saveLocal('transactions', transactions); }, [transactions]);
-  useEffect(() => { saveLocal('influencers', influencers); }, [influencers]);
-  useEffect(() => { saveLocal('tasks', tasks); }, [tasks]);
-  useEffect(() => { saveLocal('competitors', competitors); }, [competitors]);
-  useEffect(() => { saveLocal('messages', messages); }, [messages]);
+  // --- DATA PERSISTENCE EFFECTS (With Guard) ---
+  useEffect(() => { if(isDataLoaded) saveLocal('products', products); }, [products, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('shipments', shipments); }, [shipments, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('transactions', transactions); }, [transactions, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('influencers', influencers); }, [influencers, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('tasks', tasks); }, [tasks, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('competitors', competitors); }, [competitors, isDataLoaded]);
+  useEffect(() => { if(isDataLoaded) saveLocal('messages', messages); }, [messages, isDataLoaded]);
 
   // --- CRUD WRAPPERS ---
 
@@ -136,8 +139,7 @@ const App: React.FC = () => {
               return await pb.collection(collection).create(payload);
           }
       } catch (err: any) {
-          console.error("Cloud Save Failed:", err);
-          // Don't throw, just let local state handle it
+          // console.error("Cloud Save Failed:", err);
       }
   };
 
@@ -205,7 +207,6 @@ const App: React.FC = () => {
   // Task Handlers
   const handleUpdateTasks = (newTasks: Task[]) => {
       setTasks(newTasks);
-      // Simplify task cloud sync: just save localized changes if needed, complex sync omitted for brevity
   };
 
   // PO & Logistics Logic
@@ -300,7 +301,8 @@ const App: React.FC = () => {
       if(window.confirm(`确认导入 ${data.length} 条数据？`)) {
           // Force update state immediately
           setProducts(data);
-          saveLocal('products', data); // Double assurance
+          // Manually triggering save to ensure it writes immediately even if effects are queued
+          try { localStorage.setItem('products', JSON.stringify(data)); } catch(e) {}
           
           if (isCloudOnline) {
               data.forEach(async p => {
@@ -308,7 +310,7 @@ const App: React.FC = () => {
               });
               addNotification('info', '后台同步中', '正在尝试将导入数据推送到服务器');
           } else {
-              addNotification('success', '已导入本地', '数据已保存到浏览器');
+              addNotification('success', '已导入本地', '数据已安全保存到浏览器');
           }
       }
   };
@@ -358,13 +360,17 @@ const App: React.FC = () => {
         )}
         
         <Sidebar activeView={activeView} onChangeView={setActiveView} currentTheme={currentTheme} onThemeChange={setCurrentTheme} badges={{tasks: tasks.filter(t=>t.status==='Todo').length, orders: shipments.filter(s=>s.status==='Exception').length}} />
-        <div className="flex-1 ml-[280px] p-8 h-full overflow-hidden relative flex flex-col">
+        
+        {/* MAIN CONTENT AREA - FIXED LAYOUT FOR SCROLLING */}
+        <div className="flex-1 ml-[280px] p-8 h-full flex flex-col overflow-hidden relative">
             {!isCloudOnline && (
-                <div className="absolute top-0 left-0 right-0 bg-yellow-600/20 text-yellow-400 text-[10px] font-bold text-center py-1 z-50 pointer-events-none">
+                <div className="absolute top-0 left-0 right-0 bg-yellow-600/20 text-yellow-400 text-[10px] font-bold text-center py-1 z-50 pointer-events-none backdrop-blur-sm">
                     ⚠️ 离线模式: 数据将保存在本地
                 </div>
             )}
-            <div className="flex-1 w-full h-full overflow-hidden relative">
+            
+            {/* FORCE CONTENT TO TAKE FULL HEIGHT AND MANAGE ITS OWN SCROLL */}
+            <div className="flex-1 w-full h-full min-h-0 relative">
                 {renderContent()}
             </div>
         </div>
