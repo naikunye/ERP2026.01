@@ -154,10 +154,16 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping', '费率', 'rate']
             ));
 
-            const price = parseCleanNum(raw.price || findValueGreedy(raw, 
-                ['销售价', '售价', '定价', '标准价', 'selling', 'retail', 'sale_price', 'listing', 'msrp'],
-                ['采购', '成本', 'cost', 'purchase', 'buying', '进货', '费率', 'rate']
-            ));
+            // FIX: Prioritize reading financials.sellingPrice specifically for TikTok Price
+            // This prevents the system from guessing "price" from other fields or defaulting to 99.99
+            const price = parseCleanNum(
+                raw.financials?.sellingPrice || 
+                raw.price || 
+                findValueGreedy(raw, 
+                    ['销售价', '售价', '定价', '标准价', 'selling', 'retail', 'sale_price', 'listing', 'msrp'],
+                    ['采购', '成本', 'cost', 'purchase', 'buying', '进货', '费率', 'rate']
+                )
+            );
 
             // --- C. LOGISTICS & SPECS ---
             let shippingCost = parseCleanNum(raw.financials?.shippingCost || findValueGreedy(raw, 
@@ -195,7 +201,8 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 sku: String(sku),
                 name: String(name),
                 description: raw.description || '',
-                price: price || (unitCost * 3) || 99.99,
+                // FIX: Removed fallback to 99.99. Defaults to 0 or estimated from cost if 0.
+                price: price || (unitCost > 0 ? unitCost * 3 : 0),
                 stock,
                 currency: raw.currency || Currency.USD,
                 status: raw.status || ProductStatus.Draft,
@@ -236,7 +243,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                     costOfGoods: unitCost,
                     shippingCost: shippingCost,
                     otherCost: parseCleanNum(raw.financials?.otherCost || findValueGreedy(raw, ['otherCost', '杂费'])),
-                    sellingPrice: price, 
+                    sellingPrice: price, // Matches the prioritized extraction above
                     platformFee: parseCleanNum(raw.financials?.platformFee || 0),
                     adCost: parseCleanNum(raw.financials?.adCost || findValueGreedy(raw, ['adCost', '广告'])),
                 },
