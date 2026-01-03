@@ -455,7 +455,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           return;
       }
       
-      // Safety check: Ensure we aren't sending passwords to an empty string
       if (!serverUrlInput) {
           if (onNotify) onNotify('error', 'Config Error', 'Server URL is missing.');
           return;
@@ -465,52 +464,58 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       setInitStatusMsg("Connecting...");
       
       try {
-          // --- IMPORTANT FIX: CREATE LOCAL INSTANCE ---
-          // Using the global `pb` instance can be flaky if the user changed the input
-          // but didn't click "Connect". We force a new instance with the EXACT input URL.
+          // --- FORCE NEW INSTANCE TO ENSURE URL IS CORRECT ---
           const tempPb = new PocketBase(serverUrlInput);
           tempPb.autoCancellation(false);
 
-          // 1. Authenticate (Strategy Pattern)
+          // 1. Authenticate (Dual Strategy)
           setInitStatusMsg("Authenticating...");
           
           let authSuccess = false;
           let authErrorMsg = '';
 
-          // Strategy A: New SDK / New Server (v0.23+)
+          // Strategy A: Modern SDK / Server (v0.23+)
+          // Uses the new `_superusers` collection
           try {
-              console.log("Auth Strategy A: _superusers");
+              console.log("Strategy A: _superusers auth");
               await tempPb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
               authSuccess = true;
           } catch (errA: any) {
               console.warn("Strategy A failed:", errA.message);
               authErrorMsg = errA.message;
               
-              // Strategy B: Legacy SDK / Old Server
+              // Strategy B: Legacy Server Fallback (Manual Fetch)
+              // We must use manual fetch because SDK v0.26 removed `pb.admins` entirely.
               try {
-                  console.log("Auth Strategy B: admins");
-                  if ((tempPb as any).admins) {
-                      await (tempPb as any).admins.authWithPassword(adminEmail, adminPassword);
-                      authSuccess = true;
-                  } else {
-                      throw new Error("SDK does not support legacy admins service");
+                  console.log("Strategy B: Legacy Manual Fetch");
+                  const baseUrl = serverUrlInput.replace(/\/$/, ''); // Trim trailing slash
+                  const resp = await fetch(`${baseUrl}/api/admins/auth-with-password`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ identity: adminEmail, password: adminPassword })
+                  });
+
+                  if (!resp.ok) {
+                      // Attempt to parse server error
+                      const errData = await resp.json().catch(() => ({}));
+                      throw new Error(errData.message || `HTTP ${resp.status}`);
                   }
+
+                  const data = await resp.json();
+                  // Manually inject token into SDK
+                  tempPb.authStore.save(data.token, data.admin);
+                  authSuccess = true;
               } catch (errB: any) {
                   console.warn("Strategy B failed:", errB.message);
-                  authErrorMsg = errB.message || authErrorMsg;
+                  // Keep original error message if both fail, or show legacy error if A was 404
+                  if (authErrorMsg.includes("404")) authErrorMsg = errB.message;
               }
           }
 
           if (!authSuccess) {
-              // Check specifically for Mixed Content / Network Error
-              if (authErrorMsg === 'Failed to fetch' || authErrorMsg.includes('Network')) {
-                  // Check protocol mismatch
-                  const isHttps = window.location.protocol === 'https:';
-                  const isHttpTarget = serverUrlInput.startsWith('http:');
-                  if (isHttps && isHttpTarget) {
-                      throw new Error("Mixed Content Error: 您的网站是 HTTPS，但服务器是 HTTP。浏览器禁止此类连接。请使用 localhost 或配置服务器 SSL。");
-                  }
-                  throw new Error(`无法连接到服务器 (${serverUrlInput})。请检查地址是否正确，或是否存在跨域(CORS)限制。`);
+              // Detailed Diagnostics
+              if (authErrorMsg.includes('Failed to fetch') || authErrorMsg.includes('Network')) {
+                  throw new Error("网络连接失败 (Network Error)。请检查：1. 服务器地址是否正确 2. HTTPS/HTTP 混合内容限制 3. 跨域(CORS)设置。");
               }
               throw new Error(`认证失败: ${authErrorMsg || '密码错误或账号不存在'}`);
           }
@@ -529,7 +534,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                           name: def.name,
                           type: def.type,
                           schema: def.schema,
-                          // Set rules to null (Public) for ease of demo use
+                          // Set rules to null (Public) to allow normal user access without auth
                           listRule: null, 
                           viewRule: null,
                           createRule: null,
@@ -541,9 +546,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
               }
           }
 
-          // 3. Sync Successful Auth to Global State (Optional but helpful)
+          // 3. Sync Successful Auth to Global State (Optional)
           if (tempPb.authStore.isValid) {
-              updateServerUrl(serverUrlInput); // Ensure global URL matches
+              updateServerUrl(serverUrlInput); 
               pb.authStore.save(tempPb.authStore.token, tempPb.authStore.model);
           }
 
@@ -551,15 +556,11 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           tempPb.authStore.clear(); 
           
           if (onNotify) {
-              if (createdCount > 0) {
-                  onNotify('success', '初始化成功', `成功创建 ${createdCount} 个数据集合。现已准备就绪。`);
-              } else {
-                  onNotify('info', '无需操作', '所有数据集合已存在。');
-              }
+              onNotify('success', '初始化成功', `成功创建/确认 ${createdCount} 个数据集合。现已准备就绪。`);
           }
 
       } catch (e: any) {
-          console.error("Init Critical Failure:", e);
+          console.error("Init Failure:", e);
           let msg = e.message || '未知错误';
           
           // Drill down into PocketBase detailed errors
@@ -572,8 +573,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       .join(', ');
                   if (fieldErrors) msg += ` (${fieldErrors})`;
               }
-          } else if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
-              msg = "网络请求被拦截 (Failed to fetch)。可能是 HTTPS/HTTP 混合内容问题，或服务器未启动。";
           }
 
           if (onNotify) onNotify('error', '初始化失败', msg);
