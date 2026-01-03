@@ -20,7 +20,153 @@ interface SettingsModuleProps {
 }
 
 // ------------------------------------------------------------------
-// HELPER FUNCTIONS (Advanced V3)
+// CONSTANTS: COLLECTIONS SCHEMA (RESTORED)
+// ------------------------------------------------------------------
+const COLLECTIONS_SCHEMA = [
+    {
+        name: 'products',
+        type: 'base',
+        schema: [
+            { name: 'sku', type: 'text' },
+            { name: 'name', type: 'text' },
+            { name: 'description', type: 'text' },
+            { name: 'price', type: 'number' },
+            { name: 'stock', type: 'number' },
+            { name: 'category', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'imageUrl', type: 'text' },
+            { name: 'supplier', type: 'text' },
+            { name: 'note', type: 'text' },
+            { name: 'inboundId', type: 'text' },
+            { name: 'inboundStatus', type: 'text' },
+            { name: 'financials', type: 'json' },
+            { name: 'logistics', type: 'json' },
+            { name: 'variants', type: 'json' },
+            { name: 'marketplaces', type: 'json' },
+            { name: 'seoKeywords', type: 'json' },
+            { name: 'unitWeight', type: 'number' },
+            { name: 'boxLength', type: 'number' },
+            { name: 'boxWidth', type: 'number' },
+            { name: 'boxHeight', type: 'number' },
+            { name: 'boxWeight', type: 'number' },
+            { name: 'itemsPerBox', type: 'number' },
+            { name: 'restockCartons', type: 'number' },
+            { name: 'totalRestockUnits', type: 'number' },
+            { name: 'variantRestockMap', type: 'json' },
+            { name: 'platformCommission', type: 'number' },
+            { name: 'influencerCommission', type: 'number' },
+            { name: 'orderFixedFee', type: 'number' },
+            { name: 'returnRate', type: 'number' },
+            { name: 'lastMileShipping', type: 'number' },
+            { name: 'exchangeRate', type: 'number' },
+            { name: 'dailySales', type: 'number' },
+            { name: 'restockDate', type: 'text' },
+        ]
+    },
+    {
+        name: 'shipments',
+        type: 'base',
+        schema: [
+            { name: 'trackingNo', type: 'text' },
+            { name: 'carrier', type: 'text' },
+            { name: 'method', type: 'text' },
+            { name: 'origin', type: 'text' },
+            { name: 'destination', type: 'text' },
+            { name: 'etd', type: 'text' },
+            { name: 'eta', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'progress', type: 'number' },
+            { name: 'weight', type: 'number' },
+            { name: 'cartons', type: 'number' },
+            { name: 'items', type: 'json' },
+            { name: 'riskReason', type: 'text' },
+            { name: 'customsStatus', type: 'text' },
+            { name: 'lastUpdate', type: 'text' },
+            { name: 'vesselName', type: 'text' },
+            { name: 'containerNo', type: 'text' }
+        ]
+    },
+    {
+        name: 'transactions',
+        type: 'base',
+        schema: [
+            { name: 'date', type: 'text' },
+            { name: 'type', type: 'text' },
+            { name: 'category', type: 'text' },
+            { name: 'amount', type: 'number' },
+            { name: 'description', type: 'text' },
+            { name: 'status', type: 'text' }
+        ]
+    },
+    {
+        name: 'influencers',
+        type: 'base',
+        schema: [
+            { name: 'name', type: 'text' },
+            { name: 'handle', type: 'text' },
+            { name: 'platform', type: 'text' },
+            { name: 'followers', type: 'number' },
+            { name: 'engagementRate', type: 'number' },
+            { name: 'region', type: 'text' },
+            { name: 'category', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'avatarUrl', type: 'text' },
+            { name: 'cost', type: 'number' },
+            { name: 'gmv', type: 'number' },
+            { name: 'roi', type: 'number' },
+            { name: 'sampleSku', type: 'text' }
+        ]
+    },
+    {
+        name: 'tasks',
+        type: 'base',
+        schema: [
+            { name: 'title', type: 'text' },
+            { name: 'desc', type: 'text' },
+            { name: 'priority', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'assignee', type: 'text' },
+            { name: 'dueDate', type: 'text' },
+            { name: 'tags', type: 'json' }
+        ]
+    },
+    {
+        name: 'competitors',
+        type: 'base',
+        schema: [
+            { name: 'asin', type: 'text' },
+            { name: 'brand', type: 'text' },
+            { name: 'name', type: 'text' },
+            { name: 'price', type: 'number' },
+            { name: 'rating', type: 'number' },
+            { name: 'reviewCount', type: 'number' },
+            { name: 'imageUrl', type: 'text' },
+            { name: 'dailySalesEst', type: 'number' },
+            { name: 'lastUpdate', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'priceHistory', type: 'json' },
+            { name: 'keywords', type: 'json' }
+        ]
+    },
+    {
+        name: 'messages',
+        type: 'base',
+        schema: [
+            { name: 'platform', type: 'text' },
+            { name: 'customerName', type: 'text' },
+            { name: 'subject', type: 'text' },
+            { name: 'content', type: 'text' },
+            { name: 'timestamp', type: 'text' },
+            { name: 'status', type: 'text' },
+            { name: 'sentiment', type: 'text' },
+            { name: 'orderId', type: 'text' },
+            { name: 'aiDraft', type: 'text' }
+        ]
+    }
+];
+
+// ------------------------------------------------------------------
+// HELPER FUNCTIONS
 // ------------------------------------------------------------------
 
 const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
@@ -38,7 +184,6 @@ const parseCleanNum = (val: any): number => {
 };
 
 // --- SCHEMA DENSITY SCANNER ---
-// Finds the array that best matches a "Product" schema structure
 const findBestDataArray = (json: any): any[] => {
     let candidates: { arr: any[], score: number, path: string }[] = [];
     
@@ -70,14 +215,11 @@ const findBestDataArray = (json: any): any[] => {
                 });
 
                 if (objCount > 0) {
-                    // Score = Density of keywords * log(Length)
-                    // We prioritize arrays that actually look like product lists
                     const density = keywordHits / objCount;
                     const score = density * Math.log(node.length + 1);
                     candidates.push({ arr: node, score, path });
                 }
             }
-            // Do not recurse INSIDE arrays (products usually don't contain lists of products)
             return; 
         }
         
@@ -91,8 +233,6 @@ const findBestDataArray = (json: any): any[] => {
     // Sort by score descending
     candidates.sort((a, b) => b.score - a.score);
     
-    console.log("Import Candidates:", candidates.slice(0,3));
-
     // Fallback: If no good semantic match, just return the largest array of objects
     if (candidates.length === 0 || candidates[0].score < 2) {
         // Re-scan for ANY array of objects
@@ -137,7 +277,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   // Storage Stats
   const [storageUsage, setStorageUsage] = useState({ usedKB: 0, percent: 0 });
 
-  // Init State
+  // Init State (RESTORED)
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [isInitializing, setIsInitializing] = useState(false);
@@ -184,7 +324,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
     if(onNotify) onNotify('success', '备份已下载', '请妥善保管此 JSON 文件，这是您数据的唯一永久存档。');
   };
 
-  // --- RE-IMPLEMENTED IMPORT LOGIC ---
+  // --- RE-IMPLEMENTED IMPORT LOGIC (FIXED SHIPPING RATE) ---
   const processFile = (file: File) => {
     setImportStatus('processing');
     setImportMessage('Deep Scan: 正在扫描数据结构...');
@@ -213,47 +353,46 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             
             // --- FIELD MAPPING STRATEGY (AGGRESSIVE) ---
             
-            // ID
             const id = raw.id || findValueGreedy(raw, ['_id', 'uuid', 'uid', 'product_id', 'sys_id']) || `IMP-${Math.random().toString(36).substr(2,9)}`;
             
-            // SKU
             const sku = raw.sku || findValueGreedy(raw, 
                 ['msku', 'product_code', 'item_no', 'item_code', 'part_number', 'p_id', '编码', '货号', 'model'],
                 ['parent', 'group']
             ) || 'UNKNOWN-SKU';
 
-            // NAME
             const name = raw.name || findValueGreedy(raw, 
                 ['title', 'product_name', 'item_name', 'goods_name', 'desc', 'description', '名称', '标题', '品名'],
                 ['meta', 'seo']
             ) || 'Unnamed Product';
 
-            // SUPPLIER
             const supplier = raw.supplier || findValueGreedy(raw, ['vendor', 'factory', 'manufacturer', 'source', '供应商', '厂家']);
 
-            // COST (RMB)
             const unitCost = parseCleanNum(raw.financials?.costOfGoods || findValueGreedy(raw, 
                 ['cost', 'purchase_price', 'buying_price', 'sourcing_price', 'factory_price', '采购价', '进货价', '成本'],
                 ['total', 'shipping']
             ));
 
-            // PRICE (USD)
             const price = parseCleanNum(raw.financials?.sellingPrice || raw.price || findValueGreedy(raw, 
                 ['selling_price', 'retail_price', 'sales_price', 'list_price', 'msrp', '销售价', '售价', '定价'],
                 ['cost', 'total']
             ));
 
-            // STOCK
             const stock = parseCleanNum(raw.stock || findValueGreedy(raw, 
                 ['qty', 'quantity', 'inventory', 'stock_level', 'on_hand', 'available', '库存', '数量', '现有'],
                 ['min', 'max', 'safety']
             ));
 
-            // IMAGE
             const imageUrl = raw.imageUrl || findValueGreedy(raw, ['image', 'img', 'pic', 'photo', 'thumbnail', 'url', 'link'], ['site', 'page']);
 
-            // LOGISTICS
-            const shippingCost = parseCleanNum(raw.financials?.shippingCost || findValueGreedy(raw, ['shipping', 'freight', 'logistics_cost', '运费', '头程']));
+            // FIX: Aggressive Search for Shipping Rate (RMB/kg)
+            const shippingRate = parseCleanNum(
+                raw.logistics?.shippingRate || 
+                raw.shippingRate || 
+                findValueGreedy(raw, ['shipping_rate', 'freight_rate', '头程单价', '运费单价', 'kg_price', 'rate_per_kg', '头程费率'])
+            );
+
+            // Cost per unit (Total)
+            const shippingCost = parseCleanNum(raw.financials?.shippingCost || findValueGreedy(raw, ['shipping', 'freight', 'logistics_cost', '运费', '头程', 'unit_shipping']));
 
             return {
                 id: String(id),
@@ -293,6 +432,16 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                     sellingPrice: price,
                     platformFee: parseCleanNum(raw.financials?.platformFee || 0),
                     adCost: parseCleanNum(raw.financials?.adCost || 0),
+                },
+                logistics: {
+                    method: 'Sea',
+                    carrier: '',
+                    trackingNo: '',
+                    status: 'Pending',
+                    origin: '',
+                    destination: '',
+                    shippingRate: shippingRate, // Directly mapped
+                    manualChargeableWeight: 0
                 },
                 dailySales: parseCleanNum(raw.dailySales || 0)
             };
@@ -339,7 +488,86 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
     }
   };
 
-  // (Paste Themes array and standard render code below)
+  // --- RESTORED ADMIN HANDLERS ---
+  const handleClearCloudData = async () => {
+      if(!confirm('🚨 严重警告 🚨\n\n此操作将【永久删除】服务器上的所有数据！\n此操作不可逆！\n\n您确定要清空服务器吗？')) return;
+      setIsInitializing(true);
+      setInitStatusMsg("Nuking Server Data...");
+      try {
+          const collections = ['products', 'shipments', 'transactions', 'influencers', 'tasks', 'competitors', 'messages'];
+          let totalDeleted = 0;
+          for (const col of collections) {
+              try {
+                  const records = await pb.collection(col).getFullList();
+                  for (const r of records) { await pb.collection(col).delete(r.id); }
+                  totalDeleted += records.length;
+              } catch(e) { console.warn(`Failed to clear ${col}`, e); }
+          }
+          if (onNotify) onNotify('success', '服务器已清空', `共删除了 ${totalDeleted} 条数据。`);
+      } catch (e: any) {
+          if (onNotify) onNotify('error', '清空失败', e.message);
+      } finally {
+          setIsInitializing(false);
+          setInitStatusMsg("");
+      }
+  };
+
+  const handleInitSchema = async () => {
+      setDetailedError(null);
+      if (!adminEmail || !adminPassword || !serverUrlInput) {
+          setDetailedError("Missing credentials or URL.");
+          return;
+      }
+      setIsInitializing(true);
+      setInitStatusMsg("Connecting...");
+      
+      try {
+          const targetUrl = serverUrlInput.replace(/\/$/, '');
+          // Auth flow simplified for restoration
+          let authToken = "";
+          try {
+              const resp = await fetch(`${targetUrl}/api/admins/auth-with-password`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ identity: adminEmail, password: adminPassword })
+              });
+              if (resp.ok) {
+                 const data = await resp.json();
+                 authToken = data.token;
+              } else {
+                 throw new Error("Admin Auth Failed");
+              }
+          } catch (e) {
+              throw new Error("Connection/Auth Failed. Check URL and Creds.");
+          }
+
+          setInitStatusMsg("Updating Schema...");
+          
+          for (const def of COLLECTIONS_SCHEMA) {
+              // Create collection logic (simplified)
+              const payload = {
+                  name: def.name,
+                  type: def.type,
+                  schema: def.schema.map(f => ({ name: f.name, type: f.type })),
+                  listRule: "", viewRule: "", createRule: "", updateRule: "", deleteRule: ""
+              };
+              try {
+                  await fetch(`${targetUrl}/api/collections`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': authToken },
+                      body: JSON.stringify(payload)
+                  });
+              } catch (e) { /* Ignore if exists */ }
+          }
+          if (onNotify) onNotify('success', 'Schema Updated', 'Collections created/updated.');
+      } catch (e: any) {
+          setDetailedError(e.message);
+      } finally {
+          setIsInitializing(false);
+          setInitStatusMsg("");
+      }
+  };
+
   const themes = [
       { id: 'neon', name: 'Neon Glass', desc: '赛博朋克深色 (Default)', icon: Zap, color: 'text-neon-blue', bg: 'bg-black' },
       { id: 'ivory', name: 'Ivory Air', desc: '极简主义浅色 (Light)', icon: Sun, color: 'text-yellow-500', bg: 'bg-gray-100' },
@@ -485,7 +713,88 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           </div>
       </section>
 
-      {/* Admin Zone (Omitted for brevity, logic kept in previous chunks if needed, but structure is here) */}
+      <div className="border-t border-white/10 my-8"></div>
+
+      {/* 4. Admin Zone (RESTORED) */}
+      <section className="space-y-4">
+          <h2 className="text-sm font-bold text-red-500 uppercase tracking-widest flex items-center gap-2">
+              <Lock size={16} /> 管理员专区 (Admin Zone)
+          </h2>
+          
+          {detailedError && (
+              <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl mb-4 relative animate-scale-in">
+                  <button onClick={() => setDetailedError(null)} className="absolute top-3 right-3 text-red-400 hover:text-white"><XCircle size={16}/></button>
+                  <div className="flex gap-3">
+                      <Terminal className="text-red-500 shrink-0 mt-1" size={20}/>
+                      <div className="overflow-hidden w-full">
+                          <h4 className="text-sm font-bold text-white mb-1">错误诊断 (Diagnostic Report)</h4>
+                          <pre className="text-[10px] text-red-200 font-mono bg-black/40 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
+                              {detailedError}
+                          </pre>
+                      </div>
+                  </div>
+              </div>
+          )}
+
+          <div className="glass-card p-6 border-red-500/20 bg-red-500/5">
+              <div className="flex flex-col gap-4">
+                  <div className="flex items-start gap-3 mb-2">
+                      <AlertTriangle size={24} className="text-red-500 shrink-0"/>
+                      <div>
+                          <h3 className="text-white font-bold">服务器初始化 (Server Initialization)</h3>
+                          <p className="text-xs text-gray-400 mt-1">
+                              创建数据表结构与权限。
+                              <span className="text-neon-yellow flex items-center gap-1 mt-1">
+                                <Unlock size={10} /> 自动设为公开 (Public)。
+                              </span>
+                          </p>
+                      </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">Admin Email</label>
+                          <input 
+                              type="email"
+                              value={adminEmail}
+                              onChange={(e) => setAdminEmail(e.target.value)}
+                              placeholder="admin@example.com"
+                              className="w-full h-10 bg-black/40 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-red-500 outline-none"
+                          />
+                      </div>
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">Password</label>
+                          <input 
+                              type="password"
+                              value={adminPassword}
+                              onChange={(e) => setAdminPassword(e.target.value)}
+                              placeholder="••••••••"
+                              className="w-full h-10 bg-black/40 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-red-500 outline-none"
+                          />
+                      </div>
+                  </div>
+                  
+                  <div className="flex gap-4 mt-2">
+                      <button 
+                          onClick={handleInitSchema}
+                          disabled={isInitializing}
+                          className="flex-1 px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2"
+                      >
+                          {isInitializing ? <Loader2 size={16} className="animate-spin"/> : <Key size={16}/>}
+                          {isInitializing ? (initStatusMsg || '正在处理...') : '一键初始化'}
+                      </button>
+                      
+                      <button 
+                          onClick={handleClearCloudData}
+                          disabled={isInitializing}
+                          className="px-6 py-3 border border-red-500/50 hover:bg-red-500/20 text-red-400 rounded-xl font-bold text-xs transition-all flex items-center gap-2"
+                      >
+                          <Trash2 size={16}/> 清空数据库
+                      </button>
+                  </div>
+              </div>
+          </div>
+      </section>
       
     </div>
   );
