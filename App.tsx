@@ -233,15 +233,43 @@ const App: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null | undefined>(undefined);
   const [editingSKU, setEditingSKU] = useState<Product | null>(null);
 
-  // Persistence Effects
-  useEffect(() => { localStorage.setItem('aero_erp_products', JSON.stringify(products)); }, [products]);
-  useEffect(() => { localStorage.setItem('aero_erp_shipments', JSON.stringify(shipments)); }, [shipments]);
-  useEffect(() => { localStorage.setItem('aero_erp_influencers', JSON.stringify(influencers)); }, [influencers]);
-  useEffect(() => { localStorage.setItem('aero_erp_transactions', JSON.stringify(transactions)); }, [transactions]);
-  useEffect(() => { localStorage.setItem('aero_erp_tasks', JSON.stringify(tasks)); }, [tasks]);
-  useEffect(() => { localStorage.setItem('aero_erp_inventory_logs', JSON.stringify(inventoryLogs)); }, [inventoryLogs]);
-  useEffect(() => { localStorage.setItem('aero_erp_competitors', JSON.stringify(competitors)); }, [competitors]);
-  useEffect(() => { localStorage.setItem('aero_erp_messages', JSON.stringify(messages)); }, [messages]);
+  // --- NOTIFICATION SYSTEM ---
+  const addNotification = (type: Notification['type'], title: string, message: string) => {
+      const newNotif: Notification = {
+          id: Date.now().toString(),
+          type,
+          title,
+          message
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+  };
+
+  const removeNotification = (id: string) => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  // --- Safe Storage Helper ---
+  const saveToStorage = (key: string, data: any) => {
+      try {
+          localStorage.setItem(key, JSON.stringify(data));
+      } catch (e: any) {
+          if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+              addNotification('error', '存储空间已满 (Disk Full)', '浏览器存储空间不足！请立即前往【系统设置】导出数据备份，并清理旧数据或图片。');
+          } else {
+              console.error('Storage Error', e);
+          }
+      }
+  };
+
+  // Persistence Effects (Use Safe Storage)
+  useEffect(() => { saveToStorage('aero_erp_products', products); }, [products]);
+  useEffect(() => { saveToStorage('aero_erp_shipments', shipments); }, [shipments]);
+  useEffect(() => { saveToStorage('aero_erp_influencers', influencers); }, [influencers]);
+  useEffect(() => { saveToStorage('aero_erp_transactions', transactions); }, [transactions]);
+  useEffect(() => { saveToStorage('aero_erp_tasks', tasks); }, [tasks]);
+  useEffect(() => { saveToStorage('aero_erp_inventory_logs', inventoryLogs); }, [inventoryLogs]);
+  useEffect(() => { saveToStorage('aero_erp_competitors', competitors); }, [competitors]);
+  useEffect(() => { saveToStorage('aero_erp_messages', messages); }, [messages]);
 
   // Theme Side Effect
   useEffect(() => {
@@ -259,21 +287,6 @@ const App: React.FC = () => {
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
   }, []);
-
-  // --- NOTIFICATION SYSTEM ---
-  const addNotification = (type: Notification['type'], title: string, message: string) => {
-      const newNotif: Notification = {
-          id: Date.now().toString(),
-          type,
-          title,
-          message
-      };
-      setNotifications(prev => [newNotif, ...prev]);
-  };
-
-  const removeNotification = (id: string) => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-  };
 
   // --- DYNAMIC BADGE CALCULATION ---
   const sidebarBadges = useMemo(() => {

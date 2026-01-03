@@ -1,9 +1,10 @@
-import React, { useState, useRef } from 'react';
+
+import React, { useState, useRef, useEffect } from 'react';
 import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle
 } from 'lucide-react';
 
 interface SettingsModuleProps {
@@ -62,6 +63,27 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [importMessage, setImportMessage] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Storage Stats
+  const [storageUsage, setStorageUsage] = useState({ usedKB: 0, percent: 0 });
+
+  useEffect(() => {
+      calculateStorage();
+  }, [currentData]);
+
+  const calculateStorage = () => {
+      let total = 0;
+      for (const x in localStorage) {
+          if (Object.prototype.hasOwnProperty.call(localStorage, x)) {
+              total += ((localStorage[x].length + x.length) * 2);
+          }
+      }
+      // Approx 5MB limit usually (5 * 1024 * 1024 bytes)
+      const maxBytes = 5 * 1024 * 1024;
+      const usedKB = total / 1024;
+      const percent = Math.min((total / maxBytes) * 100, 100);
+      setStorageUsage({ usedKB, percent });
+  };
 
   const handleExport = () => {
     const dataStr = JSON.stringify(currentData, null, 2);
@@ -73,6 +95,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    if(onNotify) onNotify('success', '备份已下载', '请妥善保管此 JSON 文件，这是您数据的唯一永久存档。');
   };
 
   const processFile = (file: File) => {
@@ -328,9 +351,41 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
       {/* 2. Data Management Section */}
       <section className="space-y-4">
-          <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-              <Database size={16} /> 数据与备份 (Data & Backup)
-          </h2>
+          <div className="flex justify-between items-center">
+              <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                  <Database size={16} /> 数据与备份 (Data & Backup)
+              </h2>
+              {/* Storage Usage Meter */}
+              <div className="flex items-center gap-3 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5">
+                  <HardDrive size={14} className={storageUsage.percent > 90 ? 'text-neon-pink' : 'text-gray-400'} />
+                  <div className="flex flex-col items-end">
+                      <span className="text-[10px] text-gray-400 uppercase font-bold">本地存储 (Local Storage)</span>
+                      <div className="flex items-center gap-2">
+                          <div className="w-20 h-1.5 bg-black rounded-full overflow-hidden">
+                              <div 
+                                  className={`h-full rounded-full transition-all duration-500 ${storageUsage.percent > 90 ? 'bg-neon-pink' : storageUsage.percent > 70 ? 'bg-neon-yellow' : 'bg-neon-green'}`} 
+                                  style={{ width: `${storageUsage.percent}%` }}
+                              ></div>
+                          </div>
+                          <span className={`text-[10px] font-mono ${storageUsage.percent > 90 ? 'text-neon-pink' : 'text-white'}`}>
+                              {storageUsage.usedKB.toFixed(0)}KB / 5MB
+                          </span>
+                      </div>
+                  </div>
+              </div>
+          </div>
+
+          <div className="bg-neon-blue/10 border border-neon-blue/20 p-4 rounded-xl flex items-start gap-3">
+              <AlertCircle size={20} className="text-neon-blue shrink-0 mt-0.5" />
+              <div>
+                  <h4 className="text-sm font-bold text-white mb-1">重要提示：数据存储在本地浏览器中</h4>
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                      本系统采用 Local Storage 技术，数据不会上传到云端服务器。
+                      <br/>如果您清理浏览器缓存或更换电脑，数据将会丢失。
+                      <strong className="text-neon-blue"> 请务必定期点击下方的“本地备份导出”按钮，将数据保存到您的电脑硬盘中。</strong>
+                  </p>
+              </div>
+          </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Export Card */}
@@ -339,16 +394,16 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       <Download size={32} className="text-neon-blue" />
                   </div>
                   <div>
-                      <h2 className="text-lg font-bold text-white mb-1">本地备份导出</h2>
+                      <h2 className="text-lg font-bold text-white mb-1">本地备份导出 (Export)</h2>
                       <p className="text-xs text-gray-400 px-6">
-                          将当前所有产品、库存及财务配置导出为 JSON 文件。
+                          生成全量数据 JSON 文件。建议每周备份一次。
                       </p>
                   </div>
                   <button 
                     onClick={handleExport}
-                    className="mt-2 px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white font-bold text-xs transition-all flex items-center gap-2"
+                    className="mt-2 px-6 py-2 bg-gradient-neon-blue text-black font-bold rounded-lg text-xs transition-all flex items-center gap-2 shadow-glow-blue hover:scale-105"
                   >
-                      <FileJson size={14} /> 立即导出
+                      <FileJson size={14} /> 立即备份
                   </button>
               </div>
 
@@ -390,9 +445,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       </div>
                       
                       <div>
-                          <h2 className="text-lg font-bold text-white mb-1">数据恢复导入</h2>
+                          <h2 className="text-lg font-bold text-white mb-1">数据恢复导入 (Restore)</h2>
                           <p className="text-xs text-gray-400 px-6">
-                              {importStatus === 'success' ? <span className="text-neon-green">{importMessage}</span> : '支持 AERO 原生 JSON 或 Excel 导出的通用 JSON 数据。'}
+                              {importStatus === 'success' ? <span className="text-neon-green">{importMessage}</span> : '点击或拖拽备份 JSON 文件恢复数据。'}
                           </p>
                       </div>
                   </div>
@@ -402,10 +457,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
            {/* System Status Footer inside Settings */}
           <div className="flex justify-center items-center gap-8 pt-4 opacity-50">
               <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <HardDrive size={12} /> 本地存储: <span className="text-gray-300">{(JSON.stringify(currentData).length / 1024).toFixed(2)} KB</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <Server size={12} /> 服务器状态: <span className="text-gray-600">离线 (Local)</span>
+                  <Server size={12} /> 服务器状态: <span className="text-gray-600">离线 (Client-Side Only)</span>
               </div>
           </div>
       </section>
@@ -424,7 +476,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                   <div>
                       <h3 className="text-white font-bold">AERO.OS Enterprise</h3>
-                      <p className="text-xs text-gray-500">Version 7.2.0 (Stable) • 离线就绪</p>
+                      <p className="text-xs text-gray-500">Version 7.3.0 (Storage Guard) • 离线就绪</p>
                   </div>
               </div>
               <div className="flex gap-3">

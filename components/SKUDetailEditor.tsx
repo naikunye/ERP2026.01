@@ -84,8 +84,8 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       // 2. Else if a manual total was saved, use it.
       // 3. Else fallback to Cartons * ItemsPerBox.
       
-      const savedMap = product.variantRestockMap || {};
-      const variantSum = Object.values(savedMap).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+      const savedMap: Record<string, number> = product.variantRestockMap || {};
+      const variantSum: number = Object.values(savedMap).reduce((a: number, b: number) => a + (Number(b) || 0), 0);
       const hasVariants = product.variants && product.variants.length > 0; // Robust check
       
       let initialTotal = 0;
