@@ -85,19 +85,20 @@ const App: React.FC = () => {
 
           if (connected) {
               try {
-                  const [p, s, t, i, k, c, m, l] = await Promise.all([
-                      pb.collection('products').getFullList({ sort: '-created' }),
-                      pb.collection('shipments').getFullList({ sort: '-created' }),
-                      pb.collection('transactions').getFullList({ sort: '-date' }),
-                      pb.collection('influencers').getFullList({ sort: '-created' }),
-                      pb.collection('tasks').getFullList({ sort: '-created' }),
-                      pb.collection('competitors').getFullList({ sort: '-created' }),
-                      pb.collection('messages').getFullList({ sort: '-created' }),
-                      pb.collection('inventory_logs').getFullList({ sort: '-created', page: 1, perPage: 100 }),
+                  // Only fetch if connection is healthy
+                  const [p, s, t, i, k, c, m] = await Promise.all([
+                      pb.collection('products').getFullList({ sort: '-created' }).catch(() => []),
+                      pb.collection('shipments').getFullList({ sort: '-created' }).catch(() => []),
+                      pb.collection('transactions').getFullList({ sort: '-date' }).catch(() => []),
+                      pb.collection('influencers').getFullList({ sort: '-created' }).catch(() => []),
+                      pb.collection('tasks').getFullList({ sort: '-created' }).catch(() => []),
+                      pb.collection('competitors').getFullList({ sort: '-created' }).catch(() => []),
+                      pb.collection('messages').getFullList({ sort: '-created' }).catch(() => []),
                   ]);
 
-                  // Only overwrite local state if cloud has data (prevent wiping local work with empty cloud)
-                  if (p.length > 0) {
+                  // Strategy: If cloud is empty but local has data, DO NOT OVERWRITE local with empty cloud data.
+                  // Only overwrite local state if cloud actually has data.
+                  if (p.length > 0 || s.length > 0) {
                       setProducts(p.map(item => ({ ...item, id: item.id } as unknown as Product)));
                       setShipments(s.map(item => ({ ...item, id: item.id } as unknown as Shipment)));
                       setTransactions(t.map(item => ({ ...item, id: item.id } as unknown as Transaction)));
@@ -105,12 +106,15 @@ const App: React.FC = () => {
                       setTasks(k.map(item => ({ ...item, id: item.id } as unknown as Task)));
                       setCompetitors(c.map(item => ({ ...item, id: item.id } as unknown as Competitor)));
                       setMessages(m.map(item => ({ ...item, id: item.id } as unknown as CustomerMessage)));
-                      setInventoryLogs(l.map(item => ({ ...item, id: item.id } as unknown as InventoryLog)));
                       
                       addNotification('success', '云端数据已同步', '界面已更新为服务器最新状态');
+                  } else {
+                      // If cloud is empty, warn user they might need to push
+                      addNotification('info', '已连接新服务器', '服务器数据为空。请在设置中点击“上传本地数据”以初始化云端。');
                   }
               } catch (error) {
                   console.error("Cloud Sync Error", error);
+                  addNotification('warning', '数据拉取部分失败', '请检查 PocketBase 集合权限');
               }
           }
       };
@@ -132,7 +136,7 @@ const App: React.FC = () => {
   const saveToCloud = async (collection: string, data: any, id?: string) => {
       if (!isCloudOnline) return { id: data.id || Date.now().toString() };
       try {
-          if (id && !id.startsWith('new_') && !id.startsWith('PROD-') && !id.startsWith('IMP-')) {
+          if (id && !id.startsWith('new_') && !id.startsWith('PROD-') && !id.startsWith('IMP-') && id.length > 10) {
               return await pb.collection(collection).update(id, data);
           } else {
               const { id: _, ...payload } = data; // Drop local ID for cloud creation
@@ -140,6 +144,7 @@ const App: React.FC = () => {
           }
       } catch (err: any) {
           // console.error("Cloud Save Failed:", err);
+          return null;
       }
   };
 
@@ -150,6 +155,55 @@ const App: React.FC = () => {
       } catch (err: any) {
           console.error("Cloud Delete Failed", err);
       }
+  };
+
+  // --- MANUAL SYNC (Push Local to Cloud) ---
+  const handleSyncToCloud = async () => {
+    if (!isCloudOnline) {
+        addNotification('error', '无法同步', '请先连接服务器');
+        return;
+    }
+    
+    if(!confirm('⚠️ 警告：这将把当前电脑的所有本地数据上传到腾讯云服务器。\n\n如果是首次连接空服务器，请点击确定。\n如果服务器已有数据，可能会产生重复项。\n\n是否继续？')) return;
+
+    setIsLoading(true);
+    let successCount = 0;
+    
+    // Helper to upload a list and update IDs
+    const uploadBatch = async (collectionName: string, items: any[], setItems: React.Dispatch<React.SetStateAction<any[]>>) => {
+        const newItems = [...items];
+        for (let i = 0; i < newItems.length; i++) {
+            const item = newItems[i];
+            // Only upload if it looks like a local ID (e.g. timestamp based or imported)
+            // Or if we want to force push. Here we try to create new records for everything local.
+            try {
+                const { id, created, updated, ...payload } = item; // Strip system fields
+                const res = await pb.collection(collectionName).create(payload);
+                newItems[i] = { ...item, id: res.id }; // Update local state with real server ID
+                successCount++;
+            } catch (e) {
+                console.warn(`Failed item in ${collectionName}:`, e);
+            }
+        }
+        setItems(newItems);
+    };
+
+    try {
+        await uploadBatch('products', products, setProducts);
+        await uploadBatch('shipments', shipments, setShipments);
+        await uploadBatch('transactions', transactions, setTransactions);
+        await uploadBatch('influencers', influencers, setInfluencers);
+        await uploadBatch('tasks', tasks, setTasks);
+        
+        addNotification('success', '上传完成', `成功将 ${successCount} 条数据推送到云端。`);
+        // Force a re-save to local storage with the new IDs
+        saveLocal('products', products);
+    } catch (e) {
+        console.error(e);
+        addNotification('error', '同步中断', '部分数据上传失败，请检查网络或数据格式。');
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   // Product Handlers
@@ -207,6 +261,9 @@ const App: React.FC = () => {
   // Task Handlers
   const handleUpdateTasks = (newTasks: Task[]) => {
       setTasks(newTasks);
+      // For bulk updates like drag-drop, simple persistence is tricky without diffing. 
+      // Ideally update individual task. Here we just save local. 
+      // Real app should sync specific task change.
   };
 
   // PO & Logistics Logic
@@ -305,6 +362,8 @@ const App: React.FC = () => {
           try { localStorage.setItem('products', JSON.stringify(data)); } catch(e) {}
           
           if (isCloudOnline) {
+              // Note: This tries to save one by one, might be slow. 
+              // The new "Sync to Cloud" button is better for bulk.
               data.forEach(async p => {
                   try { await saveToCloud('products', p); } catch(e) {}
               });
@@ -346,7 +405,16 @@ const App: React.FC = () => {
       case 'finance': return <FinanceModule transactions={transactions} onAddTransaction={handleAddTransaction} />;
       case 'market_radar': return <MarketRadarModule competitors={competitors} onAddCompetitor={handleAddCompetitor} />;
       case 'inbox': return <GlobalInboxModule messages={messages} onReplyMessage={handleReplyMessage} />;
-      case 'settings': return <SettingsModule currentTheme={currentTheme} onThemeChange={setCurrentTheme} currentData={products} onImportData={handleImportData} onNotify={addNotification} onResetData={handleResetData} />;
+      case 'settings': 
+        return <SettingsModule 
+            currentTheme={currentTheme} 
+            onThemeChange={setCurrentTheme} 
+            currentData={products} 
+            onImportData={handleImportData} 
+            onNotify={addNotification} 
+            onResetData={handleResetData}
+            onSyncToCloud={handleSyncToCloud} // NEW PROP
+        />;
       default: return <Dashboard products={products} shipments={shipments} transactions={transactions} influencers={influencers} onChangeView={setActiveView} onNotify={addNotification} />;
     }
   };
@@ -354,8 +422,9 @@ const App: React.FC = () => {
   return (
     <div className={`flex h-screen w-full bg-[#050510] text-white font-sans selection:bg-neon-blue selection:text-black overflow-hidden theme-${currentTheme}`}>
         {isLoading && (
-            <div className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center gap-4">
-                <div className="w-10 h-10 border-4 border-neon-blue border-t-transparent rounded-full animate-spin"></div>
+            <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4 animate-fade-in">
+                <div className="w-12 h-12 border-4 border-neon-blue border-t-transparent rounded-full animate-spin"></div>
+                <div className="text-neon-blue font-bold text-lg animate-pulse">正在上传数据到云端...</div>
             </div>
         )}
         

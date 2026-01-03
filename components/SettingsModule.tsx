@@ -4,7 +4,7 @@ import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle
 } from 'lucide-react';
 import { pb, updateServerUrl, isCloudConnected } from '../services/pocketbase';
 
@@ -14,7 +14,8 @@ interface SettingsModuleProps {
   currentData: Product[];
   onImportData: (data: Product[]) => void;
   onNotify?: (type: any, title: string, message: string) => void;
-  onResetData?: () => void; // New Prop
+  onResetData?: () => void;
+  onSyncToCloud?: () => void; // New prop for manual push
 }
 
 // ------------------------------------------------------------------
@@ -58,7 +59,7 @@ const findValueGreedy = (obj: any, aliases: string[], exclude: string[] = []): a
 };
 
 const SettingsModule: React.FC<SettingsModuleProps> = ({ 
-  currentTheme, onThemeChange, currentData, onImportData, onNotify, onResetData
+  currentTheme, onThemeChange, currentData, onImportData, onNotify, onResetData, onSyncToCloud
 }) => {
   const [importStatus, setImportStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [importMessage, setImportMessage] = useState('');
@@ -154,8 +155,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 ['销售', 'selling', 'retail', 'market', '物流', '运费', 'shipping', '费率', 'rate']
             ));
 
-            // FIX: Prioritize reading financials.sellingPrice specifically for TikTok Price
-            // This prevents the system from guessing "price" from other fields or defaulting to 99.99
             const price = parseCleanNum(
                 raw.financials?.sellingPrice || 
                 raw.price || 
@@ -201,7 +200,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 sku: String(sku),
                 name: String(name),
                 description: raw.description || '',
-                // FIX: Removed fallback to 99.99. Defaults to 0 or estimated from cost if 0.
                 price: price || (unitCost > 0 ? unitCost * 3 : 0),
                 stock,
                 currency: raw.currency || Currency.USD,
@@ -243,7 +241,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                     costOfGoods: unitCost,
                     shippingCost: shippingCost,
                     otherCost: parseCleanNum(raw.financials?.otherCost || findValueGreedy(raw, ['otherCost', '杂费'])),
-                    sellingPrice: price, // Matches the prioritized extraction above
+                    sellingPrice: price, 
                     platformFee: parseCleanNum(raw.financials?.platformFee || 0),
                     adCost: parseCleanNum(raw.financials?.adCost || findValueGreedy(raw, ['adCost', '广告'])),
                 },
@@ -300,14 +298,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   const handleConnectServer = async () => {
       setConnectionStatus('checking');
       try {
-          // Temporarily set baseUrl to check
           const originalUrl = pb.baseUrl;
           pb.baseUrl = serverUrlInput;
           const health = await pb.health.check({ requestKey: null });
           
           if (health.code === 200) {
               setConnectionStatus('success');
-              // Save and update
               updateServerUrl(serverUrlInput);
               if (onNotify) onNotify('success', '连接成功', '已切换至腾讯云服务器，页面即将刷新...');
               setTimeout(() => {
@@ -485,6 +481,27 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       <FileJson size={14} /> 立即备份
                   </button>
               </div>
+
+              {/* Push to Cloud Card (NEW) */}
+              {onSyncToCloud && currentOnlineStatus && (
+                  <div className="glass-card p-8 flex flex-col items-center justify-center text-center space-y-4 group hover:border-neon-green/30 transition-all border-neon-green/10 bg-neon-green/5">
+                      <div className="w-16 h-16 rounded-full bg-neon-green/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                          <ArrowUpCircle size={32} className="text-neon-green" />
+                      </div>
+                      <div>
+                          <h2 className="text-lg font-bold text-white mb-1">全量推送到云端 (Push)</h2>
+                          <p className="text-xs text-gray-400 px-6">
+                              将所有本地数据上传到腾讯云。请在首次连接空服务器时使用。
+                          </p>
+                      </div>
+                      <button 
+                        onClick={onSyncToCloud}
+                        className="mt-2 px-6 py-2 bg-neon-green text-black font-bold rounded-lg text-xs transition-all flex items-center gap-2 shadow-glow-green hover:scale-105"
+                      >
+                          <Upload size={14} /> 开始上传
+                      </button>
+                  </div>
+              )}
 
               {/* Import Card */}
               <div className="glass-card p-8 flex flex-col items-center justify-center text-center space-y-4 group hover:border-neon-purple/30 transition-all relative overflow-hidden">
