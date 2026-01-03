@@ -7,6 +7,7 @@ import {
   Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key, ExternalLink
 } from 'lucide-react';
 import { pb, updateServerUrl, isCloudConnected } from '../services/pocketbase';
+import PocketBase from 'pocketbase';
 
 interface SettingsModuleProps {
   currentTheme: Theme;
@@ -448,90 +449,87 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       }
   };
 
-  const authenticateAdmin = async () => {
-      // Strategy 1: Try new SDK method (v0.23+ Servers)
-      try {
-          console.log("Auth Strategy 1: _superusers collection");
-          await pb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
-          return true;
-      } catch (e: any) {
-          console.warn("Strategy 1 Failed:", e.message);
-          
-          // If the error is simply invalid login, stop here.
-          if (e.status === 400) throw e;
-          
-          // Strategy 2: Legacy SDK Method (for very old codebases, unlikely with v0.26 but good to check)
-          if ((pb as any).admins && typeof (pb as any).admins.authWithPassword === 'function') {
-              try {
-                  console.log("Auth Strategy 2: Legacy pb.admins");
-                  await (pb as any).admins.authWithPassword(adminEmail, adminPassword);
-                  return true;
-              } catch (legacyErr) {
-                  console.warn("Strategy 2 Failed:", legacyErr);
-              }
-          }
-
-          // Strategy 3: Manual Fetch fallback (For Old Servers v0.22- accessed by New SDK)
-          // New SDK doesn't expose admins service, but old server requires it.
-          try {
-              console.log("Auth Strategy 3: Manual Fetch to /api/admins/auth-with-password");
-              const resp = await fetch(`${serverUrlInput}/api/admins/auth-with-password`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ identity: adminEmail, password: adminPassword })
-              });
-              
-              if (!resp.ok) {
-                  const errData = await resp.json();
-                  throw new Error(errData.message || "Admin API auth failed");
-              }
-              
-              const data = await resp.json();
-              // Manually inject token into SDK
-              pb.authStore.save(data.token, data.admin);
-              return true;
-          } catch (manualErr: any) {
-              console.warn("Strategy 3 Failed:", manualErr);
-              // If strategy 3 fails, we throw the original error from Strategy 1 if it was a 400 (Bad Request/Wrong Password)
-              // or throw the manual error.
-              throw manualErr;
-          }
-      }
-  };
-
   const handleInitSchema = async () => {
       if (!adminEmail || !adminPassword) {
           if (onNotify) onNotify('error', 'Auth Error', '请输入 Admin Email 和 Password');
           return;
       }
-      if (!currentOnlineStatus) {
-          if (onNotify) onNotify('error', 'Connection Error', '请先连接到 PocketBase 服务器');
+      
+      // Safety check: Ensure we aren't sending passwords to an empty string
+      if (!serverUrlInput) {
+          if (onNotify) onNotify('error', 'Config Error', 'Server URL is missing.');
           return;
       }
 
       setIsInitializing(true);
-      setInitStatusMsg("Authenticating Admin...");
+      setInitStatusMsg("Connecting...");
       
       try {
-          // 1. Universal Auth
-          await authenticateAdmin();
+          // --- IMPORTANT FIX: CREATE LOCAL INSTANCE ---
+          // Using the global `pb` instance can be flaky if the user changed the input
+          // but didn't click "Connect". We force a new instance with the EXACT input URL.
+          const tempPb = new PocketBase(serverUrlInput);
+          tempPb.autoCancellation(false);
+
+          // 1. Authenticate (Strategy Pattern)
+          setInitStatusMsg("Authenticating...");
           
-          setInitStatusMsg("Creating Schemas...");
+          let authSuccess = false;
+          let authErrorMsg = '';
+
+          // Strategy A: New SDK / New Server (v0.23+)
+          try {
+              console.log("Auth Strategy A: _superusers");
+              await tempPb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
+              authSuccess = true;
+          } catch (errA: any) {
+              console.warn("Strategy A failed:", errA.message);
+              authErrorMsg = errA.message;
+              
+              // Strategy B: Legacy SDK / Old Server
+              try {
+                  console.log("Auth Strategy B: admins");
+                  if ((tempPb as any).admins) {
+                      await (tempPb as any).admins.authWithPassword(adminEmail, adminPassword);
+                      authSuccess = true;
+                  } else {
+                      throw new Error("SDK does not support legacy admins service");
+                  }
+              } catch (errB: any) {
+                  console.warn("Strategy B failed:", errB.message);
+                  authErrorMsg = errB.message || authErrorMsg;
+              }
+          }
+
+          if (!authSuccess) {
+              // Check specifically for Mixed Content / Network Error
+              if (authErrorMsg === 'Failed to fetch' || authErrorMsg.includes('Network')) {
+                  // Check protocol mismatch
+                  const isHttps = window.location.protocol === 'https:';
+                  const isHttpTarget = serverUrlInput.startsWith('http:');
+                  if (isHttps && isHttpTarget) {
+                      throw new Error("Mixed Content Error: 您的网站是 HTTPS，但服务器是 HTTP。浏览器禁止此类连接。请使用 localhost 或配置服务器 SSL。");
+                  }
+                  throw new Error(`无法连接到服务器 (${serverUrlInput})。请检查地址是否正确，或是否存在跨域(CORS)限制。`);
+              }
+              throw new Error(`认证失败: ${authErrorMsg || '密码错误或账号不存在'}`);
+          }
           
           // 2. Iterate and create collections
+          setInitStatusMsg("Creating Collections...");
           let createdCount = 0;
           for (const def of COLLECTIONS_SCHEMA) {
               try {
-                  // Check if exists (will throw 404 if not)
-                  await pb.collections.getOne(def.name);
+                  // Check if exists
+                  await tempPb.collections.getOne(def.name);
               } catch (e: any) {
                   if (e.status === 404) {
                       // Create it
-                      await pb.collections.create({
+                      await tempPb.collections.create({
                           name: def.name,
                           type: def.type,
                           schema: def.schema,
-                          // IMPORTANT: Set rules to null (Public) to allow the app to write without being logged in as admin later
+                          // Set rules to null (Public) for ease of demo use
                           listRule: null, 
                           viewRule: null,
                           createRule: null,
@@ -539,44 +537,46 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                           deleteRule: null
                       });
                       createdCount++;
-                  } else {
-                      // Permission error or other?
-                      console.warn(`Check collection ${def.name} failed:`, e);
                   }
               }
           }
 
-          // 3. Cleanup
-          pb.authStore.clear(); // Logout admin
+          // 3. Sync Successful Auth to Global State (Optional but helpful)
+          if (tempPb.authStore.isValid) {
+              updateServerUrl(serverUrlInput); // Ensure global URL matches
+              pb.authStore.save(tempPb.authStore.token, tempPb.authStore.model);
+          }
+
+          // 4. Cleanup
+          tempPb.authStore.clear(); 
           
           if (onNotify) {
               if (createdCount > 0) {
-                  onNotify('success', '初始化成功', `成功创建 ${createdCount} 个数据集合 (Collections)。现在可以尝试推送到云端了。`);
+                  onNotify('success', '初始化成功', `成功创建 ${createdCount} 个数据集合。现已准备就绪。`);
               } else {
                   onNotify('info', '无需操作', '所有数据集合已存在。');
               }
           }
 
       } catch (e: any) {
-          console.error("Init Error Full:", e);
+          console.error("Init Critical Failure:", e);
           let msg = e.message || '未知错误';
           
-          // Drill down into PocketBase detailed errors (data field)
+          // Drill down into PocketBase detailed errors
           if (e.response?.data) {
               const details = e.response.data;
-              if (details.message) {
-                  msg = details.message; // e.g. "Failed to authenticate"
-              }
+              if (details.message) msg = details.message;
               if (details.data) {
-                  // Format field-specific errors
                   const fieldErrors = Object.entries(details.data)
                       .map(([k, v]: any) => `${k}: ${v.message}`)
                       .join(', ');
                   if (fieldErrors) msg += ` (${fieldErrors})`;
               }
+          } else if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
+              msg = "网络请求被拦截 (Failed to fetch)。可能是 HTTPS/HTTP 混合内容问题，或服务器未启动。";
           }
 
-          if (onNotify) onNotify('error', '初始化失败 (Init Failed)', msg);
+          if (onNotify) onNotify('error', '初始化失败', msg);
       } finally {
           setIsInitializing(false);
           setInitStatusMsg("");
