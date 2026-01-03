@@ -4,7 +4,7 @@ import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key, ExternalLink, XCircle, Terminal
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key, ExternalLink, XCircle, Terminal, Info
 } from 'lucide-react';
 import { pb, updateServerUrl, isCloudConnected } from '../services/pocketbase';
 import PocketBase from 'pocketbase';
@@ -465,92 +465,83 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       }
 
       setIsInitializing(true);
-      setInitStatusMsg("Diagnosing Server...");
+      setInitStatusMsg("Running Diagnostics...");
       
+      const debugLogs: string[] = [];
+      const targetUrl = serverUrlInput.replace(/\/$/, '').trim();
+      let authSuccess = false;
+      let authToken = "";
+      let adminModel = null;
+
       try {
-          const targetUrl = serverUrlInput.replace(/\/$/, '').trim();
-          
-          let authSuccess = false;
-          let authToken = "";
-          let adminModel = null;
-          
-          const debugLogs: string[] = [];
-
-          // Helper for safe error parsing
-          const parseError = async (resp: Response) => {
-              try {
-                  const json = await resp.json();
-                  return json.message || JSON.stringify(json);
-              } catch {
-                  return await resp.text() || resp.statusText;
-              }
-          };
-
-          // ---------------------------------------------------------
-          // STRATEGY 1: Modern PocketBase (v0.23+) - _superusers
-          // ---------------------------------------------------------
-          setInitStatusMsg("Trying Method 1 (Superusers)...");
+          // 1. Health Check
+          debugLogs.push(`[1] Health Check: ${targetUrl}/api/health`);
           try {
-              const url = `${targetUrl}/api/collections/_superusers/auth-with-password`;
-              debugLogs.push(`Attempting: POST ${url}`);
-              
-              const resp = await fetch(url, {
+              const health = await fetch(`${targetUrl}/api/health`);
+              debugLogs.push(`>> Status: ${health.status} ${health.statusText}`);
+          } catch (e: any) {
+              debugLogs.push(`>> Network Failed: ${e.message}`);
+              debugLogs.push(`>> Hint: Check if server is running and accessible from browser.`);
+          }
+
+          // 2. Auth Attempt: Legacy (admins)
+          debugLogs.push(`\n[2] Attempt Legacy Auth: ${targetUrl}/api/admins/auth-with-password`);
+          try {
+              const resp = await fetch(`${targetUrl}/api/admins/auth-with-password`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ identity: adminEmail, password: adminPassword })
               });
-
+              
               if (resp.ok) {
-                  const data = await resp.json();
-                  authToken = data.token;
-                  adminModel = data.record;
-                  authSuccess = true;
-                  debugLogs.push(`>> Success (Superuser)`);
+                 const data = await resp.json();
+                 authToken = data.token;
+                 adminModel = data.admin;
+                 authSuccess = true;
+                 debugLogs.push(`>> SUCCESS! Token received.`);
               } else {
-                  const err = await parseError(resp);
-                  debugLogs.push(`>> Failed (HTTP ${resp.status}): ${err}`);
+                 const text = await resp.text();
+                 debugLogs.push(`>> Failed: HTTP ${resp.status}`);
+                 debugLogs.push(`>> Response: ${text.substring(0, 200)}...`);
               }
           } catch (e: any) {
-              debugLogs.push(`>> Network Error: ${e.message}`);
+              debugLogs.push(`>> Error: ${e.message}`);
           }
 
-          // ---------------------------------------------------------
-          // STRATEGY 2: Legacy PocketBase (v0.22-) - admins
-          // ---------------------------------------------------------
+          // 3. Auth Attempt: Modern (_superusers)
           if (!authSuccess) {
-              setInitStatusMsg("Trying Method 2 (Legacy Admins)...");
+              debugLogs.push(`\n[3] Attempt Superuser Auth: ${targetUrl}/api/collections/_superusers/auth-with-password`);
               try {
-                  const url = `${targetUrl}/api/admins/auth-with-password`;
-                  debugLogs.push(`Attempting: POST ${url}`);
-                  
-                  const resp = await fetch(url, {
+                  const resp = await fetch(`${targetUrl}/api/collections/_superusers/auth-with-password`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ identity: adminEmail, password: adminPassword })
                   });
 
                   if (resp.ok) {
-                      const data = await resp.json();
-                      authToken = data.token;
-                      adminModel = data.admin;
-                      authSuccess = true;
-                      debugLogs.push(`>> Success (Legacy)`);
+                     const data = await resp.json();
+                     authToken = data.token;
+                     adminModel = data.record;
+                     authSuccess = true;
+                     debugLogs.push(`>> SUCCESS! Token received.`);
                   } else {
-                      const err = await parseError(resp);
-                      debugLogs.push(`>> Failed (HTTP ${resp.status}): ${err}`);
+                     const text = await resp.text();
+                     debugLogs.push(`>> Failed: HTTP ${resp.status}`);
+                     debugLogs.push(`>> Response: ${text.substring(0, 200)}...`);
                   }
               } catch (e: any) {
-                  debugLogs.push(`>> Network Error: ${e.message}`);
+                  debugLogs.push(`>> Error: ${e.message}`);
               }
           }
 
           if (!authSuccess) {
-              // Construct a readable error report
-              throw new Error("所有登录方式均失败 (All Auth Methods Failed):\n\n" + debugLogs.join("\n"));
+              const fullLog = debugLogs.join('\n');
+              setDetailedError(fullLog); // Show full log in UI
+              throw new Error("所有认证尝试均失败 (Check detailed logs below)");
           }
 
           // ... Proceed to Schema Creation using authToken ...
-          setInitStatusMsg("Auth OK! Initializing Schema...");
+          setInitStatusMsg("Auth OK! Creating Schema...");
           const tempPb = new PocketBase(targetUrl);
           tempPb.authStore.save(authToken, adminModel);
           tempPb.autoCancellation(false);
@@ -583,7 +574,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
       } catch (e: any) {
           console.error("Init Error:", e);
-          setDetailedError(e.message || String(e));
+          // If we haven't set detailed error yet (e.g. schema creation failed), set it now
+          if (!detailedError && debugLogs.length > 0) {
+             setDetailedError(debugLogs.join('\n') + `\n\nSchema Error: ${e.message}`);
+          } else if (!detailedError) {
+             setDetailedError(e.message);
+          }
       } finally {
           setIsInitializing(false);
           setInitStatusMsg("");
@@ -855,13 +851,19 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   <div className="flex gap-3">
                       <Terminal className="text-red-500 shrink-0 mt-1" size={20}/>
                       <div className="overflow-hidden w-full">
-                          <h4 className="text-sm font-bold text-white mb-1">初始化遇到错误 (Error Details)</h4>
+                          <h4 className="text-sm font-bold text-white mb-1">初始化遇到错误 (Error Diagnostic Report)</h4>
                           <pre className="text-[10px] text-red-200 font-mono bg-black/40 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
                               {detailedError}
                           </pre>
-                          <p className="text-xs text-gray-400 mt-2">
-                              请将上述错误信息发送给技术支持，或检查服务器 Network 控制台。
-                          </p>
+                          <div className="flex gap-2 mt-2">
+                              <Info size={12} className="text-gray-400 mt-0.5"/>
+                              <p className="text-xs text-gray-400">
+                                  <b>常见错误代码:</b> <br/>
+                                  <span className="text-neon-yellow">404</span> = 路径错误 (请检查 URL) <br/>
+                                  <span className="text-neon-yellow">400</span> = 密码错误或参数无效 <br/>
+                                  <span className="text-neon-yellow">Failed to fetch</span> = 混合内容/CORS/服务器离线
+                              </p>
+                          </div>
                       </div>
                   </div>
               </div>
