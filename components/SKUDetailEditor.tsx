@@ -7,6 +7,7 @@ import {
   Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText, CheckCircle2, Clock,
   RefreshCcw, ArrowRightLeft, LayoutGrid, ChevronDown, ChevronUp, Edit3, Plus
 } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import ImageUpload from './ImageUpload';
 
 interface SKUDetailEditorProps {
@@ -17,7 +18,6 @@ interface SKUDetailEditorProps {
   onChangeView?: (view: string) => void; 
 }
 
-// ... (Interface SKUFormData remains same) ...
 interface SKUFormData {
   name: string;
   variants: ProductVariant[];
@@ -57,11 +57,13 @@ interface SKUFormData {
   lastMileShipping: number; 
   adCostPerUnit: number; 
   exchangeRate: number; 
+  otherCost: number; // Added flattened field
 }
 
 const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete, onChangeView }) => {
-  const [showVariants, setShowVariants] = useState(true);
-
+  const [activeTab, setActiveTab] = useState<'basics' | 'financials'>('basics'); // Simplified tabs logic for internal view if needed, but we used layout
+  
+  // Initialize state flattened
   const [formData, setFormData] = useState<SKUFormData>(() => {
       const savedMap: Record<string, number> = product.variantRestockMap || {};
       const variantSum: number = Object.values(savedMap).reduce((a: number, b: number) => a + (Number(b) || 0), 0);
@@ -87,7 +89,18 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         restockDate: product.restockDate || new Date().toISOString().split('T')[0],
         supplierName: product.supplier || '未指定供应商',
         supplierContact: '', 
+        
+        // FINANCIALS - Flattened
         unitCost: product.financials?.costOfGoods || 0,
+        otherCost: product.financials?.otherCost || 0,
+        sellingPrice: product.financials?.sellingPrice || product.price,
+        platformCommission: product.platformCommission ?? product.financials?.platformFee ?? 15, // Default 15% if missing
+        influencerCommission: product.influencerCommission ?? 10,
+        orderFixedFee: product.orderFixedFee ?? 0.3,
+        returnRate: product.returnRate ?? 5,
+        lastMileShipping: product.lastMileShipping ?? 5,
+        adCostPerUnit: product.financials?.adCost || 0,
+        
         unitWeight: product.unitWeight || 0.5,
         dailySales: product.dailySales || 0,
         boxLength: product.boxLength || 50,
@@ -97,7 +110,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         itemsPerBox: product.itemsPerBox || 24,
         restockCartons: product.restockCartons || 10,
         
-        totalRestockUnits: initialTotal || 240, // SAFE DEFAULT to avoid /0
+        totalRestockUnits: initialTotal || 240, 
         variantRestockMap: savedMap,
         
         inboundId: product.inboundId || `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
@@ -105,43 +118,39 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         transportMethod: product.logistics?.method || 'Sea',
         carrier: product.logistics?.carrier || '',
         trackingNo: product.logistics?.trackingNo || '',
-        shippingRate: product.logistics?.shippingRate || 12, 
+        shippingRate: product.logistics?.shippingRate || 0, // Default to 0, NOT 12
         manualChargeableWeight: product.logistics?.manualChargeableWeight || 0, 
         destinationWarehouse: product.logistics?.destination || '',
         
-        sellingPrice: product.financials?.sellingPrice || product.price,
-        platformCommission: product.platformCommission ?? 2,
-        influencerCommission: product.influencerCommission ?? 15,
-        orderFixedFee: product.orderFixedFee ?? 0.3,
-        returnRate: product.returnRate ?? 3,
-        lastMileShipping: product.lastMileShipping ?? 0,
-        adCostPerUnit: product.financials?.adCost || 2,
-
         exchangeRate: (product as any).exchangeRate || 7.2
       };
   });
 
+  // Unified Metrics Calculation
   const metrics = useMemo(() => {
     const rate = formData.exchangeRate || 7.2;
-    const totalRestockUnits = formData.totalRestockUnits > 0 ? formData.totalRestockUnits : 1; // Prevent /0
+    const totalRestockUnits = formData.totalRestockUnits > 0 ? formData.totalRestockUnits : 1;
     
+    // Inventory
     const currentAvailableDays = Math.floor(product.stock / (formData.dailySales || 1));
     
+    // Logistics
     const singleBoxVol = (formData.boxLength * formData.boxWidth * formData.boxHeight) / 6000; 
     const totalVolWeight = singleBoxVol * formData.restockCartons;
     const totalRealWeight = formData.boxWeight * formData.restockCartons;
-    
     const autoChargeableWeight = Math.max(totalVolWeight, totalRealWeight);
     const chargeableWeight = formData.manualChargeableWeight > 0 ? formData.manualChargeableWeight : autoChargeableWeight;
     
+    // Costs Calculation
     const totalShippingCostRMB = chargeableWeight * formData.shippingRate;
     const unitShippingCostRMB = totalShippingCostRMB / totalRestockUnits;
-    
     const unitShippingCostUSD = unitShippingCostRMB / rate;
+    
     const unitCostUSD = formData.unitCost / rate;
-
     const revenue = formData.sellingPrice;
     
+    // Fees (Platform % is usually on revenue)
+    // NOTE: platformCommission is stored as %, e.g. 15
     const platformFee = revenue * (formData.platformCommission / 100);
     const influencerFee = revenue * (formData.influencerCommission / 100);
     const estimatedReturnCost = revenue * (formData.returnRate / 100);
@@ -154,89 +163,83 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         formData.orderFixedFee + 
         formData.lastMileShipping + 
         estimatedReturnCost + 
-        formData.adCostPerUnit;
+        formData.adCostPerUnit + 
+        formData.otherCost;
 
     const unitProfit = revenue - totalUnitCostUSD;
     const netMargin = revenue > 0 ? (unitProfit / revenue) * 100 : 0;
     const totalStockProfit = unitProfit * product.stock;
 
     return {
-      totalRestockUnits,
-      currentAvailableDays,
-      chargeableWeight,
       autoChargeableWeight,
       totalShippingCostRMB,
-      unitShippingCostRMB,
-      unitShippingCostUSD,
+      unitShippingCostUSD, // The calculated truth
       unitCostUSD,
       totalUnitCostUSD,
       unitProfit,
       netMargin,
       totalStockProfit,
-      cbm: (formData.boxLength * formData.boxWidth * formData.boxHeight * formData.restockCartons) / 1000000,
-      rate,
       breakdown: { platformFee, influencerFee, estimatedReturnCost }
     };
   }, [formData, product.stock]);
 
-  // ... (Rest of component remains largely identical, only updated calculation above) ...
-  // Re-implementing necessary event handlers to ensure valid file content output
-  
+  // Handler for all inputs
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     const numVal = e.target.type === 'number' ? parseFloat(value) || 0 : value;
 
     setFormData(prev => {
         const updates: any = { [name]: numVal };
+        // Auto-calc total units if no variants
         const hasVariants = (prev.variants?.length || 0) > 0;
         if (!hasVariants) {
-            if (name === 'restockCartons') {
-                updates.totalRestockUnits = (numVal as number) * prev.itemsPerBox;
-            }
-            if (name === 'itemsPerBox') {
-                updates.totalRestockUnits = prev.restockCartons * (numVal as number);
-            }
+            if (name === 'restockCartons') updates.totalRestockUnits = (numVal as number) * prev.itemsPerBox;
+            if (name === 'itemsPerBox') updates.totalRestockUnits = prev.restockCartons * (numVal as number);
         }
         return { ...prev, ...updates };
     });
   };
 
-  const handleVariantQtyChange = (variantId: string, qty: number) => {
-      setFormData(prev => {
-          const newMap = { ...prev.variantRestockMap, [variantId]: qty };
-          const newTotal = Object.values(newMap).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-          return { ...prev, variantRestockMap: newMap, totalRestockUnits: newTotal };
-      });
-  };
-
-  const handleVariantNameChange = (variantId: string, newName: string) => {
-      setFormData(prev => ({ ...prev, variants: prev.variants.map(v => v.id === variantId ? { ...v, name: newName } : v) }));
-  };
-
-  const handleAddNewVariant = () => {
-      setFormData(prev => ({
-          ...prev,
-          variants: [...prev.variants, { id: `var-${Date.now()}`, name: `New Var ${prev.variants.length + 1}`, sku: `${product.sku}-${prev.variants.length + 1}`, price: 0, stock: 0, attributes: {} }]
-      }));
-      setShowVariants(true);
-  };
-
-  const handleRemoveVariant = (id: string) => {
-      setFormData(prev => {
-          const newVars = prev.variants.filter(v => v.id !== id);
-          const newMap = { ...prev.variantRestockMap };
-          delete newMap[id];
-          return { ...prev, variants: newVars, variantRestockMap: newMap };
-      });
-  };
-
   const handleSave = () => {
+      // Reconstruct nested objects for database
       onSave({
           ...formData,
-          unitShippingCost: metrics.unitShippingCostUSD,
-          exchangeRate: formData.exchangeRate 
+          // Explicitly save the Calculated shipping cost to financials to persist it
+          financials: {
+              costOfGoods: formData.unitCost,
+              shippingCost: parseFloat(metrics.unitShippingCostUSD.toFixed(2)),
+              otherCost: formData.otherCost,
+              sellingPrice: formData.sellingPrice,
+              platformFee: parseFloat(metrics.breakdown.platformFee.toFixed(2)), // Save absolute value
+              adCost: formData.adCostPerUnit
+          },
+          logistics: {
+              method: formData.transportMethod,
+              carrier: formData.carrier,
+              trackingNo: formData.trackingNo,
+              shippingRate: formData.shippingRate,
+              manualChargeableWeight: formData.manualChargeableWeight,
+              destination: formData.destinationWarehouse
+          },
+          // Keep these strictly typed fields at root
+          platformCommission: formData.platformCommission,
+          influencerCommission: formData.influencerCommission,
+          orderFixedFee: formData.orderFixedFee,
+          returnRate: formData.returnRate,
+          lastMileShipping: formData.lastMileShipping,
+          exchangeRate: formData.exchangeRate
       });
   };
+
+  // Charts Data
+  const chartData = [
+    { name: '货值', value: metrics.unitCostUSD, color: '#3b82f6' }, // Blue
+    { name: '头程', value: metrics.unitShippingCostUSD, color: '#eab308' }, // Yellow
+    { name: '平台/达人', value: metrics.breakdown.platformFee + metrics.breakdown.influencerFee, color: '#a855f7' }, // Purple
+    { name: '物流/杂费', value: formData.lastMileShipping + formData.orderFixedFee + formData.otherCost, color: '#f97316' }, // Orange
+    { name: '广告/退货', value: formData.adCostPerUnit + metrics.breakdown.estimatedReturnCost, color: '#ef4444' }, // Red
+    { name: '净利', value: Math.max(0, metrics.unitProfit), color: '#22c55e' } // Green
+  ].filter(d => d.value > 0);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in">
@@ -254,7 +257,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                   <input type="text" name="name" value={formData.name} onChange={handleChange} className="bg-transparent border-b border-transparent hover:border-white/20 focus:border-neon-blue text-xl font-bold text-white w-full focus:outline-none transition-all px-1"/>
                   <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/10 text-gray-400 border border-white/10 font-mono shrink-0">{product.sku}</span>
               </div>
-              <p className="text-xs text-gray-400 mt-1 flex items-center gap-2"><AlertCircle size={12} className="text-neon-blue"/> 采购与头程运费为人民币，销售为美金。</p>
+              <p className="text-xs text-gray-400 mt-1 flex items-center gap-2"><AlertCircle size={12} className="text-neon-blue"/> 所有财务数据已同步 (All calculations synchronized).</p>
             </div>
           </div>
           <div className="flex gap-3 shrink-0">
@@ -266,9 +269,8 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         <div className="flex-1 overflow-y-auto p-6 bg-transparent custom-scrollbar">
           <div className="grid grid-cols-12 gap-6 pb-20">
             
-            {/* Left Column */}
+            {/* LEFT COLUMN: PRODUCT & SUPPLY */}
             <div className="col-span-12 lg:col-span-4 space-y-6">
-                {/* Module 1 */}
                 <section className="glass-card p-6 border-l-4 border-l-neon-purple group hover:border-white/20 transition-all">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Layers size={16} className="text-neon-purple" /> 产品与供应链</h3>
                     <div className="flex gap-4 mb-6">
@@ -295,9 +297,8 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     </div>
                 </section>
 
-                {/* Module 2 */}
                 <section className="glass-card p-6 border-l-4 border-l-neon-blue group hover:border-white/20 transition-all">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Globe size={16} className="text-neon-blue" /> 采购与供应商</h3>
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Globe size={16} className="text-neon-blue" /> 采购参数</h3>
                     <div className="space-y-4">
                         <InputGroup label="供应商名称" name="supplierName" value={formData.supplierName} type="text" onChange={handleChange} />
                         <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
@@ -308,9 +309,8 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     </div>
                 </section>
 
-                {/* Module 3 */}
                 <section className="glass-card p-6 border-l-4 border-l-gray-500 group hover:border-white/20 transition-all">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Package size={16} className="text-gray-300" /> 装箱与入库</h3>
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Package size={16} className="text-gray-300" /> 装箱配置</h3>
                     <div className="grid grid-cols-3 gap-3 mb-4">
                         <InputGroup label="长 (cm)" name="boxLength" value={formData.boxLength} onChange={handleChange} />
                         <InputGroup label="宽 (cm)" name="boxWidth" value={formData.boxWidth} onChange={handleChange} />
@@ -327,13 +327,11 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                             <input type="number" name="totalRestockUnits" value={formData.totalRestockUnits} onChange={handleChange} disabled={(formData.variants?.length || 0) > 0} className={`w-full h-10 bg-black/40 border border-neon-yellow/30 rounded-lg px-3 text-sm text-neon-yellow font-bold outline-none focus:border-neon-yellow transition-colors ${(formData.variants?.length || 0) > 0 ? 'opacity-80 cursor-not-allowed' : ''}`}/>
                         </div>
                     </div>
-                    {/* Variants omitted for brevity but logic is preserved in state */}
                 </section>
             </div>
 
-            {/* Middle Column */}
+            {/* MIDDLE COLUMN: LOGISTICS & FEES */}
             <div className="col-span-12 lg:col-span-4 space-y-6">
-                {/* Module 4 */}
                 <section className="glass-card p-6 border-l-4 border-l-neon-yellow group hover:border-white/20 transition-all">
                      <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Truck size={16} className="text-neon-yellow" /> 头程物流</h3>
                     <div className="space-y-4">
@@ -368,7 +366,6 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     </div>
                 </section>
 
-                {/* Module 5 */}
                 <section className="glass-card p-6 border-l-4 border-l-neon-pink group hover:border-white/20 transition-all">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Share2 size={16} className="text-neon-pink" /> TIKTOK COST STRUCTURE</h3>
                     <div className="space-y-5">
@@ -386,12 +383,13 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                  <InputGroup label="尾程派送费 ($)" name="lastMileShipping" value={formData.lastMileShipping} onChange={handleChange} />
                              </div>
                              <InputGroup label="预估广告费 ($)" name="adCostPerUnit" value={formData.adCostPerUnit} onChange={handleChange} />
+                             <InputGroup label="其他杂费 ($)" name="otherCost" value={formData.otherCost} onChange={handleChange} />
                          </div>
                     </div>
                 </section>
             </div>
 
-            {/* Right Column (Profit) */}
+            {/* RIGHT COLUMN: PROFIT ANALYSIS */}
             <div className="col-span-12 lg:col-span-4 relative">
                 <div className="sticky top-0 space-y-6">
                     <section className="glass-card p-8 border border-neon-green/30 shadow-[0_0_30px_rgba(0,255,157,0.1)] relative overflow-hidden">
@@ -403,19 +401,32 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
 
                         <h3 className="text-sm font-bold text-neon-green uppercase tracking-widest mb-8 flex items-center gap-2 relative z-10"><Calculator size={16} /> 单品利润分析 (USD)</h3>
 
-                        <div className="relative z-10 text-center space-y-2 mb-10">
+                        <div className="w-48 h-48 mx-auto mb-6 relative z-10">
+                             <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie data={chartData} innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="value">
+                                        {chartData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                                        ))}
+                                    </Pie>
+                                    <RechartsTooltip contentStyle={{ backgroundColor: '#000', borderRadius: '8px', border: '1px solid #333' }} formatter={(val: number) => `$${val.toFixed(2)}`} />
+                                </PieChart>
+                             </ResponsiveContainer>
+                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                 <span className="text-2xl font-bold text-white">{metrics.netMargin.toFixed(1)}%</span>
+                                 <span className="text-[10px] text-gray-400">Margin</span>
+                             </div>
+                        </div>
+
+                        <div className="relative z-10 text-center space-y-2 mb-6">
                              <div className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">单品净利</div>
-                             <div className="text-[80px] font-display font-bold text-white leading-none tracking-tight flex items-center justify-center gap-2 mb-2 drop-shadow-[0_0_15px_rgba(0,255,157,0.3)]">
-                                 <span className="text-3xl text-neon-green mt-3">$</span>
+                             <div className="text-[40px] font-display font-bold text-white leading-none tracking-tight flex items-center justify-center gap-2 drop-shadow-[0_0_15px_rgba(0,255,157,0.3)]">
+                                 <span className="text-xl text-neon-green mt-2">$</span>
                                  {metrics.unitProfit.toFixed(2)}
                              </div>
                              <div className="text-sm font-bold text-neon-green/80 flex items-center justify-center gap-2 mt-2">
                                 <span>总利润预测:</span>
                                 <span>+${metrics.totalStockProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                             </div>
-                             <div className={`text-sm font-bold inline-flex items-center gap-1 px-3 py-1 mt-3 rounded-full ${metrics.netMargin > 15 ? 'bg-neon-green/10 text-neon-green' : 'bg-neon-pink/10 text-neon-pink'}`}>
-                                 <TrendingUp size={12} />
-                                 {metrics.netMargin.toFixed(1)}% 净利率
                              </div>
                         </div>
 
@@ -425,19 +436,16 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                 <span className="text-white font-bold">${formData.sellingPrice.toFixed(2)}</span>
                             </div>
                              <div className="flex justify-between text-xs">
-                                <span className="text-gray-500">总成本 (USD折算)</span>
+                                <span className="text-gray-500">总成本</span>
                                 <span className="text-neon-pink font-bold">-${metrics.totalUnitCostUSD.toFixed(2)}</span>
-                            </div>
-                            <div className="h-1 bg-white/10 rounded-full overflow-hidden w-full">
-                                <div className="h-full bg-neon-pink" style={{ width: `${Math.min((metrics.totalUnitCostUSD / formData.sellingPrice) * 100, 100)}%` }}></div>
                             </div>
                         </div>
 
-                        <div className="mt-8 grid grid-cols-2 gap-2">
+                        <div className="mt-6 grid grid-cols-2 gap-2">
                              <CostItem label={`货值 (¥${formData.unitCost})`} value={metrics.unitCostUSD} color="bg-blue-500" />
                              <CostItem label="头程运费" value={metrics.unitShippingCostUSD} color="bg-yellow-500" />
                              <CostItem label="平台/达人佣金" value={metrics.breakdown.platformFee + metrics.breakdown.influencerFee} color="bg-purple-500" />
-                             <CostItem label="尾程/定费" value={formData.lastMileShipping + formData.orderFixedFee} color="bg-orange-500" />
+                             <CostItem label="尾程/定费/杂" value={formData.lastMileShipping + formData.orderFixedFee + formData.otherCost} color="bg-orange-500" />
                              <CostItem label="广告/退货" value={formData.adCostPerUnit + metrics.breakdown.estimatedReturnCost} color="bg-red-500" />
                         </div>
                     </section>

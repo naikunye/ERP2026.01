@@ -233,7 +233,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const name = raw.name || findValueGreedy(raw, ['title', 'product_name', '名称', '标题', '品名']) || 'Unnamed Product';
             const supplier = raw.supplier || findValueGreedy(raw, ['vendor', 'factory', '供应商', '厂家']);
 
-            // 1. Weight Extraction (Crucial for calculation)
+            // 1. Weight Extraction
             const unitWeight = parseCleanNum(raw.unitWeight || findValueGreedy(raw, ['weight', 'kg', '单重', 'unit_weight', 'gross_weight']));
 
             // 2. Cost & Price
@@ -242,12 +242,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const stock = parseCleanNum(raw.stock || findValueGreedy(raw, ['qty', 'quantity', 'stock_level', '库存', '数量']));
             const imageUrl = raw.imageUrl || findValueGreedy(raw, ['image', 'img', 'pic', 'url']);
 
-            // 3. Logistics Logic Repair
+            // 3. Logistics Logic Repair (ENHANCED)
             // Step A: Get the Rate (e.g. 12 RMB/kg)
-            const shippingRate = parseCleanNum(
+            let shippingRate = parseCleanNum(
                 raw.logistics?.shippingRate || 
                 raw.shippingRate || 
-                findValueGreedy(raw, ['shipping_rate', 'freight_rate', '头程单价', '运费单价', 'kg_price', 'rate_per_kg', '头程费率'])
+                findValueGreedy(raw, ['shipping_rate', 'freight_rate', '头程单价', '运费单价', 'kg_price', 'rate_per_kg', '头程费率', '海运单价', '空运单价'])
             );
 
             // Step B: Get the Total Unit Cost (e.g. 6 RMB)
@@ -256,8 +256,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 findValueGreedy(raw, ['shipping', 'freight', 'logistics_cost', '运费', '头程', 'unit_shipping', '头程分摊'])
             );
 
-            // Step C: LOGIC FIX -> If Total Cost is missing, but Rate & Weight exist, Auto-Calculate
-            if (shippingCost === 0 && shippingRate > 0 && unitWeight > 0) {
+            // Step C: LOGIC FIX -> 
+            // Case 1: If Rate is missing but we have Total Cost and Weight, deduce Rate
+            if (shippingRate === 0 && shippingCost > 0 && unitWeight > 0) {
+                shippingRate = parseFloat((shippingCost / unitWeight).toFixed(2));
+            }
+            // Case 2: If Total Cost is missing, but Rate and Weight exist, calculate Cost
+            else if (shippingCost === 0 && shippingRate > 0 && unitWeight > 0) {
                 shippingCost = parseFloat((shippingRate * unitWeight).toFixed(2));
             }
 
@@ -307,7 +312,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                     status: 'Pending',
                     origin: '',
                     destination: '',
-                    shippingRate: shippingRate, // Persist the rate for future edits
+                    shippingRate: shippingRate, // Persist the rate
                     manualChargeableWeight: 0
                 },
                 dailySales: parseCleanNum(raw.dailySales || 0)
@@ -340,7 +345,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
     }
   };
 
-  // --- ADMIN HANDLERS (Minimal Restore) ---
+  // --- ADMIN HANDLERS ---
   const handleInitSchema = async () => {
       setDetailedError(null);
       if (!adminEmail || !adminPassword || !serverUrlInput) { setDetailedError("请输入完整信息"); return; }
@@ -448,6 +453,8 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   <Download size={24} className="text-neon-blue"/>
                   <button onClick={handleExport} className="px-4 py-2 bg-gradient-neon-blue text-white rounded-lg text-xs font-bold">导出备份</button>
               </div>
+              
+              {/* Import Card */}
               <div className="glass-card p-6 flex flex-col items-center gap-3 hover:border-neon-purple/50 transition-all relative overflow-hidden">
                   {importStatus === 'processing' && (
                       <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10">
@@ -460,11 +467,32 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-white/10 border border-white/10 text-white rounded-lg text-xs font-bold hover:bg-white/20">导入数据</button>
               </div>
           </div>
+
+          {/* Sync Button (Force Visible but show state) */}
+          {onSyncToCloud && (
+              <div className="glass-card p-6 border-neon-green/20 bg-neon-green/5 flex justify-between items-center mt-4">
+                  <div className="flex items-center gap-3">
+                      <ArrowUpCircle size={24} className={currentOnlineStatus ? "text-neon-green" : "text-gray-500"}/>
+                      <div>
+                          <div className="text-sm font-bold text-white">全量推送 (Sync to Cloud)</div>
+                          <div className="text-xs text-gray-400">
+                              {currentOnlineStatus ? '服务器在线，可以同步' : '⚠️ 离线模式 - 请先连接服务器'}
+                          </div>
+                      </div>
+                  </div>
+                  <button 
+                      onClick={onSyncToCloud}
+                      className={`px-6 py-2 rounded-lg font-bold text-xs transition-all ${currentOnlineStatus ? 'bg-neon-green text-black hover:scale-105' : 'bg-gray-700 text-gray-400'}`}
+                  >
+                      立即同步
+                  </button>
+              </div>
+          )}
       </section>
 
       {/* Admin */}
       <section className="space-y-4 pt-4 border-t border-white/10">
-          <h2 className="text-sm font-bold text-red-500 uppercase tracking-widest flex items-center gap-2"><Lock size={16}/> 管理员专区</h2>
+          <h2 className="text-sm font-bold text-red-500 uppercase tracking-widest flex items-center gap-2"><Lock size={16}/> 管理员专区 (Admin Zone)</h2>
           <div className="glass-card p-6 border-red-500/20 bg-red-500/5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                   <input type="email" placeholder="admin@email.com" value={adminEmail} onChange={e=>setAdminEmail(e.target.value)} className="h-10 bg-black/40 border border-white/10 rounded-lg px-3 text-white text-xs outline-none focus:border-red-500"/>
