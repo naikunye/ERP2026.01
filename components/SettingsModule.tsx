@@ -560,15 +560,30 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
               if (!exists) {
                   debugLogs.push(`>> Creating collection '${def.name}'...`);
                   
+                  // Helper to generate compliant options for legacy PB versions
+                  const getOptions = (type: string) => {
+                      switch (type) {
+                          case 'text': return { min: null, max: null, pattern: "" };
+                          case 'number': return { min: null, max: null, noDecimal: false };
+                          case 'bool': return {};
+                          case 'email': return { exceptDomains: [], onlyDomains: [] };
+                          case 'url': return { exceptDomains: [], onlyDomains: [] };
+                          case 'date': return { min: "", max: "" };
+                          case 'select': return { maxSelect: 1, values: [] };
+                          case 'json': return { maxSize: 2000000 }; // Critical: legacy JSON requires maxSize
+                          case 'file': return { maxSize: 5242880, maxSelect: 1, mimeTypes: [] };
+                          case 'relation': return { collectionId: "", cascadeDelete: false, minSelect: null, maxSelect: 1, displayFields: [] };
+                          default: return {};
+                      }
+                  };
+
                   // Payload A: Legacy (v0.22-) uses 'schema' property
-                  // CRITICAL FIX: Strictly sanitize payload. NO 'id' or 'system' fields in schema definitions.
-                  // Old PB versions reject requests if schema items contain "id": "".
                   const legacySchema = def.schema.map(f => ({
                       name: f.name,
                       type: f.type,
                       required: false,
                       unique: false,
-                      options: {}
+                      options: getOptions(f.type)
                   }));
 
                   const payloadLegacy = {
