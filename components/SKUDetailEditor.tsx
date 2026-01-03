@@ -85,7 +85,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       // 3. Else fallback to Cartons * ItemsPerBox.
       
       const savedMap = product.variantRestockMap || {};
-      const variantSum = Object.values(savedMap).reduce((a, b) => a + b, 0);
+      const variantSum = Object.values(savedMap).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
       const hasVariants = product.variants && product.variants.length > 0; // Robust check
       
       let initialTotal = 0;
@@ -248,7 +248,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   const handleVariantQtyChange = (variantId: string, qty: number) => {
       setFormData(prev => {
           const newMap = { ...prev.variantRestockMap, [variantId]: qty };
-          const newTotal = Object.values(newMap).reduce((a, b) => a + b, 0);
+          const newTotal = Object.values(newMap).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
           return {
               ...prev,
               variantRestockMap: newMap,
@@ -731,8 +731,9 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
 
                         <div className="relative z-10 text-center space-y-2 mb-10">
                              <div className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">单品净利</div>
-                             <div className="text--[56px] font-display font-bold text-white leading-none tracking-tight flex items-center justify-center gap-1">
-                                 <span className="text-2xl text-neon-green mt-2">$</span>
+                             {/* UPDATED: Fixed size typo and made it larger (80px) with drop shadow */}
+                             <div className="text-[80px] font-display font-bold text-white leading-none tracking-tight flex items-center justify-center gap-2 mb-2 drop-shadow-[0_0_15px_rgba(0,255,157,0.3)]">
+                                 <span className="text-3xl text-neon-green mt-3">$</span>
                                  {metrics.unitProfit.toFixed(2)}
                              </div>
                              
