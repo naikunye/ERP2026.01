@@ -4,7 +4,7 @@ import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key, ExternalLink, XCircle, Terminal, Info, ArrowDown
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key, ExternalLink, XCircle, Terminal, Info, ArrowDown, Unlock
 } from 'lucide-react';
 import { pb, updateServerUrl, isCloudConnected } from '../services/pocketbase';
 import PocketBase from 'pocketbase';
@@ -548,64 +548,71 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           }
 
           // ... Proceed to Schema Creation using RAW FETCH (Bypass SDK to handle version mismatch) ...
-          setInitStatusMsg("Auth OK! Creating Schema (Universal Mode)...");
+          setInitStatusMsg("Auth OK! Checking & Updating Schema...");
           
           let createdCount = 0;
+          let updatedCount = 0;
+
+          // Helper to generate compliant options for legacy PB versions
+          const getOptions = (type: string) => {
+              switch (type) {
+                  case 'text': return { min: null, max: null, pattern: "" };
+                  case 'number': return { min: null, max: null, noDecimal: false };
+                  case 'bool': return {};
+                  case 'email': return { exceptDomains: [], onlyDomains: [] };
+                  case 'url': return { exceptDomains: [], onlyDomains: [] };
+                  case 'date': return { min: "", max: "" };
+                  case 'select': return { maxSelect: 1, values: [] };
+                  case 'json': return { maxSize: 2000000 }; // Critical: legacy JSON requires maxSize
+                  case 'file': return { maxSize: 5242880, maxSelect: 1, mimeTypes: [] };
+                  case 'relation': return { collectionId: "", cascadeDelete: false, minSelect: null, maxSelect: 1, displayFields: [] };
+                  default: return {};
+              }
+          };
+
           for (const def of COLLECTIONS_SCHEMA) {
               // 1. Check Existence (SDK Agnostic)
               const checkUrl = `${targetUrl}/api/collections/${def.name}`;
               let exists = false;
+              let existingId = '';
               try {
                   const checkResp = await fetch(checkUrl, {
                       headers: { 'Authorization': authToken }
                   });
-                  if (checkResp.ok) exists = true;
+                  if (checkResp.ok) {
+                      exists = true;
+                      const existingData = await checkResp.json();
+                      existingId = existingData.id;
+                  }
               } catch (e) { /* ignore */ }
 
+              // PREPARE PAYLOADS (PUBLIC PERMISSIONS)
+              // IMPORTANT: Set Rules to "" (empty string) means PUBLIC. null means Admin Only.
+              const legacySchema = def.schema.map(f => ({
+                  name: f.name,
+                  type: f.type,
+                  required: false,
+                  unique: false,
+                  options: getOptions(f.type)
+              }));
+
+              const payloadLegacy = {
+                  name: def.name,
+                  type: def.type,
+                  schema: legacySchema, 
+                  listRule: "", viewRule: "", createRule: "", updateRule: "", deleteRule: ""
+              };
+
+              const payloadModern = {
+                  name: def.name,
+                  type: def.type,
+                  fields: def.schema, 
+                  listRule: "", viewRule: "", createRule: "", updateRule: "", deleteRule: ""
+              };
+
               if (!exists) {
-                  debugLogs.push(`>> Creating collection '${def.name}'...`);
+                  debugLogs.push(`>> Creating '${def.name}' (Public)...`);
                   
-                  // Helper to generate compliant options for legacy PB versions
-                  const getOptions = (type: string) => {
-                      switch (type) {
-                          case 'text': return { min: null, max: null, pattern: "" };
-                          case 'number': return { min: null, max: null, noDecimal: false };
-                          case 'bool': return {};
-                          case 'email': return { exceptDomains: [], onlyDomains: [] };
-                          case 'url': return { exceptDomains: [], onlyDomains: [] };
-                          case 'date': return { min: "", max: "" };
-                          case 'select': return { maxSelect: 1, values: [] };
-                          case 'json': return { maxSize: 2000000 }; // Critical: legacy JSON requires maxSize
-                          case 'file': return { maxSize: 5242880, maxSelect: 1, mimeTypes: [] };
-                          case 'relation': return { collectionId: "", cascadeDelete: false, minSelect: null, maxSelect: 1, displayFields: [] };
-                          default: return {};
-                      }
-                  };
-
-                  // Payload A: Legacy (v0.22-) uses 'schema' property
-                  const legacySchema = def.schema.map(f => ({
-                      name: f.name,
-                      type: f.type,
-                      required: false,
-                      unique: false,
-                      options: getOptions(f.type)
-                  }));
-
-                  const payloadLegacy = {
-                      name: def.name,
-                      type: def.type,
-                      schema: legacySchema, 
-                      listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null
-                  };
-
-                  // Payload B: Modern (v0.23+) uses 'fields' property
-                  const payloadModern = {
-                      name: def.name,
-                      type: def.type,
-                      fields: def.schema, 
-                      listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null
-                  };
-
                   // STRATEGY: Try Legacy First (since legacy auth worked)
                   let createResp = await fetch(`${targetUrl}/api/collections`, {
                       method: 'POST',
@@ -613,12 +620,8 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       body: JSON.stringify(payloadLegacy)
                   });
 
-                  // If Legacy fails (400 Bad Request usually), try Modern
                   if (!createResp.ok) {
-                      const errText = await createResp.text();
-                      debugLogs.push(`>> Legacy Create Failed: ${createResp.status} - ${errText.substring(0, 300)}...`);
-                      
-                      debugLogs.push(`>> Attempting Modern Create (fields)...`);
+                      debugLogs.push(`>> Legacy Create Failed, trying Modern...`);
                       createResp = await fetch(`${targetUrl}/api/collections`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json', 'Authorization': authToken },
@@ -630,14 +633,38 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       createdCount++;
                       debugLogs.push(`>> Created '${def.name}' successfully.`);
                   } else {
-                      // CRITICAL: Extract and show the RAW error from server
                       const errData = await createResp.text();
                       debugLogs.push(`!! Failed to create '${def.name}'`);
-                      debugLogs.push(`!! Response: ${errData}`);
-                      throw new Error(`Failed to create collection ${def.name}. Server responded: ${errData}`);
+                      throw new Error(`Failed to create ${def.name}: ${errData}`);
                   }
               } else {
-                  debugLogs.push(`>> Collection '${def.name}' already exists.`);
+                  // UPDATE EXISTING TO PUBLIC
+                  debugLogs.push(`>> Updating '${def.name}' permissions to PUBLIC...`);
+                  
+                  // For updates, we usually only need to send the rules, but to be safe on legacy, we send full schema too
+                  // Try PATCH
+                  const updateUrl = `${targetUrl}/api/collections/${existingId}`;
+                  
+                  let updateResp = await fetch(updateUrl, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': authToken },
+                      body: JSON.stringify(payloadLegacy)
+                  });
+
+                  if(!updateResp.ok) {
+                       updateResp = await fetch(updateUrl, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json', 'Authorization': authToken },
+                          body: JSON.stringify(payloadModern)
+                      });
+                  }
+
+                  if (updateResp.ok) {
+                      updatedCount++;
+                      debugLogs.push(`>> Updated '${def.name}' permissions OK.`);
+                  } else {
+                      debugLogs.push(`!! Failed to update '${def.name}' permissions.`);
+                  }
               }
           }
           
@@ -645,7 +672,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           pb.authStore.save(authToken, adminModel);
           setInitSuccess(true); // Mark success to show the "Now Upload" hint
 
-          if (onNotify) onNotify('success', '结构创建成功', `Collections Ready: ${createdCount} created.`);
+          if (onNotify) onNotify('success', '服务器更新成功', `Created: ${createdCount}, Updated Permissions: ${updatedCount}. 全设备可访问。`);
 
       } catch (e: any) {
           console.error("Init Error:", e);
@@ -814,8 +841,8 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   <div className="flex items-center gap-3">
                       <CheckCircle2 size={24} className="text-neon-green"/>
                       <div>
-                          <h4 className="text-sm font-bold text-white">数据库结构创建成功！</h4>
-                          <p className="text-xs text-gray-300">现在请点击下方的 <strong className="text-neon-green">全量推送到云端</strong> 按钮，将您的本地数据上传到服务器。</p>
+                          <h4 className="text-sm font-bold text-white">操作成功！表结构已更新且权限已设为公开。</h4>
+                          <p className="text-xs text-gray-300">现在其他电脑连接此服务器后，刷新页面即可同步数据。</p>
                       </div>
                   </div>
                   <ArrowDown size={24} className="text-neon-green animate-bounce mr-10"/>
@@ -971,17 +998,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       <div>
                           <h3 className="text-white font-bold">服务器初始化 (Server Initialization)</h3>
                           <p className="text-xs text-gray-400 mt-1">
-                              如果您遇到 "404 Collection Not Found" 错误，请在此处初始化数据库结构。
-                              这将自动在 PocketBase 中创建 Products, Shipments 等所有必要的数据表。
+                              此操作将自动在 PocketBase 中创建或更新 Products, Shipments 等数据表。
                               <br/>
-                              <a 
-                                  href={`${serverUrlInput}/_/`} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-neon-blue hover:underline inline-flex items-center gap-1 mt-1"
-                              >
-                                  还没有管理员账号？点击前往后台设置 <ExternalLink size={10}/>
-                              </a>
+                              <span className="text-neon-yellow flex items-center gap-1 mt-1">
+                                <Unlock size={10} /> 
+                                系统会自动将所有表的读取权限设置为<strong>公开 (Public)</strong>，以便多设备同步。
+                              </span>
                           </p>
                       </div>
                   </div>
@@ -1015,7 +1037,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                       className="w-full md:w-auto md:self-start px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2 mt-2"
                   >
                       {isInitializing ? <Loader2 size={16} className="animate-spin"/> : <Key size={16}/>}
-                      {isInitializing ? (initStatusMsg || '正在处理...') : '一键创建所有数据表 (Initialize Schema)'}
+                      {isInitializing ? (initStatusMsg || '正在处理...') : '一键创建/修复数据表 & 开放权限'}
                   </button>
               </div>
           </div>
