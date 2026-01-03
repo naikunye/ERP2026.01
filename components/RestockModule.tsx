@@ -30,7 +30,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   );
 
   // Capital Calculation (RMB Base for Procurement + Logistics)
-  // Assuming Shipping Cost in financials is USD, we convert it back to RMB for "Capital" view
   const totalCapitalRMB = products.reduce((sum, item) => {
       const rate = item.exchangeRate || 7.2;
       const costRMB = item.financials?.costOfGoods || 0; // RMB
@@ -120,36 +119,30 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       return `https://www.17track.net/zh-cn/track?nums=${trackingNo}`;
   };
 
-  // Correct Profit Logic: USD Base with Dynamic Recalculation
-  // This matches SKUDetailEditor.tsx perfectly by using raw fields
   const calculateProfitUSD = (item: Product) => {
       const rate = item.exchangeRate || 7.2;
       const sellingPrice = item.financials?.sellingPrice || 0;
       
-      // 1. Costs in USD
       const costOfGoodsUSD = (item.financials?.costOfGoods || 0) / rate;
-      // CRITICAL FIX: Trust the saved 'shippingCost' in financials which is the accurate USD unit cost
       const shippingCostUSD = item.financials?.shippingCost || 0; 
       
-      // 2. Fees in USD (Recalculate dynamically to ensure accuracy)
       const platformFee = sellingPrice * ((item.platformCommission || 0) / 100);
       const influencerFee = sellingPrice * ((item.influencerCommission || 0) / 100);
       const fixedFee = item.orderFixedFee || 0;
       const lastMile = item.lastMileShipping || 0;
       const adCost = item.financials?.adCost || 0;
-      const returnCost = sellingPrice * ((item.returnRate || 0) / 100); // Risk cost
+      const returnCost = sellingPrice * ((item.returnRate || 0) / 100);
 
-      // Total Cost USD
       const totalCostUSD = costOfGoodsUSD + shippingCostUSD + platformFee + influencerFee + fixedFee + lastMile + adCost + returnCost;
       
       return sellingPrice - totalCostUSD;
   };
 
   return (
-    <div className="space-y-6 animate-fade-in w-full pb-20 relative">
+    <div className="h-full flex flex-col w-full relative animate-fade-in overflow-hidden">
       
-      {/* 1. Header & Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end border-b border-white/10 pb-6">
+      {/* 1. Header & Summary Stats (Fixed Height) */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end border-b border-white/10 pb-6 shrink-0 px-2">
         <div className="md:col-span-6">
            <h1 className="text-[32px] font-display font-bold text-white tracking-tight leading-none flex items-center gap-3">
               智能备货清单 
@@ -184,8 +177,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
         </div>
       </div>
 
-      {/* 2. Controls & Actions */}
-      <div className="flex justify-between items-center sticky top-0 z-30 py-4 backdrop-blur-xl bg-black/10 border-b border-white/5 transition-all">
+      {/* 2. Controls & Actions (Fixed Height) */}
+      <div className="flex justify-between items-center py-4 bg-[#050510]/80 border-b border-white/5 shrink-0 z-20 px-2">
           <div className="relative w-[400px] group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon-blue transition-colors" size={18} />
               <input 
@@ -222,10 +215,11 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           </div>
       </div>
 
-      {/* 3. The List (Card Table) */}
-      <div className="space-y-3">
+      {/* 3. The List (Card Table) - SCROLLABLE AREA */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative px-2 pb-20">
+          
           {/* Header Row */}
-          <div className="grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12">
+          <div className="grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12 sticky top-0 bg-[#050510] z-10 border-b border-white/5 mb-2">
               <div className="col-span-2">SKU / 入库单 / 备注</div>
               <div className="col-span-2">产品详情 / 箱规</div>
               <div className="col-span-2">物流状态 / 费率</div>
@@ -235,14 +229,15 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               <div className="col-span-2 text-center">操作</div>
           </div>
 
-          {/* Select All Checkbox Overlay */}
-          <div className="absolute top-[80px] left-4 z-40" title="全选">
+          {/* Select All Checkbox Overlay - Positioned relative to scroll area or header */}
+          <div className="absolute top-[12px] left-4 z-40" title="全选">
               <button onClick={handleSelectAll} className="text-gray-500 hover:text-white">
                   {selectedIds.size === filteredData.length && filteredData.length > 0 ? <CheckSquare size={20} className="text-neon-blue"/> : <Square size={20}/>}
               </button>
           </div>
 
           {/* Data Rows */}
+          <div className="space-y-3">
           {filteredData.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
                   暂无数据，请点击右上角新建 SKU
@@ -424,6 +419,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                   </div>
                  );
              }))}
+          </div>
       </div>
 
       {/* PO Creation Modal */}
