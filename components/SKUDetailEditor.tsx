@@ -5,7 +5,7 @@ import {
   X, Save, History, Box, Layers, Truck, 
   DollarSign, TrendingUp, Calculator, Package, 
   Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText, CheckCircle2, Clock,
-  RefreshCcw, ArrowRightLeft, LayoutGrid, ChevronDown, ChevronUp, Edit3
+  RefreshCcw, ArrowRightLeft, LayoutGrid, ChevronDown, ChevronUp, Edit3, Plus
 } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
@@ -230,7 +230,6 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         const updates: any = { [name]: numVal };
         
         // Only auto-calc totalRestockUnits if variants are NOT driving it
-        // FIX: Check formData.variants, not product.variants
         const hasVariants = (prev.variants?.length || 0) > 0;
         if (!hasVariants) {
             if (name === 'restockCartons') {
@@ -245,6 +244,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     });
   };
 
+  // --- Variant Handlers ---
   const handleVariantQtyChange = (variantId: string, qty: number) => {
       setFormData(prev => {
           const newMap = { ...prev.variantRestockMap, [variantId]: qty };
@@ -262,6 +262,38 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
           ...prev,
           variants: prev.variants.map(v => v.id === variantId ? { ...v, name: newName } : v)
       }));
+  };
+
+  const handleAddNewVariant = () => {
+      const newVarId = `var-${Date.now()}`;
+      setFormData(prev => ({
+          ...prev,
+          variants: [
+              ...prev.variants,
+              {
+                  id: newVarId,
+                  name: `New Variant ${prev.variants.length + 1}`,
+                  sku: `${product.sku}-${prev.variants.length + 1}`,
+                  price: 0,
+                  stock: 0,
+                  attributes: {}
+              }
+          ]
+      }));
+      setShowVariants(true);
+  };
+
+  const handleRemoveVariant = (id: string) => {
+      setFormData(prev => {
+          const newVars = prev.variants.filter(v => v.id !== id);
+          const newMap = { ...prev.variantRestockMap };
+          delete newMap[id];
+          return {
+              ...prev,
+              variants: newVars,
+              variantRestockMap: newMap
+          };
+      });
   };
 
   const handleSave = () => {
@@ -458,37 +490,48 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         </div>
                     </div>
 
-                    {/* NEW: Variant Allocation Section (Editable) */}
-                    {/* CRITICAL FIX: Use formData.variants length to decide rendering, ignoring product.hasVariants prop which might be stale */}
-                    {(formData.variants?.length || 0) > 0 && (
-                        <div className="mb-6 border border-white/10 rounded-xl bg-black/20 overflow-hidden animate-fade-in">
-                            <div 
-                                className="flex items-center justify-between px-3 py-2 bg-white/5 cursor-pointer hover:bg-white/10 transition-colors"
-                                onClick={() => setShowVariants(!showVariants)}
-                            >
-                                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase">
-                                    <LayoutGrid size={12} className="text-neon-purple"/> 多属性配货 (Variant Allocation)
-                                </div>
+                    {/* NEW: Variant Allocation Section (ALWAYS RENDERED) */}
+                    {/* Removed restrictive condition to prevent UI hiding on empty variants */}
+                    <div className="mb-6 border border-white/10 rounded-xl bg-black/20 overflow-hidden animate-fade-in">
+                        <div 
+                            className="flex items-center justify-between px-3 py-2 bg-white/5 cursor-pointer hover:bg-white/10 transition-colors"
+                            onClick={() => setShowVariants(!showVariants)}
+                        >
+                            <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase">
+                                <LayoutGrid size={12} className="text-neon-purple"/> 多属性配货 (Variant Allocation)
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); handleAddNewVariant(); }}
+                                    className="p-1 rounded hover:bg-neon-purple/20 text-neon-purple transition-colors"
+                                    title="Add Variant Row"
+                                >
+                                    <Plus size={12}/>
+                                </button>
                                 {showVariants ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
                             </div>
-                            
-                            {showVariants && (
-                                <div className="p-2 space-y-1">
-                                    {formData.variants.map(variant => (
-                                        <div key={variant.id} className="grid grid-cols-12 gap-2 items-center text-xs p-1">
+                        </div>
+                        
+                        {showVariants && (
+                            <div className="p-2 space-y-1">
+                                {(formData.variants && formData.variants.length > 0) ? (
+                                    formData.variants.map(variant => (
+                                        <div key={variant.id} className="grid grid-cols-12 gap-2 items-center text-xs p-1 group/row hover:bg-white/5 rounded">
                                             {/* EDITABLE VARIANT NAME */}
                                             <div className="col-span-5 relative group/edit">
                                                 <input
                                                     type="text"
                                                     value={variant.name}
                                                     onChange={(e) => handleVariantNameChange(variant.id, e.target.value)}
-                                                    className="w-full bg-transparent border-b border-transparent hover:border-white/20 focus:border-neon-purple text-gray-300 focus:text-white outline-none transition-colors pr-4 truncate focus:overflow-visible focus:z-10 focus:bg-black/80"
+                                                    className="w-full bg-transparent border-b border-transparent hover:border-white/20 focus:border-neon-purple text-gray-300 focus:text-white outline-none transition-colors pr-4 truncate focus:overflow-visible focus:z-10 focus:bg-black/90"
                                                     title="Click to edit name"
                                                 />
                                                 <Edit3 size={8} className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-600 opacity-0 group-hover/edit:opacity-100 pointer-events-none" />
                                             </div>
-                                            <div className="col-span-3 text-right text-gray-500 text-[10px]">Stock: {variant.stock}</div>
-                                            <div className="col-span-4">
+                                            <div className="col-span-3 text-right text-gray-500 text-[10px] flex items-center justify-end gap-1">
+                                                <span>Stock: {variant.stock}</span>
+                                            </div>
+                                            <div className="col-span-3">
                                                 <input 
                                                     type="number"
                                                     value={formData.variantRestockMap[variant.id] || ''}
@@ -497,16 +540,25 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                                     className="w-full h-7 bg-black/40 border border-white/10 rounded px-2 text-right text-neon-purple focus:border-neon-purple outline-none"
                                                 />
                                             </div>
+                                            <div className="col-span-1 flex justify-center">
+                                                <button onClick={() => handleRemoveVariant(variant.id)} className="text-gray-600 hover:text-red-500 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                                                    <Trash2 size={12}/>
+                                                </button>
+                                            </div>
                                         </div>
-                                    ))}
-                                    <div className="flex justify-between items-center px-2 py-1 mt-1 border-t border-white/5">
-                                        <span className="text-[9px] text-gray-500">Total Sum</span>
-                                        <span className="text-xs font-bold text-neon-yellow">{formData.totalRestockUnits} pcs</span>
+                                    ))
+                                ) : (
+                                    <div className="p-4 text-center text-[10px] text-gray-500 border border-dashed border-white/10 rounded-lg">
+                                        暂无变体数据。点击右上方 <Plus size={10} className="inline text-neon-purple"/> 添加。
                                     </div>
+                                )}
+                                <div className="flex justify-between items-center px-2 py-1 mt-1 border-t border-white/5">
+                                    <span className="text-[9px] text-gray-500">Total Sum</span>
+                                    <span className="text-xs font-bold text-neon-yellow">{formData.totalRestockUnits} pcs</span>
                                 </div>
-                            )}
-                        </div>
-                    )}
+                            </div>
+                        )}
+                    </div>
 
                     <div className="space-y-4">
                         {/* INBOUND ID + STATUS SELECTOR */}
