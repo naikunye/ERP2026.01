@@ -465,53 +465,65 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       }
 
       setIsInitializing(true);
-      setInitStatusMsg("Connecting...");
+      setInitStatusMsg("Diagnosing Server...");
       
       try {
-          // Force Clean URL
           const targetUrl = serverUrlInput.replace(/\/$/, '').trim();
-          
-          // --- MANUAL FETCH DIAGNOSTIC (Bypass SDK) ---
-          // This is critical to see if the network request even works
-          setInitStatusMsg("Authenticating (Native Fetch)...");
           
           let authSuccess = false;
           let authToken = "";
           let adminModel = null;
-          let fetchError: any = null;
+          
+          const debugLogs: string[] = [];
 
-          // Attempt 1: Legacy Admins Endpoint
+          // Helper for safe error parsing
+          const parseError = async (resp: Response) => {
+              try {
+                  const json = await resp.json();
+                  return json.message || JSON.stringify(json);
+              } catch {
+                  return await resp.text() || resp.statusText;
+              }
+          };
+
+          // ---------------------------------------------------------
+          // STRATEGY 1: Modern PocketBase (v0.23+) - _superusers
+          // ---------------------------------------------------------
+          setInitStatusMsg("Trying Method 1 (Superusers)...");
           try {
-              console.log("Attempting Legacy Auth:", `${targetUrl}/api/admins/auth-with-password`);
-              const resp = await fetch(`${targetUrl}/api/admins/auth-with-password`, {
+              const url = `${targetUrl}/api/collections/_superusers/auth-with-password`;
+              debugLogs.push(`Attempting: POST ${url}`);
+              
+              const resp = await fetch(url, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ identity: adminEmail, password: adminPassword })
               });
-              
+
               if (resp.ok) {
                   const data = await resp.json();
                   authToken = data.token;
-                  adminModel = data.admin;
+                  adminModel = data.record;
                   authSuccess = true;
+                  debugLogs.push(`>> Success (Superuser)`);
               } else {
-                  const errData = await resp.json().catch(() => null);
-                  if (resp.status !== 404) {
-                      // If it's NOT 404, it means endpoint exists but maybe wrong password or other error
-                      throw new Error(errData?.message || `HTTP ${resp.status} (Legacy Auth)`);
-                  }
-                  // If 404, just means endpoint doesn't exist, proceed to Attempt 2
+                  const err = await parseError(resp);
+                  debugLogs.push(`>> Failed (HTTP ${resp.status}): ${err}`);
               }
           } catch (e: any) {
-              fetchError = e;
-              console.warn("Legacy Auth Failed:", e.message);
+              debugLogs.push(`>> Network Error: ${e.message}`);
           }
 
-          // Attempt 2: Superusers Endpoint (New PocketBase)
+          // ---------------------------------------------------------
+          // STRATEGY 2: Legacy PocketBase (v0.22-) - admins
+          // ---------------------------------------------------------
           if (!authSuccess) {
+              setInitStatusMsg("Trying Method 2 (Legacy Admins)...");
               try {
-                  console.log("Attempting Superuser Auth:", `${targetUrl}/api/collections/_superusers/auth-with-password`);
-                  const resp = await fetch(`${targetUrl}/api/collections/_superusers/auth-with-password`, {
+                  const url = `${targetUrl}/api/admins/auth-with-password`;
+                  debugLogs.push(`Attempting: POST ${url}`);
+                  
+                  const resp = await fetch(url, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ identity: adminEmail, password: adminPassword })
@@ -520,31 +532,25 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   if (resp.ok) {
                       const data = await resp.json();
                       authToken = data.token;
-                      adminModel = data.record;
+                      adminModel = data.admin;
                       authSuccess = true;
+                      debugLogs.push(`>> Success (Legacy)`);
                   } else {
-                      const errData = await resp.json().catch(() => null);
-                      throw new Error(errData?.message || `HTTP ${resp.status} (Superuser Auth)`);
+                      const err = await parseError(resp);
+                      debugLogs.push(`>> Failed (HTTP ${resp.status}): ${err}`);
                   }
               } catch (e: any) {
-                  fetchError = e; // Overwrite or keep, doesn't matter, we throw combined error
-                  console.warn("Superuser Auth Failed:", e.message);
+                  debugLogs.push(`>> Network Error: ${e.message}`);
               }
           }
 
           if (!authSuccess) {
-              // Analyze why it failed
-              let msg = fetchError?.message || "Unknown Error";
-              if (msg.includes('Failed to fetch')) {
-                  msg = `Network Error (Failed to fetch). \nCommon Causes:\n1. Mixed Content: You are on HTTPS but server is HTTP.\n2. CORS: Server doesn't allow cross-origin requests.\n3. Server Down: ${targetUrl} is unreachable.`;
-              }
-              throw new Error(msg);
+              // Construct a readable error report
+              throw new Error("所有登录方式均失败 (All Auth Methods Failed):\n\n" + debugLogs.join("\n"));
           }
 
-          // If we are here, we have a token!
-          setInitStatusMsg("Auth Success! Creating Schema...");
-          
-          // Use SDK for schema creation now that we have a valid token
+          // ... Proceed to Schema Creation using authToken ...
+          setInitStatusMsg("Auth OK! Initializing Schema...");
           const tempPb = new PocketBase(targetUrl);
           tempPb.authStore.save(authToken, adminModel);
           tempPb.autoCancellation(false);
@@ -569,25 +575,15 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   }
               }
           }
-
-          // Update Global State
+          
           updateServerUrl(targetUrl);
           pb.authStore.save(authToken, adminModel);
 
-          if (onNotify) {
-              onNotify('success', '初始化成功', `成功创建/确认 ${createdCount} 个数据集合。`);
-          }
+          if (onNotify) onNotify('success', '初始化成功', `Collections Ready: ${createdCount} created.`);
 
       } catch (e: any) {
-          console.error("Init Critical Failure:", e);
-          let rawError = e instanceof Error ? e.message : JSON.stringify(e);
-          
-          // Enhance message for user
-          if (rawError.includes("Failed to fetch")) {
-              rawError += "\n\n(提示: 浏览器拦截了请求。请确保您使用了正确的 http/https 协议，且服务器允许 CORS)";
-          }
-          
-          setDetailedError(rawError);
+          console.error("Init Error:", e);
+          setDetailedError(e.message || String(e));
       } finally {
           setIsInitializing(false);
           setInitStatusMsg("");
