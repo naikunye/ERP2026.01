@@ -4,7 +4,7 @@ import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key, ExternalLink
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key, ExternalLink, XCircle, Terminal
 } from 'lucide-react';
 import { pb, updateServerUrl, isCloudConnected } from '../services/pocketbase';
 import PocketBase from 'pocketbase';
@@ -215,9 +215,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [adminPassword, setAdminPassword] = useState('');
   const [isInitializing, setIsInitializing] = useState(false);
   const [initStatusMsg, setInitStatusMsg] = useState('');
+  const [detailedError, setDetailedError] = useState<string | null>(null);
 
   // Storage Stats
   const [storageUsage, setStorageUsage] = useState({ usedKB: 0, percent: 0 });
+
+  // Safety Check
+  const isMixedContent = window.location.protocol === 'https:' && serverUrlInput.startsWith('http:');
 
   useEffect(() => {
       calculateStorage();
@@ -450,13 +454,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   };
 
   const handleInitSchema = async () => {
+      setDetailedError(null);
       if (!adminEmail || !adminPassword) {
-          if (onNotify) onNotify('error', 'Auth Error', '请输入 Admin Email 和 Password');
+          setDetailedError("请输入 Admin Email 和 Password");
           return;
       }
-      
       if (!serverUrlInput) {
-          if (onNotify) onNotify('error', 'Config Error', 'Server URL is missing.');
+          setDetailedError("Server URL is missing.");
           return;
       }
 
@@ -464,77 +468,97 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       setInitStatusMsg("Connecting...");
       
       try {
-          // --- FORCE NEW INSTANCE TO ENSURE URL IS CORRECT ---
-          const tempPb = new PocketBase(serverUrlInput);
-          tempPb.autoCancellation(false);
-
-          // 1. Authenticate (Dual Strategy)
-          setInitStatusMsg("Authenticating...");
+          // Force Clean URL
+          const targetUrl = serverUrlInput.replace(/\/$/, '').trim();
+          
+          // --- MANUAL FETCH DIAGNOSTIC (Bypass SDK) ---
+          // This is critical to see if the network request even works
+          setInitStatusMsg("Authenticating (Native Fetch)...");
           
           let authSuccess = false;
-          let authErrorMsg = '';
+          let authToken = "";
+          let adminModel = null;
+          let fetchError: any = null;
 
-          // Strategy A: Modern SDK / Server (v0.23+)
-          // Uses the new `_superusers` collection
+          // Attempt 1: Legacy Admins Endpoint
           try {
-              console.log("Strategy A: _superusers auth");
-              await tempPb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
-              authSuccess = true;
-          } catch (errA: any) {
-              console.warn("Strategy A failed:", errA.message);
-              authErrorMsg = errA.message;
+              console.log("Attempting Legacy Auth:", `${targetUrl}/api/admins/auth-with-password`);
+              const resp = await fetch(`${targetUrl}/api/admins/auth-with-password`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ identity: adminEmail, password: adminPassword })
+              });
               
-              // Strategy B: Legacy Server Fallback (Manual Fetch)
-              // We must use manual fetch because SDK v0.26 removed `pb.admins` entirely.
+              if (resp.ok) {
+                  const data = await resp.json();
+                  authToken = data.token;
+                  adminModel = data.admin;
+                  authSuccess = true;
+              } else {
+                  const errData = await resp.json().catch(() => null);
+                  if (resp.status !== 404) {
+                      // If it's NOT 404, it means endpoint exists but maybe wrong password or other error
+                      throw new Error(errData?.message || `HTTP ${resp.status} (Legacy Auth)`);
+                  }
+                  // If 404, just means endpoint doesn't exist, proceed to Attempt 2
+              }
+          } catch (e: any) {
+              fetchError = e;
+              console.warn("Legacy Auth Failed:", e.message);
+          }
+
+          // Attempt 2: Superusers Endpoint (New PocketBase)
+          if (!authSuccess) {
               try {
-                  console.log("Strategy B: Legacy Manual Fetch");
-                  const baseUrl = serverUrlInput.replace(/\/$/, ''); // Trim trailing slash
-                  const resp = await fetch(`${baseUrl}/api/admins/auth-with-password`, {
+                  console.log("Attempting Superuser Auth:", `${targetUrl}/api/collections/_superusers/auth-with-password`);
+                  const resp = await fetch(`${targetUrl}/api/collections/_superusers/auth-with-password`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ identity: adminEmail, password: adminPassword })
                   });
 
-                  if (!resp.ok) {
-                      // Attempt to parse server error
-                      const errData = await resp.json().catch(() => ({}));
-                      throw new Error(errData.message || `HTTP ${resp.status}`);
+                  if (resp.ok) {
+                      const data = await resp.json();
+                      authToken = data.token;
+                      adminModel = data.record;
+                      authSuccess = true;
+                  } else {
+                      const errData = await resp.json().catch(() => null);
+                      throw new Error(errData?.message || `HTTP ${resp.status} (Superuser Auth)`);
                   }
-
-                  const data = await resp.json();
-                  // Manually inject token into SDK
-                  tempPb.authStore.save(data.token, data.admin);
-                  authSuccess = true;
-              } catch (errB: any) {
-                  console.warn("Strategy B failed:", errB.message);
-                  // Keep original error message if both fail, or show legacy error if A was 404
-                  if (authErrorMsg.includes("404")) authErrorMsg = errB.message;
+              } catch (e: any) {
+                  fetchError = e; // Overwrite or keep, doesn't matter, we throw combined error
+                  console.warn("Superuser Auth Failed:", e.message);
               }
           }
 
           if (!authSuccess) {
-              // Detailed Diagnostics
-              if (authErrorMsg.includes('Failed to fetch') || authErrorMsg.includes('Network')) {
-                  throw new Error("网络连接失败 (Network Error)。请检查：1. 服务器地址是否正确 2. HTTPS/HTTP 混合内容限制 3. 跨域(CORS)设置。");
+              // Analyze why it failed
+              let msg = fetchError?.message || "Unknown Error";
+              if (msg.includes('Failed to fetch')) {
+                  msg = `Network Error (Failed to fetch). \nCommon Causes:\n1. Mixed Content: You are on HTTPS but server is HTTP.\n2. CORS: Server doesn't allow cross-origin requests.\n3. Server Down: ${targetUrl} is unreachable.`;
               }
-              throw new Error(`认证失败: ${authErrorMsg || '密码错误或账号不存在'}`);
+              throw new Error(msg);
           }
+
+          // If we are here, we have a token!
+          setInitStatusMsg("Auth Success! Creating Schema...");
           
-          // 2. Iterate and create collections
-          setInitStatusMsg("Creating Collections...");
+          // Use SDK for schema creation now that we have a valid token
+          const tempPb = new PocketBase(targetUrl);
+          tempPb.authStore.save(authToken, adminModel);
+          tempPb.autoCancellation(false);
+
           let createdCount = 0;
           for (const def of COLLECTIONS_SCHEMA) {
               try {
-                  // Check if exists
                   await tempPb.collections.getOne(def.name);
               } catch (e: any) {
                   if (e.status === 404) {
-                      // Create it
                       await tempPb.collections.create({
                           name: def.name,
                           type: def.type,
                           schema: def.schema,
-                          // Set rules to null (Public) to allow normal user access without auth
                           listRule: null, 
                           viewRule: null,
                           createRule: null,
@@ -546,36 +570,24 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
               }
           }
 
-          // 3. Sync Successful Auth to Global State (Optional)
-          if (tempPb.authStore.isValid) {
-              updateServerUrl(serverUrlInput); 
-              pb.authStore.save(tempPb.authStore.token, tempPb.authStore.model);
-          }
+          // Update Global State
+          updateServerUrl(targetUrl);
+          pb.authStore.save(authToken, adminModel);
 
-          // 4. Cleanup
-          tempPb.authStore.clear(); 
-          
           if (onNotify) {
-              onNotify('success', '初始化成功', `成功创建/确认 ${createdCount} 个数据集合。现已准备就绪。`);
+              onNotify('success', '初始化成功', `成功创建/确认 ${createdCount} 个数据集合。`);
           }
 
       } catch (e: any) {
-          console.error("Init Failure:", e);
-          let msg = e.message || '未知错误';
+          console.error("Init Critical Failure:", e);
+          let rawError = e instanceof Error ? e.message : JSON.stringify(e);
           
-          // Drill down into PocketBase detailed errors
-          if (e.response?.data) {
-              const details = e.response.data;
-              if (details.message) msg = details.message;
-              if (details.data) {
-                  const fieldErrors = Object.entries(details.data)
-                      .map(([k, v]: any) => `${k}: ${v.message}`)
-                      .join(', ');
-                  if (fieldErrors) msg += ` (${fieldErrors})`;
-              }
+          // Enhance message for user
+          if (rawError.includes("Failed to fetch")) {
+              rawError += "\n\n(提示: 浏览器拦截了请求。请确保您使用了正确的 http/https 协议，且服务器允许 CORS)";
           }
-
-          if (onNotify) onNotify('error', '初始化失败', msg);
+          
+          setDetailedError(rawError);
       } finally {
           setIsInitializing(false);
           setInitStatusMsg("");
@@ -645,6 +657,28 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           <h2 className="text-sm font-bold text-neon-blue uppercase tracking-widest flex items-center gap-2">
               <CloudCog size={16} /> 云服务器配置 (Cloud Server)
           </h2>
+          
+          {/* Mixed Content Warning */}
+          {isMixedContent && (
+              <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-start gap-3">
+                  <Shield className="text-red-500 mt-1" size={20} />
+                  <div>
+                      <h4 className="text-sm font-bold text-white mb-1">安全策略警告 (Mixed Content)</h4>
+                      <p className="text-xs text-gray-300 leading-relaxed">
+                          当前页面运行在 <strong>HTTPS</strong>，但您尝试连接 <strong>HTTP</strong> 服务器。
+                          浏览器会出于安全原因拦截此请求。
+                          <br/><br/>
+                          解决方案：
+                          <ul className="list-disc pl-4 mt-1 space-y-1">
+                              <li>使用 <code>localhost</code> 访问前端</li>
+                              <li>为 PocketBase 服务器配置 SSL 证书 (使用 https://)</li>
+                              <li>或者使用 Cloudflare Tunnel 等工具暴露 https 地址</li>
+                          </ul>
+                      </p>
+                  </div>
+              </div>
+          )}
+
           <div className="glass-card p-6 border-neon-blue/30 bg-neon-blue/5">
               <div className="flex flex-col md:flex-row gap-6 items-end">
                   <div className="flex-1 space-y-2 w-full">
@@ -818,6 +852,25 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           <h2 className="text-sm font-bold text-red-500 uppercase tracking-widest flex items-center gap-2">
               <Lock size={16} /> 管理员专区 (Admin Zone)
           </h2>
+          
+          {detailedError && (
+              <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl mb-4 relative animate-scale-in">
+                  <button onClick={() => setDetailedError(null)} className="absolute top-3 right-3 text-red-400 hover:text-white"><XCircle size={16}/></button>
+                  <div className="flex gap-3">
+                      <Terminal className="text-red-500 shrink-0 mt-1" size={20}/>
+                      <div className="overflow-hidden w-full">
+                          <h4 className="text-sm font-bold text-white mb-1">初始化遇到错误 (Error Details)</h4>
+                          <pre className="text-[10px] text-red-200 font-mono bg-black/40 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
+                              {detailedError}
+                          </pre>
+                          <p className="text-xs text-gray-400 mt-2">
+                              请将上述错误信息发送给技术支持，或检查服务器 Network 控制台。
+                          </p>
+                      </div>
+                  </div>
+              </div>
+          )}
+
           <div className="glass-card p-6 border-red-500/20 bg-red-500/5">
               <div className="flex flex-col gap-4">
                   <div className="flex items-start gap-3 mb-2">
