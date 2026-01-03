@@ -3,8 +3,8 @@ import React, { useState } from 'react';
 import { Product } from '../types';
 import { 
   Search, Plus, Filter, Factory, Truck, Plane, Ship, 
-  DollarSign, Calendar, Package, Edit3, Copy, Trash2, StickyNote, Wallet, ExternalLink,
-  Activity, AlertTriangle, TrendingUp, BarChart, Container, CheckSquare, Square, ShoppingCart, ArrowRight, Scale, ArrowRightCircle
+  DollarSign, Package, Edit3, Copy, Trash2, StickyNote, Wallet, ExternalLink,
+  Activity, AlertTriangle, TrendingUp, Container, CheckSquare, Square, ShoppingCart, ArrowRight, Scale, ArrowRightCircle
 } from 'lucide-react';
 
 interface RestockModuleProps {
@@ -139,10 +139,10 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   };
 
   return (
-    <div className="h-full flex flex-col w-full relative animate-fade-in overflow-hidden min-h-0">
+    <div className="flex flex-col w-full relative animate-fade-in overflow-hidden" style={{ height: '100%' }}>
       
       {/* 1. Header & Summary Stats (Fixed Height) */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end border-b border-white/10 pb-6 shrink-0 px-2 min-h-0">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end border-b border-white/10 pb-6 shrink-0 px-2">
         <div className="md:col-span-6">
            <h1 className="text-[32px] font-display font-bold text-white tracking-tight leading-none flex items-center gap-3">
               智能备货清单 
@@ -178,7 +178,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       </div>
 
       {/* 2. Controls & Actions (Fixed Height) */}
-      <div className="flex justify-between items-center py-4 bg-[#050510]/80 border-b border-white/5 shrink-0 z-20 px-2 min-h-0">
+      <div className="flex justify-between items-center py-4 bg-[#050510]/80 border-b border-white/5 shrink-0 z-20 px-2">
           <div className="relative w-[400px] group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon-blue transition-colors" size={18} />
               <input 
@@ -216,7 +216,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       </div>
 
       {/* 3. The List (Card Table) - SCROLLABLE AREA */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar relative px-2 pb-20 min-h-0">
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative px-2 pb-20 min-h-0 w-full" style={{ isolation: 'isolate' }}>
           
           {/* Header Row */}
           <div className="grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12 sticky top-0 bg-[#050510] z-10 border-b border-white/5 mb-2">
@@ -229,7 +229,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               <div className="col-span-2 text-center">操作</div>
           </div>
 
-          {/* Select All Checkbox Overlay - Positioned relative to scroll area or header */}
+          {/* Select All Checkbox Overlay */}
           <div className="absolute top-[12px] left-4 z-40" title="全选">
               <button onClick={handleSelectAll} className="text-gray-500 hover:text-white">
                   {selectedIds.size === filteredData.length && filteredData.length > 0 ? <CheckSquare size={20} className="text-neon-blue"/> : <Square size={20}/>}
@@ -237,7 +237,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           </div>
 
           {/* Data Rows */}
-          <div className="space-y-3">
+          <div className="space-y-3 pb-10">
           {filteredData.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
                   暂无数据，请点击右上角新建 SKU
@@ -259,22 +259,19 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  const totalPotentialProfitUSD = unitProfitUSD * item.stock;
                  const isSelected = selectedIds.has(item.id);
 
-                 // --- COST CALCULATION (RMB) ---
                  const exchangeRate = item.exchangeRate || 7.2;
-                 const costOfGoodsRMB = item.financials?.costOfGoods || 0; // Raw RMB
-                 const shippingCostUSD = item.financials?.shippingCost || 0; // Raw USD (from Editor Save)
-                 const shippingCostRMB = shippingCostUSD * exchangeRate; // Convert to RMB for display
+                 const costOfGoodsRMB = item.financials?.costOfGoods || 0; 
+                 const shippingCostUSD = item.financials?.shippingCost || 0; 
+                 const shippingCostRMB = shippingCostUSD * exchangeRate; 
                  const totalUnitCostRMB = costOfGoodsRMB + shippingCostRMB;
 
                  return (
                   <div key={item.id} onClick={() => onEditSKU && onEditSKU(item)} className={`glass-card grid grid-cols-12 items-center p-0 min-h-[110px] hover:border-white/20 transition-all group relative overflow-visible cursor-pointer ${isSelected ? 'border-neon-blue/30 bg-neon-blue/5' : ''}`}>
                       
-                      {/* Selection Checkbox */}
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10" onClick={(e) => { e.stopPropagation(); toggleSelect(item.id); }}>
                           {isSelected ? <CheckSquare size={20} className="text-neon-blue" /> : <Square size={20} className="text-gray-600 hover:text-gray-400" />}
                       </div>
 
-                      {/* Left Accent Bar */}
                       <div className={`absolute left-0 top-0 bottom-0 w-1 ${urgencyColor}`}></div>
 
                       {/* 1. Identity */}
