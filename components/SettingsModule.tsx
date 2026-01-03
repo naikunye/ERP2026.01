@@ -465,7 +465,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       }
 
       setIsInitializing(true);
-      setInitStatusMsg("Running Diagnostics...");
+      setInitStatusMsg("Running Universal Diagnostics...");
       
       const debugLogs: string[] = [];
       const targetUrl = serverUrlInput.replace(/\/$/, '').trim();
@@ -536,34 +536,76 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
           if (!authSuccess) {
               const fullLog = debugLogs.join('\n');
-              setDetailedError(fullLog); // Show full log in UI
+              setDetailedError(fullLog);
               throw new Error("所有认证尝试均失败 (Check detailed logs below)");
           }
 
-          // ... Proceed to Schema Creation using authToken ...
-          setInitStatusMsg("Auth OK! Creating Schema...");
-          const tempPb = new PocketBase(targetUrl);
-          tempPb.authStore.save(authToken, adminModel);
-          tempPb.autoCancellation(false);
-
+          // ... Proceed to Schema Creation using RAW FETCH (Bypass SDK to handle version mismatch) ...
+          setInitStatusMsg("Auth OK! Creating Schema (Universal Mode)...");
+          
           let createdCount = 0;
           for (const def of COLLECTIONS_SCHEMA) {
+              // 1. Check Existence (SDK Agnostic)
+              const checkUrl = `${targetUrl}/api/collections/${def.name}`;
+              let exists = false;
               try {
-                  await tempPb.collections.getOne(def.name);
-              } catch (e: any) {
-                  if (e.status === 404) {
-                      await tempPb.collections.create({
-                          name: def.name,
-                          type: def.type,
-                          schema: def.schema,
-                          listRule: null, 
-                          viewRule: null,
-                          createRule: null,
-                          updateRule: null,
-                          deleteRule: null
+                  const checkResp = await fetch(checkUrl, {
+                      headers: { 'Authorization': authToken }
+                  });
+                  if (checkResp.ok) exists = true;
+              } catch (e) { /* ignore */ }
+
+              if (!exists) {
+                  debugLogs.push(`>> Creating collection '${def.name}'...`);
+                  
+                  // Payload A: Legacy (v0.22-) uses 'schema' property
+                  const payloadLegacy = {
+                      name: def.name,
+                      type: def.type,
+                      schema: def.schema, 
+                      listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null
+                  };
+
+                  // Payload B: Modern (v0.23+) uses 'fields' property
+                  const payloadModern = {
+                      name: def.name,
+                      type: def.type,
+                      fields: def.schema, // v0.23+ 'fields' has similar structure to old 'schema' array
+                      listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null
+                  };
+
+                  // STRATEGY: Try Legacy First (since legacy auth worked)
+                  let createResp = await fetch(`${targetUrl}/api/collections`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': authToken },
+                      body: JSON.stringify(payloadLegacy)
+                  });
+
+                  // If Legacy fails (400 Bad Request usually), try Modern
+                  if (!createResp.ok) {
+                      const errText = await createResp.text();
+                      debugLogs.push(`>> Legacy Create Failed: ${createResp.status} - ${errText.substring(0, 50)}...`);
+                      
+                      debugLogs.push(`>> Attempting Modern Create (fields)...`);
+                      createResp = await fetch(`${targetUrl}/api/collections`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', 'Authorization': authToken },
+                          body: JSON.stringify(payloadModern)
                       });
-                      createdCount++;
                   }
+
+                  if (createResp.ok) {
+                      createdCount++;
+                      debugLogs.push(`>> Created '${def.name}' successfully.`);
+                  } else {
+                      // CRITICAL: Extract and show the RAW error from server
+                      const errData = await createResp.text();
+                      debugLogs.push(`!! Failed to create '${def.name}'`);
+                      debugLogs.push(`!! Response: ${errData}`);
+                      throw new Error(`Failed to create collection ${def.name}. Server responded: ${errData}`);
+                  }
+              } else {
+                  debugLogs.push(`>> Collection '${def.name}' already exists.`);
               }
           }
           
@@ -574,9 +616,8 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
       } catch (e: any) {
           console.error("Init Error:", e);
-          // If we haven't set detailed error yet (e.g. schema creation failed), set it now
           if (!detailedError && debugLogs.length > 0) {
-             setDetailedError(debugLogs.join('\n') + `\n\nSchema Error: ${e.message}`);
+             setDetailedError(debugLogs.join('\n') + `\n\nFinal Error: ${e.message}`);
           } else if (!detailedError) {
              setDetailedError(e.message);
           }
