@@ -168,20 +168,27 @@ const App: React.FC = () => {
 
     setIsLoading(true);
     let successCount = 0;
+    let failCount = 0;
+    let lastError: any = null;
     
     // Helper to upload a list and update IDs
     const uploadBatch = async (collectionName: string, items: any[], setItems: React.Dispatch<React.SetStateAction<any[]>>) => {
         const newItems = [...items];
         for (let i = 0; i < newItems.length; i++) {
             const item = newItems[i];
-            // Only upload if it looks like a local ID (e.g. timestamp based or imported)
-            // Or if we want to force push. Here we try to create new records for everything local.
             try {
-                const { id, created, updated, ...payload } = item; // Strip system fields
+                // Strip local system fields and try create
+                const { id, created, updated, ...payload } = item; 
+                
+                // Special handling for legacy/local ID formats to prevent them from being sent if schema doesn't support them
+                // PocketBase handles 'id' if sent, but it must be 15 chars. We strip it above.
+                
                 const res = await pb.collection(collectionName).create(payload);
                 newItems[i] = { ...item, id: res.id }; // Update local state with real server ID
                 successCount++;
-            } catch (e) {
+            } catch (e: any) {
+                failCount++;
+                lastError = e;
                 console.warn(`Failed item in ${collectionName}:`, e);
             }
         }
@@ -195,12 +202,33 @@ const App: React.FC = () => {
         await uploadBatch('influencers', influencers, setInfluencers);
         await uploadBatch('tasks', tasks, setTasks);
         
-        addNotification('success', '上传完成', `成功将 ${successCount} 条数据推送到云端。`);
-        // Force a re-save to local storage with the new IDs
-        saveLocal('products', products);
+        if (successCount > 0) {
+            addNotification('success', '上传完成', `成功: ${successCount} 条, 失败: ${failCount} 条。`);
+            saveLocal('products', products); // Force re-save with new IDs
+        } else if (failCount > 0) {
+            // Detailed Error Analysis
+            let errorMsg = '数据上传被拒绝。';
+            let desc = '请检查服务器日志或数据格式。';
+            
+            if (lastError?.status === 403) {
+                errorMsg = '权限不足 (403 Forbidden)';
+                desc = '请在 PocketBase 后台 -> Collections -> API Rules 中，将 Create/Write 权限设为 Public (留空)，或者在前端配置管理员账号。';
+            } else if (lastError?.status === 404) {
+                errorMsg = '集合不存在 (404 Not Found)';
+                desc = '请确保服务器已创建 products, shipments 等对应集合 (Collections)。';
+            } else if (lastError?.status === 400) {
+                errorMsg = '数据格式错误 (400 Bad Request)';
+                desc = '字段校验失败。请检查 Schema 是否包含 required 字段或 unique 约束。';
+            }
+
+            addNotification('error', errorMsg, desc);
+        } else {
+            addNotification('info', '无数据需上传', '本地数据为空。');
+        }
+
     } catch (e) {
         console.error(e);
-        addNotification('error', '同步中断', '部分数据上传失败，请检查网络或数据格式。');
+        addNotification('error', '同步中断', '未知网络错误。');
     } finally {
         setIsLoading(false);
     }
@@ -439,7 +467,7 @@ const App: React.FC = () => {
             )}
             
             {/* FORCE CONTENT TO TAKE FULL HEIGHT AND MANAGE ITS OWN SCROLL */}
-            <div className="flex-1 w-full h-full min-h-0 relative">
+            <div className="flex-1 w-full h-full min-h-0 relative overflow-y-auto custom-scrollbar">
                 {renderContent()}
             </div>
         </div>
