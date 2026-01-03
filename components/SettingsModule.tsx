@@ -4,7 +4,7 @@ import { Theme, Product, ProductStatus, Currency } from '../types';
 import { 
   Sun, Moon, Zap, Database, Upload, Download, CheckCircle2, 
   Loader2, FileJson, HardDrive, RefreshCw, Server, Smartphone, 
-  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key
+  Monitor, Shield, Globe, Bell, Sunset, Trees, Rocket, RotateCcw, AlertTriangle, AlertCircle, CloudCog, ArrowUpCircle, Lock, Key, ExternalLink
 } from 'lucide-react';
 import { pb, updateServerUrl, isCloudConnected } from '../services/pocketbase';
 
@@ -26,8 +26,8 @@ const COLLECTIONS_SCHEMA = [
         name: 'products',
         type: 'base',
         schema: [
-            { name: 'sku', type: 'text', required: false },
-            { name: 'name', type: 'text', required: false },
+            { name: 'sku', type: 'text' },
+            { name: 'name', type: 'text' },
             { name: 'description', type: 'text' },
             { name: 'price', type: 'number' },
             { name: 'stock', type: 'number' },
@@ -459,8 +459,19 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
       setIsInitializing(true);
       try {
-          // 1. Authenticate as Admin
-          await pb.admins.authWithPassword(adminEmail, adminPassword);
+          // 1. Authenticate as Admin (Try V0.21 Legacy first, then V0.23+ Fallback)
+          try {
+              await pb.admins.authWithPassword(adminEmail, adminPassword);
+          } catch (authError: any) {
+              console.warn("Legacy auth failed, trying v0.23+ _superusers collection...", authError);
+              try {
+                  // Fallback for newer PocketBase versions
+                  await pb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
+              } catch (fallbackError: any) {
+                  // If both fail, throw the original error or a clearer message
+                  throw new Error(`认证失败: ${authError.message || fallbackError.message}`);
+              }
+          }
           
           // 2. Iterate and create collections
           let createdCount = 0;
@@ -499,8 +510,26 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
           }
 
       } catch (e: any) {
-          console.error(e);
-          if (onNotify) onNotify('error', '初始化失败', e.message || '请检查管理员账号密码或网络。');
+          console.error("Init Error Full:", e);
+          let msg = e.message || '未知错误';
+          
+          // Drill down into PocketBase detailed errors (data field)
+          if (e.response && e.response.data) {
+              const details = e.response.data;
+              if (details.data) {
+                  // Format field-specific errors
+                  const fieldErrors = Object.entries(details.data)
+                      .map(([k, v]: any) => `${k}: ${v.message}`)
+                      .join(', ');
+                  if (fieldErrors) msg += ` (${fieldErrors})`;
+              } else if (details.message) {
+                  msg = details.message;
+              }
+          } else if (e.originalError) {
+              msg += ` (${e.originalError.message})`;
+          }
+
+          if (onNotify) onNotify('error', '初始化失败', msg);
       } finally {
           setIsInitializing(false);
       }
@@ -751,6 +780,15 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                           <p className="text-xs text-gray-400 mt-1">
                               如果您遇到 "404 Collection Not Found" 错误，请在此处初始化数据库结构。
                               这将自动在 PocketBase 中创建 Products, Shipments 等所有必要的数据表。
+                              <br/>
+                              <a 
+                                  href={`${serverUrlInput}/_/`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-neon-blue hover:underline inline-flex items-center gap-1 mt-1"
+                              >
+                                  还没有管理员账号？点击前往后台设置 <ExternalLink size={10}/>
+                              </a>
                           </p>
                       </div>
                   </div>
