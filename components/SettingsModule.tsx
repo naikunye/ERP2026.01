@@ -561,10 +561,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                   debugLogs.push(`>> Creating collection '${def.name}'...`);
                   
                   // Payload A: Legacy (v0.22-) uses 'schema' property
-                  // ENHANCEMENT: Populate missing legacy fields (required, system, options)
+                  // CRITICAL FIX: Strictly sanitize payload. NO 'id' or 'system' fields in schema definitions.
+                  // Old PB versions reject requests if schema items contain "id": "".
                   const legacySchema = def.schema.map(f => ({
-                      system: false,
-                      id: '',
                       name: f.name,
                       type: f.type,
                       required: false,
