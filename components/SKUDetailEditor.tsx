@@ -7,7 +7,7 @@ import {
   Factory, Plane, Ship, AlertTriangle, TrendingUp, ShieldCheck, 
   Ruler, CreditCard, Clock, Lock, Unlock, Tag, AlertCircle, CheckCircle2,
   FileText, Anchor, ListTree, History, Container, AlertOctagon,
-  Calendar, Layers
+  Calendar, Layers, Plus, Trash2, Edit3, Copy, MousePointerClick
 } from 'lucide-react';
 import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import ImageUpload from './ImageUpload';
@@ -59,6 +59,7 @@ interface BatchAttribution {
     lockedLogisticsCost: number;
     lockedProfit: number;
     status: 'Open' | 'Locked';
+    dateLocked: string;
 }
 
 // --- V2 Data Model ---
@@ -133,6 +134,8 @@ interface SKUFormDataV2 {
   logisticsRecords: LogisticsExecutionRecord[];
   batchAttribution: BatchAttribution[];
 }
+
+const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete, onChangeView, inventoryLogs = [] }) => {
   
@@ -280,9 +283,69 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     };
   }, [formData]);
 
+  // --- ACTIONS ---
+
   const handleChange = (field: keyof SKUFormDataV2, value: any) => {
       if (formData.costLock) return;
       setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddVariant = () => {
+      const newVariant: VariantOverride = {
+          id: generateId(),
+          sku: `${formData.sku}-V${formData.variants.length + 1}`,
+          name: `New Variant ${formData.variants.length + 1}`,
+          price: formData.sellingPriceUSD,
+          stock: 0,
+          attributes: {}
+      };
+      setFormData(prev => ({ ...prev, variants: [...prev.variants, newVariant] }));
+  };
+
+  const handleRemoveVariant = (id: string) => {
+      setFormData(prev => ({ ...prev, variants: prev.variants.filter(v => v.id !== id) }));
+  };
+
+  const handleAddLogisticsRecord = () => {
+      const newRecord: LogisticsExecutionRecord = {
+          id: generateId(),
+          method: formData.logisticsMethod,
+          carrier: formData.logisticsCarrier || 'Unknown',
+          trackingNos: [''],
+          shipDate: new Date().toISOString().split('T')[0],
+          status: 'In Transit',
+          sentQty: formData.totalRestockUnits || 0,
+          receivedQty: 0,
+          shelvedQty: 0
+      };
+      setFormData(prev => ({ ...prev, logisticsRecords: [newRecord, ...prev.logisticsRecords] }));
+  };
+
+  const handleUpdateLogisticsRecord = (id: string, field: keyof LogisticsExecutionRecord, value: any) => {
+      setFormData(prev => ({
+          ...prev,
+          logisticsRecords: prev.logisticsRecords.map(r => r.id === id ? { ...r, [field]: value } : r)
+      }));
+  };
+
+  const handleDeleteLogisticsRecord = (id: string) => {
+      setFormData(prev => ({ ...prev, logisticsRecords: prev.logisticsRecords.filter(r => r.id !== id) }));
+  };
+
+  const handleLockBatch = () => {
+      const newBatch: BatchAttribution = {
+          id: generateId(),
+          batchName: `${new Date().toISOString().split('T')[0]} BATCH`,
+          skuId: formData.sku,
+          trackingRef: formData.logisticsRecords[0]?.trackingNos[0] || 'N/A',
+          inboundRef: formData.logisticsRecords[0]?.inboundId || 'N/A',
+          lockedUnitCost: masterMetrics.effectiveUnitCostUSD,
+          lockedLogisticsCost: masterMetrics.unitLogisticsUSD,
+          lockedProfit: masterMetrics.unitProfit,
+          status: 'Locked',
+          dateLocked: new Date().toLocaleDateString()
+      };
+      setFormData(prev => ({ ...prev, batchAttribution: [newBatch, ...prev.batchAttribution] }));
   };
 
   const handleSaveWrapper = () => {
@@ -310,13 +373,11 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
 
   // --- Helper to calculate Variant Metrics ---
   const getVariantMetrics = (v: VariantOverride) => {
-      // Inherit or Override
       const sellingPrice = v.priceOverride ?? formData.sellingPriceUSD;
       const fbaFee = v.fbaFeeOverride ?? formData.fbaFeeUSD;
       const adCost = v.adCostOverride ?? formData.adCostPerUnitUSD;
       const returnRate = v.returnRateOverride ?? formData.returnRate;
       
-      // We assume unit cost and logistics unit cost are inherited (complex allocation logic omitted for brevity)
       const unitCost = masterMetrics.effectiveUnitCostUSD;
       const logisticsCost = masterMetrics.unitLogisticsUSD; 
       
@@ -519,8 +580,12 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                     </div>
                 </div>
 
-                {/* 2. VARIANT MATRIX (NEW Embedded Block) */}
-                <SectionCard title="SKU 变体配置 (Variant Matrix)" icon={ListTree}>
+                {/* 2. VARIANT MATRIX (Interactive) */}
+                <SectionCard 
+                    title="SKU 变体配置 (Variant Matrix)" 
+                    icon={ListTree}
+                    action={<button onClick={handleAddVariant} className="px-3 py-1 bg-white/10 text-white rounded text-xs font-bold hover:bg-white/20 flex items-center gap-1"><Plus size={12}/> 添加变体</button>}
+                >
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
                             <thead className="bg-zinc-900 text-[10px] font-bold text-zinc-500 uppercase">
@@ -530,7 +595,8 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                     <th className="px-4 py-3">Sell Price ($)</th>
                                     <th className="px-4 py-3">FBA/Ops ($)</th>
                                     <th className="px-4 py-3">Ad Cost ($)</th>
-                                    <th className="px-4 py-3 rounded-r-lg text-right">Net Profit</th>
+                                    <th className="px-4 py-3 text-right">Net Profit</th>
+                                    <th className="px-4 py-3 rounded-r-lg w-10"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-800">
@@ -539,8 +605,24 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                     return (
                                         <tr key={v.id} className="group hover:bg-zinc-900/50 transition-colors">
                                             <td className="px-4 py-3">
-                                                <div className="font-bold text-white">{v.name}</div>
-                                                <div className="text-[10px] font-mono text-zinc-500">{v.sku}</div>
+                                                <input 
+                                                    value={v.name}
+                                                    onChange={e => {
+                                                        const newVars = [...formData.variants];
+                                                        newVars[i].name = e.target.value;
+                                                        handleChange('variants', newVars);
+                                                    }}
+                                                    className="w-full bg-transparent font-bold text-white text-xs outline-none focus:border-b border-blue-500"
+                                                />
+                                                <input 
+                                                    value={v.sku}
+                                                    onChange={e => {
+                                                        const newVars = [...formData.variants];
+                                                        newVars[i].sku = e.target.value;
+                                                        handleChange('variants', newVars);
+                                                    }}
+                                                    className="w-full bg-transparent text-[10px] font-mono text-zinc-500 mt-1 outline-none focus:border-b border-blue-500"
+                                                />
                                             </td>
                                             <td className="px-4 py-3">
                                                 <input 
@@ -604,79 +686,142 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                                 </span>
                                                 <div className="text-[9px] text-zinc-500">{metrics.margin.toFixed(1)}%</div>
                                             </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <button onClick={() => handleRemoveVariant(v.id)} className="text-zinc-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                                    <Trash2 size={14}/>
+                                                </button>
+                                            </td>
                                         </tr>
                                     );
                                 })}
                                 {formData.variants.length === 0 && (
-                                    <tr><td colSpan={6} className="px-4 py-8 text-center text-zinc-600 text-xs italic">无变体数据 (No Variants Configured)</td></tr>
+                                    <tr><td colSpan={7} className="px-4 py-8 text-center text-zinc-600 text-xs italic">无变体数据 (No Variants Configured)</td></tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
                 </SectionCard>
 
-                {/* 3. LOGISTICS EXECUTION (NEW Embedded Block) */}
-                <SectionCard title="物流与入库执行 (Execution Records)" icon={Anchor}>
+                {/* 3. LOGISTICS EXECUTION (Editable) */}
+                <SectionCard 
+                    title="物流与入库执行 (Execution Records)" 
+                    icon={Anchor}
+                    action={<button onClick={handleAddLogisticsRecord} className="px-3 py-1 bg-white/10 text-white rounded text-xs font-bold hover:bg-white/20 flex items-center gap-1"><Plus size={12}/> 录入执行记录</button>}
+                >
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs">
                             <thead className="bg-zinc-900 text-[10px] font-bold text-zinc-500 uppercase">
                                 <tr>
-                                    <th className="px-4 py-3 rounded-l-lg">Status / Date</th>
-                                    <th className="px-4 py-3">Method / Carrier</th>
+                                    <th className="px-4 py-3 rounded-l-lg w-24">Status / Date</th>
+                                    <th className="px-4 py-3 w-32">Method / Carrier</th>
                                     <th className="px-4 py-3">Tracking / Inbound ID</th>
-                                    <th className="px-4 py-3 text-center">Sent</th>
-                                    <th className="px-4 py-3 text-center">Rcvd</th>
-                                    <th className="px-4 py-3 text-center rounded-r-lg">Diff</th>
+                                    <th className="px-4 py-3 text-center w-20">Sent</th>
+                                    <th className="px-4 py-3 text-center w-20">Rcvd</th>
+                                    <th className="px-4 py-3 text-center rounded-r-lg w-16">Diff</th>
+                                    <th className="w-10"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-800">
                                 {formData.logisticsRecords?.map((rec) => (
-                                    <tr key={rec.id} className="hover:bg-zinc-900/30">
+                                    <tr key={rec.id} className="hover:bg-zinc-900/30 group">
                                         <td className="px-4 py-3">
-                                            <div className={`inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-bold ${
-                                                rec.status === 'Delivered' ? 'border-green-800 bg-green-900/20 text-green-400' : 
-                                                rec.status === 'In Transit' ? 'border-blue-800 bg-blue-900/20 text-blue-400' : 
-                                                'border-zinc-700 bg-zinc-800 text-zinc-400'
-                                            }`}>
-                                                {rec.status}
-                                            </div>
-                                            <div className="text-[10px] text-zinc-500 mt-1">{rec.shipDate}</div>
+                                            <select 
+                                                value={rec.status}
+                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'status', e.target.value)}
+                                                className="bg-transparent text-[10px] font-bold outline-none text-blue-400 mb-1"
+                                            >
+                                                <option value="In Transit">In Transit</option>
+                                                <option value="Delivered">Delivered</option>
+                                                <option value="Customs">Customs</option>
+                                            </select>
+                                            <input 
+                                                type="date"
+                                                value={rec.shipDate}
+                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'shipDate', e.target.value)}
+                                                className="bg-transparent text-[10px] text-zinc-500 w-full outline-none"
+                                            />
                                         </td>
                                         <td className="px-4 py-3">
-                                            <div className="text-white font-bold">{rec.method}</div>
-                                            <div className="text-zinc-500">{rec.carrier}</div>
+                                            <select 
+                                                value={rec.method}
+                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'method', e.target.value)}
+                                                className="bg-transparent text-white font-bold text-xs outline-none block mb-1"
+                                            >
+                                                <option value="Sea">Sea</option>
+                                                <option value="Air">Air</option>
+                                                <option value="Rail">Rail</option>
+                                            </select>
+                                            <input 
+                                                value={rec.carrier}
+                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'carrier', e.target.value)}
+                                                className="bg-transparent text-zinc-500 text-[10px] w-full outline-none"
+                                                placeholder="Carrier"
+                                            />
                                         </td>
                                         <td className="px-4 py-3 font-mono">
-                                            <div className="text-blue-400">{rec.trackingNos[0]}</div>
-                                            <div className="text-zinc-500 text-[10px]">{rec.inboundId}</div>
+                                            <input 
+                                                value={rec.trackingNos[0]}
+                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'trackingNos', [e.target.value])}
+                                                className="bg-transparent text-blue-400 text-xs w-full outline-none mb-1 placeholder-zinc-700"
+                                                placeholder="Tracking No"
+                                            />
+                                            <input 
+                                                value={rec.inboundId}
+                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'inboundId', e.target.value)}
+                                                className="bg-transparent text-zinc-500 text-[10px] w-full outline-none placeholder-zinc-700"
+                                                placeholder="FBA/WMS ID"
+                                            />
                                         </td>
-                                        <td className="px-4 py-3 text-center text-zinc-300">{rec.sentQty}</td>
-                                        <td className="px-4 py-3 text-center text-white font-bold">{rec.receivedQty}</td>
+                                        <td className="px-4 py-3 text-center">
+                                            <input 
+                                                type="number"
+                                                value={rec.sentQty}
+                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'sentQty', Number(e.target.value))}
+                                                className="w-16 bg-zinc-900 border border-zinc-800 rounded text-center text-zinc-300 outline-none focus:border-zinc-600"
+                                            />
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                            <input 
+                                                type="number"
+                                                value={rec.receivedQty}
+                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'receivedQty', Number(e.target.value))}
+                                                className="w-16 bg-zinc-900 border border-zinc-800 rounded text-center text-white font-bold outline-none focus:border-zinc-600"
+                                            />
+                                        </td>
                                         <td className="px-4 py-3 text-center">
                                             {rec.sentQty - rec.receivedQty !== 0 ? (
                                                 <span className="text-red-400 font-bold">{rec.receivedQty - rec.sentQty}</span>
                                             ) : <span className="text-green-500"><CheckCircle2 size={12} className="inline"/></span>}
                                         </td>
+                                        <td className="px-2">
+                                            <button onClick={() => handleDeleteLogisticsRecord(rec.id)} className="text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Trash2 size={12}/>
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))}
                                 {(!formData.logisticsRecords || formData.logisticsRecords.length === 0) && (
-                                    <tr><td colSpan={6} className="px-4 py-6 text-center text-zinc-600 text-xs italic">暂无执行记录</td></tr>
+                                    <tr><td colSpan={7} className="px-4 py-6 text-center text-zinc-600 text-xs italic">暂无执行记录，请点击右上角录入</td></tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
                 </SectionCard>
 
-                {/* 4. BATCH ATTRIBUTION (NEW Embedded Block) */}
-                <SectionCard title="批次利润归因 (Batch Attribution)" icon={History}>
+                {/* 4. BATCH ATTRIBUTION (Interactive) */}
+                <SectionCard 
+                    title="批次利润归因 (Batch Attribution)" 
+                    icon={History}
+                    action={<button onClick={handleLockBatch} className="px-3 py-1 bg-gradient-to-r from-yellow-600 to-yellow-700 text-white rounded text-xs font-bold hover:opacity-90 flex items-center gap-1 shadow-lg shadow-yellow-900/20"><Lock size={12}/> 锁定当前批次成本</button>}
+                >
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {formData.batchAttribution?.map(batch => (
-                            <div key={batch.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl relative group hover:border-zinc-700 transition-colors">
+                            <div key={batch.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl relative group hover:border-yellow-600/30 transition-colors">
                                 <div className="absolute top-4 right-4 text-zinc-600">
-                                    {batch.status === 'Locked' ? <Lock size={14}/> : <Unlock size={14}/>}
+                                    <Lock size={14} className="text-yellow-600"/>
                                 </div>
-                                <div className="text-xs font-bold text-zinc-400 uppercase mb-1">{batch.batchName}</div>
-                                <div className="text-sm font-bold text-white mb-3">{batch.skuId}</div>
+                                <div className="text-xs font-bold text-yellow-600 uppercase mb-1">{batch.batchName}</div>
+                                <div className="text-xs text-zinc-500 mb-3">{batch.dateLocked}</div>
                                 
                                 <div className="space-y-2 text-xs">
                                     <div className="flex justify-between">
@@ -698,7 +843,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         ))}
                         {(!formData.batchAttribution || formData.batchAttribution.length === 0) && (
                             <div className="col-span-full py-8 text-center text-zinc-600 text-xs italic border border-dashed border-zinc-800 rounded-xl">
-                                暂无批次归因数据 (No Batch History)
+                                暂无批次归因数据，请在确认成本和物流后点击“锁定”
                             </div>
                         )}
                     </div>
@@ -722,11 +867,14 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
 
 // --- V2 UI Components (Apple Style) ---
 
-const SectionCard = ({ title, icon: Icon, children }: any) => (
+const SectionCard = ({ title, icon: Icon, children, action }: any) => (
     <div className="bg-zinc-950 rounded-2xl border border-zinc-800 p-6 shadow-sm hover:border-zinc-700 transition-colors">
-        <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-            <Icon size={16} strokeWidth={2} className="text-zinc-500" /> {title}
-        </h3>
+        <div className="flex justify-between items-center mb-6">
+            <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                <Icon size={16} strokeWidth={2} className="text-zinc-500" /> {title}
+            </h3>
+            {action}
+        </div>
         {children}
     </div>
 );
