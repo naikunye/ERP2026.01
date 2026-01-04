@@ -131,18 +131,23 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   const metrics = useMemo(() => {
     const rate = formData.exchangeRate || 7.2;
     
-    // 1. Logistics Calculation (Per Unit Basis)
-    // Formula: (Unit Weight * Rate) / Exchange Rate
-    // We prioritize Unit Weight logic for profitability analysis
-    const unitShippingCostRMB = formData.unitWeight * formData.shippingRate;
+    // 1. Logistics Calculation (Standardized Per Unit)
+    // Rule: Use Box Dimensions to find Chargeable Weight per Unit if available
+    let unitChargeableWeight = formData.unitWeight; // fallback
+    
+    if (formData.itemsPerBox > 0 && formData.boxLength > 0 && formData.boxWeight > 0) {
+        const boxVolWeight = (formData.boxLength * formData.boxWidth * formData.boxHeight) / 6000;
+        const boxRealWeight = formData.boxWeight;
+        const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
+        unitChargeableWeight = boxChargeable / formData.itemsPerBox;
+    }
+
+    const unitShippingCostRMB = unitChargeableWeight * formData.shippingRate;
     const unitShippingCostUSD = unitShippingCostRMB / rate;
     
-    // Batch Calculation (For reference only)
-    const singleBoxVol = (formData.boxLength * formData.boxWidth * formData.boxHeight) / 6000; 
-    const totalVolWeight = singleBoxVol * formData.restockCartons;
-    const totalRealWeight = formData.boxWeight * formData.restockCartons;
-    const autoChargeableWeight = Math.max(totalVolWeight, totalRealWeight);
-    const totalBatchShippingRMB = autoChargeableWeight * formData.shippingRate;
+    // Batch Calculation (Reference only, does not affect unit profit)
+    const totalBatchUnits = formData.restockCartons * formData.itemsPerBox; // Assume full cartons for standard batch calc
+    const totalBatchShippingRMB = unitShippingCostRMB * totalBatchUnits;
 
     // 2. Product Cost
     const unitCostUSD = formData.unitCost / rate;
@@ -171,7 +176,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     const totalStockProfit = unitProfit * product.stock;
 
     return {
-      autoChargeableWeight,
+      unitChargeableWeight, // Exposed for UI
       totalBatchShippingRMB,
       unitShippingCostRMB,
       unitShippingCostUSD, 
@@ -258,7 +263,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                   <input type="text" name="name" value={formData.name} onChange={handleChange} className="bg-transparent border-b border-transparent hover:border-white/20 focus:border-neon-blue text-xl font-bold text-white w-full focus:outline-none transition-all px-1"/>
                   <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/10 text-gray-400 border border-white/10 font-mono shrink-0">{product.sku}</span>
               </div>
-              <p className="text-xs text-gray-400 mt-1 flex items-center gap-2"><AlertCircle size={12} className="text-neon-blue"/> 财务数据已校准 (Calibrated).</p>
+              <p className="text-xs text-gray-400 mt-1 flex items-center gap-2"><AlertCircle size={12} className="text-neon-blue"/> 财务数据已校准 (Standardized Calculation).</p>
             </div>
           </div>
           <div className="flex gap-3 shrink-0">
@@ -304,7 +309,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         <InputGroup label="供应商名称" name="supplierName" value={formData.supplierName} type="text" onChange={handleChange} />
                         <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
                             <InputGroup label="采购单价 (¥ CNY)" name="unitCost" value={formData.unitCost} highlight="text-neon-blue" onChange={handleChange} />
-                            <InputGroup label="单件重量 (kg)" name="unitWeight" value={formData.unitWeight} onChange={handleChange} />
+                            <InputGroup label="单品实重 (kg)" name="unitWeight" value={formData.unitWeight} onChange={handleChange} />
                         </div>
                         <div className="text-[10px] text-gray-500 text-right -mt-2">≈ ${metrics.unitCostUSD.toFixed(2)} USD</div>
                     </div>
@@ -318,7 +323,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         <InputGroup label="高 (cm)" name="boxHeight" value={formData.boxHeight} onChange={handleChange} />
                     </div>
                     <div className="grid grid-cols-2 gap-4 mb-4">
-                         <InputGroup label="单箱重量 (kg)" name="boxWeight" value={formData.boxWeight} onChange={handleChange} />
+                         <InputGroup label="单箱实重 (kg)" name="boxWeight" value={formData.boxWeight} onChange={handleChange} />
                          <InputGroup label="单箱数量" name="itemsPerBox" value={formData.itemsPerBox} onChange={handleChange} />
                     </div>
                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5 mb-4">
@@ -350,18 +355,18 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                          
                          <div className="p-4 bg-neon-yellow/5 border border-neon-yellow/10 rounded-xl space-y-3">
                              <div className="grid grid-cols-2 gap-4">
-                                 <InputGroup label="头程单价 (¥/kg)" name="shippingRate" value={formData.shippingRate} onChange={handleChange} />
+                                 <InputGroup label="头程费率 (¥/kg)" name="shippingRate" value={formData.shippingRate} onChange={handleChange} />
                                  <div className="space-y-1">
                                     <label className="text-[10px] text-gray-500 font-bold flex items-center gap-1">
-                                        计费总重 (kg) <span className="text-[9px] font-normal text-gray-600 bg-white/10 px-1 rounded">Auto: {metrics.autoChargeableWeight.toFixed(1)}</span>
+                                        单品计费重 (kg)
                                     </label>
-                                    <input type="number" name="manualChargeableWeight" value={formData.manualChargeableWeight || ''} onChange={handleChange} placeholder={metrics.autoChargeableWeight.toFixed(1)} className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white font-mono outline-none focus:border-neon-yellow transition-colors placeholder-gray-600"/>
+                                    <div className="w-full h-10 flex items-center px-3 bg-black/20 border border-white/10 rounded-lg text-sm text-neon-yellow font-mono">
+                                        {metrics.unitChargeableWeight.toFixed(3)}
+                                    </div>
                                  </div>
                              </div>
                              <div className="text-[10px] text-gray-500 text-left -mt-2 flex items-center gap-2">
-                                <span className="text-neon-yellow font-bold">≈ ${metrics.unitShippingCostUSD.toFixed(2)} USD /件</span>
-                                <span className="text-gray-600">|</span>
-                                <span className="text-gray-500">总运费 ¥{metrics.totalBatchShippingRMB.toFixed(0)}</span>
+                                <span className="text-neon-yellow font-bold">单品运费: ≈ ${metrics.unitShippingCostUSD.toFixed(2)} USD</span>
                              </div>
                          </div>
                     </div>

@@ -137,10 +137,24 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       
       const costOfGoodsUSD = (item.financials?.costOfGoods || 0) / rate;
       
-      // Dynamic Shipping Calculation: (Weight * Rate) / Exchange
-      const weight = item.unitWeight || 0;
+      // Dynamic Shipping Calculation: Use Box Chargeable Weight Logic
+      // 1. Calculate Standard Unit Chargeable Weight
+      let unitChargeableWeight = item.unitWeight || 0; // fallback
+      const boxL = item.boxLength || 0;
+      const boxW = item.boxWidth || 0;
+      const boxH = item.boxHeight || 0;
+      const boxWt = item.boxWeight || 0;
+      const itemsPerBox = item.itemsPerBox || 0;
+
+      if (itemsPerBox > 0 && boxL > 0 && boxWt > 0) {
+          const boxVolWeight = (boxL * boxW * boxH) / 6000;
+          const boxRealWeight = boxWt;
+          const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
+          unitChargeableWeight = boxChargeable / itemsPerBox;
+      }
+
       const shippingRate = item.logistics?.shippingRate || 0;
-      const shippingCostUSD = (weight * shippingRate) / rate;
+      const shippingCostUSD = (unitChargeableWeight * shippingRate) / rate;
       
       const platformFee = sellingPrice * ((item.platformCommission || 0) / 100);
       const influencerFee = sellingPrice * ((item.influencerCommission || 0) / 100);
