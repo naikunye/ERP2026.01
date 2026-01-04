@@ -39,22 +39,29 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       const costRMB = item.financials?.costOfGoods || 0;
       const costUSD = costRMB / rate;
       
-      // Shipping: Priority to saved USD value (calculated accurately in Editor)
-      // If missing, we fallback to a rough calc, but Editor save is the source of truth.
+      // Shipping: 
+      // Priority 1: Saved USD Shipping Cost (if calc'd in editor)
+      // Priority 2: Calc from Weight * Rate
       let shippingCostUSD = item.financials?.shippingCost || 0;
-      
-      if (shippingCostUSD === 0 && (item.logistics?.shippingRate || 0) > 0) {
-          // Fallback: Unit Weight * Rate / Exchange
-          const weight = item.unitWeight || 0;
-          const rmbRate = item.logistics?.shippingRate || 0;
-          shippingCostUSD = (weight * rmbRate) / rate;
-      }
+      let shippingCostRMB_Display = 0;
 
-      // Display RMB Value (Back-calculated for consistency)
-      const shippingCostRMB_Display = shippingCostUSD * rate;
+      if (shippingCostUSD > 0) {
+          shippingCostRMB_Display = shippingCostUSD * rate;
+      } else {
+          // Dynamic Fallback
+          // Use manual chargeable weight if available, else unit weight
+          const weight = item.logistics?.manualChargeableWeight || item.unitWeight || 0;
+          const rmbRate = item.logistics?.shippingRate || 0;
+          if (weight > 0 && rmbRate > 0) {
+              const shipRMB = weight * rmbRate;
+              shippingCostUSD = shipRMB / rate;
+              shippingCostRMB_Display = shipRMB;
+          }
+      }
 
       // 2. SOFT COSTS (Native USD Inputs)
       // IMPORTANT: These must match SKUDetailEditor's subtraction logic exactly
+      // Explicitly check for fields, fallback to 0
       const platformFee = item.financials?.platformFee || (sellingPrice * ((item.platformCommission || 0) / 100));
       const influencerFee = sellingPrice * ((item.influencerCommission || 0) / 100);
       const returnCost = sellingPrice * ((item.returnRate || 0) / 100);
@@ -68,23 +75,25 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       const totalSoftCostsUSD = platformFee + influencerFee + fixedFee + lastMile + adCost + returnCost + otherCost;
       
       // 3. PROFIT CALCULATION
-      const totalUnitCostUSD = costUSD + shippingCostUSD + totalSoftCostsUSD;
+      const totalHardCostUSD = costUSD + shippingCostUSD;
+      const totalUnitCostUSD = totalHardCostUSD + totalSoftCostsUSD;
       const unitProfitUSD = sellingPrice - totalUnitCostUSD;
 
       return {
           rate,
-          costRMB, // For display
-          shippingCostRMB_Display, // For display
-          totalUnitCostUSD,
-          unitProfitUSD
+          costRMB, 
+          shippingCostRMB_Display,
+          totalHardCostRMB: costRMB + shippingCostRMB_Display,
+          unitProfitUSD,
+          totalUnitCostUSD
       };
   };
 
   // Capital Calculation (RMB Base)
   const totalCapitalRMB = products.reduce((sum, item) => {
       // Inventory Value = (Purchase Cost + Shipping Cost) * Stock
-      const { costRMB, shippingCostRMB_Display } = getFinancials(item);
-      return sum + ((costRMB + shippingCostRMB_Display) * item.stock);
+      const { totalHardCostRMB } = getFinancials(item);
+      return sum + (totalHardCostRMB * item.stock);
   }, 0);
 
   // --- Multi-Select Logic ---
@@ -294,7 +303,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           ) : (
              filteredData.map((item) => {
                  // Use unified calculation logic
-                 const { unitProfitUSD, costRMB, shippingCostRMB_Display, totalUnitCostUSD } = getFinancials(item);
+                 const { unitProfitUSD, costRMB, shippingCostRMB_Display, totalHardCostRMB } = getFinancials(item);
                  
                  const hasData = !!item.financials;
                  const trackingUrl = getTrackingUrl(item.logistics?.carrier, item.logistics?.trackingNo);
@@ -309,9 +318,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  
                  const totalPotentialProfitUSD = unitProfitUSD * item.stock;
                  const isSelected = selectedIds.has(item.id);
-
-                 // Display total RMB hard cost
-                 const totalHardCostRMB = costRMB + shippingCostRMB_Display;
 
                  return (
                   <div key={item.id} onClick={() => onEditSKU && onEditSKU(item)} className={`glass-card grid grid-cols-12 items-center p-0 min-h-[110px] hover:border-white/20 transition-all group relative overflow-visible cursor-pointer ${isSelected ? 'border-neon-blue/30 bg-neon-blue/5' : ''}`}>

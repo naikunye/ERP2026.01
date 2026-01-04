@@ -81,7 +81,7 @@ const parseCleanNum = (val: any): number => {
     if (val === undefined || val === null) return 0;
     if (typeof val === 'number') return val;
     if (typeof val === 'string') {
-        const cleanStr = val.replace(/,/g, '').replace(/[¥$€£]/g, '').trim();
+        const cleanStr = val.replace(/,/g, '').replace(/[¥$€£]/g, '').replace('kg', '').replace('g', '').trim();
         if (!cleanStr) return 0;
         const match = cleanStr.match(/-?\d+(\.\d+)?/);
         return match ? parseFloat(match[0]) : 0;
@@ -230,8 +230,15 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const name = raw.name || findValueGreedy(raw, ['title', 'product_name', '名称', '标题', '品名']) || 'Unnamed Product';
             const supplier = raw.supplier || findValueGreedy(raw, ['vendor', 'factory', '供应商', '厂家']);
 
-            // 1. Weight Extraction
-            const unitWeight = parseCleanNum(raw.unitWeight || findValueGreedy(raw, ['weight', 'kg', '单重', 'unit_weight', 'gross_weight']));
+            // 1. Weight Extraction (Enhanced Greedy Match)
+            // Prioritize explicitly named fields
+            let unitWeight = parseCleanNum(
+                raw.unitWeight || 
+                raw.weight || 
+                findValueGreedy(raw, ['gross_weight', 'package_weight', '单重', '毛重', 'weight_kg', 'kg', '单品重量'])
+            );
+            // Safety: if weight < 0.01, assume it's invalid or missing, default to 0.5kg as placeholder if critical
+            if (unitWeight <= 0) unitWeight = 0; 
 
             // 2. Cost & Price
             const unitCost = parseCleanNum(raw.financials?.costOfGoods || findValueGreedy(raw, ['cost', 'purchase_price', '采购价', '进货价', '成本']));
@@ -240,52 +247,42 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const imageUrl = raw.imageUrl || findValueGreedy(raw, ['image', 'img', 'pic', 'url']);
 
             // 3. Logistics Logic & Tracking Extraction (INTELLIGENT)
-            // Tracking Number
             const trackingNo = raw.logistics?.trackingNo || 
                                raw.trackingNo || 
-                               findValueGreedy(raw, ['tracking', 'tracking_no', 'waybill', '运单号', '追踪号', '提单号', 'bol', 'bill_of_lading', 'ups_no', 'ups_tracking', 'sea_tracking']) || '';
+                               findValueGreedy(raw, ['tracking', 'tracking_no', 'waybill', '运单号', '追踪号', '提单号']) || '';
 
-            // Carrier
             let carrier = raw.logistics?.carrier || 
                           raw.carrier || 
-                          findValueGreedy(raw, ['carrier', 'provider', '承运商', '物流公司', '快递']) || '';
+                          findValueGreedy(raw, ['carrier', 'provider', '承运商', '物流公司']) || '';
 
-            // Method Raw
             let methodRaw = raw.logistics?.method || 
                             raw.method || 
                             findValueGreedy(raw, ['method', 'transport', 'mode', '运输方式', '渠道']) || 'Sea';
 
-            // Normalize Method
             let method: 'Air' | 'Sea' | 'Rail' | 'Truck' = 'Sea';
             const mStr = String(methodRaw).toLowerCase();
             if (mStr.includes('air') || mStr.includes('空')) method = 'Air';
             else if (mStr.includes('rail') || mStr.includes('铁')) method = 'Rail';
             else if (mStr.includes('truck') || mStr.includes('卡')) method = 'Truck';
             
-            // Smart Detection based on Tracking & Carrier
             const tUpper = String(trackingNo).toUpperCase();
             const cUpper = String(carrier).toUpperCase();
-            
-            if (tUpper.startsWith('1Z') || cUpper.includes('UPS')) {
-                if(!carrier) carrier = 'UPS';
-                if(method === 'Sea') method = 'Air'; // Bias towards Air for UPS unless specified
-            }
+            if (tUpper.startsWith('1Z') || cUpper.includes('UPS')) { if(!carrier) carrier = 'UPS'; if(method === 'Sea') method = 'Air'; }
             if (cUpper.includes('DHL') || cUpper.includes('FEDEX')) method = 'Air';
-            if (cUpper.includes('MATSON') || cUpper.includes('COSCO') || cUpper.includes('MSK') || cUpper.includes('ZIM')) method = 'Sea';
+            if (cUpper.includes('MATSON') || cUpper.includes('COSCO')) method = 'Sea';
 
             // Cost Logic
             let shippingRate = parseCleanNum(
                 raw.logistics?.shippingRate || 
                 raw.shippingRate || 
-                findValueGreedy(raw, ['shipping_rate', 'freight_rate', '头程单价', '运费单价', 'kg_price', 'rate_per_kg', '头程费率', '海运单价', '空运单价'])
+                findValueGreedy(raw, ['shipping_rate', 'freight_rate', '头程单价', '运费单价', 'kg_price', '头程费率'])
             );
 
             let shippingCost = parseCleanNum(
                 raw.financials?.shippingCost || 
-                findValueGreedy(raw, ['shipping', 'freight', 'logistics_cost', '运费', '头程', 'unit_shipping', '头程分摊'])
+                findValueGreedy(raw, ['shipping', 'freight', 'logistics_cost', '运费', '头程', 'unit_shipping'])
             );
 
-            // Auto-Calculate Missing Rates/Costs
             if (shippingRate === 0 && shippingCost > 0 && unitWeight > 0) {
                 shippingRate = parseFloat((shippingCost / unitWeight).toFixed(2));
             } else if (shippingCost === 0 && shippingRate > 0 && unitWeight > 0) {
@@ -341,7 +338,10 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                     shippingRate: shippingRate,
                     manualChargeableWeight: 0
                 },
-                dailySales: parseCleanNum(raw.dailySales || 0)
+                dailySales: parseCleanNum(raw.dailySales || 0),
+                // Preserve variants if they exist
+                variants: Array.isArray(raw.variants) ? raw.variants : [],
+                hasVariants: Array.isArray(raw.variants) && raw.variants.length > 0
             };
         });
 
@@ -379,13 +379,16 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       setInitStatusMsg("Connecting...");
       try {
           const targetUrl = serverUrlInput.replace(/\/$/, '');
-          const resp = await fetch(`${targetUrl}/api/admins/auth-with-password`, {
+          const resp = await fetch(`${targetUrl}/api/collections`, { method: 'GET' }).catch(() => null); // Simple check, usually needs auth
+          
+          // Actual auth logic requires SDK admin usage or raw fetch
+          const authResp = await fetch(`${targetUrl}/api/admins/auth-with-password`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ identity: adminEmail, password: adminPassword })
           });
-          if (!resp.ok) throw new Error("Admin Auth Failed");
-          const { token } = await resp.json();
+          if (!authResp.ok) throw new Error("Admin Auth Failed");
+          const { token } = await authResp.json();
           
           setInitStatusMsg("Creating Collections...");
           for (const def of COLLECTIONS_SCHEMA) {

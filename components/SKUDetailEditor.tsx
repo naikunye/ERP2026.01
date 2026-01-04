@@ -215,6 +215,18 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     });
   };
 
+  const handleVariantQtyChange = (variantSku: string, qty: number) => {
+      setFormData(prev => {
+          const newMap = { ...prev.variantRestockMap, [variantSku]: qty };
+          const total = Object.values(newMap).reduce((a, b) => a + b, 0);
+          return {
+              ...prev,
+              variantRestockMap: newMap,
+              totalRestockUnits: total
+          };
+      });
+  };
+
   const handleSave = () => {
       onSave({
           ...formData,
@@ -239,7 +251,9 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
           orderFixedFee: formData.orderFixedFee,
           returnRate: formData.returnRate,
           lastMileShipping: formData.lastMileShipping,
-          exchangeRate: formData.exchangeRate
+          exchangeRate: formData.exchangeRate,
+          // IMPORTANT: Save these root level physical props so import data isn't lost
+          unitWeight: formData.unitWeight
       });
   };
 
@@ -323,22 +337,52 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
 
                 <section className="glass-card p-6 border-l-4 border-l-gray-500 group hover:border-white/20 transition-all">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Package size={16} className="text-gray-300" /> 装箱配置</h3>
-                    <div className="grid grid-cols-3 gap-3 mb-4">
-                        <InputGroup label="长 (cm)" name="boxLength" value={formData.boxLength} onChange={handleChange} />
-                        <InputGroup label="宽 (cm)" name="boxWidth" value={formData.boxWidth} onChange={handleChange} />
-                        <InputGroup label="高 (cm)" name="boxHeight" value={formData.boxHeight} onChange={handleChange} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                         <InputGroup label="单箱实重 (kg)" name="boxWeight" value={formData.boxWeight} onChange={handleChange} />
-                         <InputGroup label="单箱数量" name="itemsPerBox" value={formData.itemsPerBox} onChange={handleChange} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5 mb-4">
-                         <InputGroup label="补货箱数" name="restockCartons" value={formData.restockCartons} highlight="text-white bg-white/10 rounded px-2" onChange={handleChange} />
-                         <div className="space-y-1 w-full">
-                            <label className="text-[10px] text-neon-yellow font-bold uppercase">总数量 (pcs)</label>
-                            <input type="number" name="totalRestockUnits" value={formData.totalRestockUnits} onChange={handleChange} disabled={(formData.variants?.length || 0) > 0} className={`w-full h-10 bg-black/40 border border-neon-yellow/30 rounded-lg px-3 text-sm text-neon-yellow font-bold outline-none focus:border-neon-yellow transition-colors ${(formData.variants?.length || 0) > 0 ? 'opacity-80 cursor-not-allowed' : ''}`}/>
+                    
+                    {/* Variant Restock Matrix */}
+                    {formData.variants && formData.variants.length > 0 ? (
+                        <div className="mb-4 space-y-2 bg-white/5 p-3 rounded-xl border border-white/10">
+                            <div className="text-[10px] font-bold text-neon-purple uppercase mb-2">Multi-SKU 补货矩阵</div>
+                            <div className="max-h-[150px] overflow-y-auto custom-scrollbar space-y-2">
+                                {formData.variants.map((v) => (
+                                    <div key={v.sku} className="flex items-center justify-between gap-2 bg-black/20 p-2 rounded-lg">
+                                        <div className="text-xs text-white truncate w-1/3">{v.name}</div>
+                                        <div className="flex-1">
+                                            <input 
+                                                type="number"
+                                                value={formData.variantRestockMap[v.sku] || 0}
+                                                onChange={(e) => handleVariantQtyChange(v.sku, parseInt(e.target.value) || 0)}
+                                                className="w-full bg-transparent text-right text-sm font-bold text-neon-purple outline-none border-b border-neon-purple/30 focus:border-neon-purple"
+                                            />
+                                        </div>
+                                        <div className="text-[10px] text-gray-500">pcs</div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="text-right text-xs font-bold text-white pt-2 border-t border-white/5">
+                                Total: {formData.totalRestockUnits} pcs
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        // Normal Restock
+                        <>
+                            <div className="grid grid-cols-3 gap-3 mb-4">
+                                <InputGroup label="长 (cm)" name="boxLength" value={formData.boxLength} onChange={handleChange} />
+                                <InputGroup label="宽 (cm)" name="boxWidth" value={formData.boxWidth} onChange={handleChange} />
+                                <InputGroup label="高 (cm)" name="boxHeight" value={formData.boxHeight} onChange={handleChange} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <InputGroup label="单箱实重 (kg)" name="boxWeight" value={formData.boxWeight} onChange={handleChange} />
+                                <InputGroup label="单箱数量" name="itemsPerBox" value={formData.itemsPerBox} onChange={handleChange} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5 mb-4">
+                                <InputGroup label="补货箱数" name="restockCartons" value={formData.restockCartons} highlight="text-white bg-white/10 rounded px-2" onChange={handleChange} />
+                                <div className="space-y-1 w-full">
+                                    <label className="text-[10px] text-neon-yellow font-bold uppercase">总数量 (pcs)</label>
+                                    <input type="number" name="totalRestockUnits" value={formData.totalRestockUnits} onChange={handleChange} className={`w-full h-10 bg-black/40 border border-neon-yellow/30 rounded-lg px-3 text-sm text-neon-yellow font-bold outline-none focus:border-neon-yellow transition-colors`}/>
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </section>
             </div>
 
