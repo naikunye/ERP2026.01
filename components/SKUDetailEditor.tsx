@@ -309,9 +309,6 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
 
   const handleSave = () => {
       // FORCE SAVE THE EFFECTIVE CHARGEABLE WEIGHT
-      // Even if the user didn't type it manually (e.g. calculated from box dims), 
-      // we must save what the user SEES as the calculation basis.
-      // This solves the issue where list view falls back to unitWeight (0.5) instead of calculated weight (0.6).
       const effectiveWeightToSave = metrics.unitChargeableWeight || formData.unitWeight;
 
       onSave({
@@ -342,16 +339,6 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       });
   };
 
-  // Charts Data
-  const chartData = [
-    { name: '货值', value: metrics.unitCostUSD, color: '#3b82f6' }, // Blue
-    { name: '头程', value: metrics.unitShippingCostUSD, color: '#eab308' }, // Yellow
-    { name: '平台/达人', value: metrics.breakdown.platformFeeUSD + metrics.breakdown.influencerFeeUSD, color: '#a855f7' }, // Purple
-    { name: '定费/杂', value: metrics.breakdown.fixedFeeUSD + metrics.breakdown.otherCostUSD, color: '#f97316' }, // Orange (Removed Last Mile)
-    { name: '广告/退货', value: metrics.breakdown.adCostUSD + metrics.breakdown.estimatedReturnCostUSD, color: '#ef4444' }, // Red
-    { name: '净利', value: Math.max(0, metrics.unitProfit), color: '#22c55e' } // Green
-  ].filter(d => d.value > 0);
-
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in">
       <div className="w-[95vw] h-[92vh] glass-card flex flex-col border-white/20 shadow-2xl relative overflow-hidden">
@@ -368,7 +355,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                   <input type="text" name="name" value={formData.name} onChange={handleChange} className="bg-transparent border-b border-transparent hover:border-white/20 focus:border-neon-blue text-xl font-bold text-white w-full focus:outline-none transition-all px-1"/>
                   <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/10 text-gray-400 border border-white/10 font-mono shrink-0">{product.sku}</span>
               </div>
-              <p className="text-xs text-gray-400 mt-1 flex items-center gap-2"><AlertCircle size={12} className="text-neon-blue"/> 财务数据已校准 (Strict Mode).</p>
+              <p className="text-xs text-gray-400 mt-1 flex items-center gap-2">基本信息录入 (Base Info)</p>
             </div>
           </div>
           <div className="flex gap-3 shrink-0">
@@ -380,7 +367,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         <div className="flex-1 overflow-y-auto p-6 bg-transparent custom-scrollbar">
           <div className="grid grid-cols-12 gap-6 pb-20">
             
-            {/* LEFT COLUMN: PRODUCT & SUPPLY */}
+            {/* COLUMN 1: PRODUCT & SUPPLY (Basic) */}
             <div className="col-span-12 lg:col-span-4 space-y-6">
                 <section className="glass-card p-6 border-l-4 border-l-neon-purple group hover:border-white/20 transition-all">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Layers size={16} className="text-neon-purple" /> 产品与供应链</h3>
@@ -428,7 +415,10 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         </div>
                     </div>
                 </section>
+            </div>
 
+            {/* COLUMN 2: PACKING & LOGISTICS (Operations) */}
+            <div className="col-span-12 lg:col-span-4 space-y-6">
                 <section className="glass-card p-6 border-l-4 border-l-gray-500 group hover:border-white/20 transition-all">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Package size={16} className="text-gray-300" /> 装箱配置</h3>
                     
@@ -507,10 +497,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                         </div>
                     )}
                 </section>
-            </div>
 
-            {/* MIDDLE COLUMN: LOGISTICS & FEES */}
-            <div className="col-span-12 lg:col-span-4 space-y-6">
                 <section className="glass-card p-6 border-l-4 border-l-neon-yellow group hover:border-white/20 transition-all">
                      <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Truck size={16} className="text-neon-yellow" /> 头程物流 (RMB)</h3>
                     <div className="space-y-4">
@@ -561,9 +548,19 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                          </div>
                     </div>
                 </section>
+            </div>
 
+            {/* COLUMN 3: COSTS & ACTIONS (Financial Input) */}
+            <div className="col-span-12 lg:col-span-4 relative space-y-6">
                 <section className="glass-card p-6 border-l-4 border-l-neon-pink group hover:border-white/20 transition-all">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Share2 size={16} className="text-neon-pink" /> TIKTOK COST STRUCTURE (USD)</h3>
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Share2 size={16} className="text-neon-pink" /> 成本与定价 (USD)</h3>
+                        <div className="flex items-center gap-2 bg-black/40 rounded-lg px-2 py-1 border border-white/10">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1"><ArrowRightLeft size={10}/> 汇率</span>
+                            <input type="number" name="exchangeRate" value={formData.exchangeRate} onChange={handleChange} className="w-12 bg-transparent text-xs font-bold text-white text-right outline-none focus:text-neon-blue"/>
+                        </div>
+                    </div>
+                    
                     <div className="space-y-5">
                          <div className="flex items-center gap-4">
                               <InputGroup label="销售价 (USD $)" name="sellingPrice" value={formData.sellingPrice} highlight="text-neon-green text-xl" onChange={handleChange} />
@@ -583,84 +580,10 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                          </div>
                     </div>
                 </section>
-            </div>
 
-            {/* RIGHT COLUMN: PROFIT ANALYSIS */}
-            <div className="col-span-12 lg:col-span-4 relative">
-                <div className="sticky top-0 space-y-6">
-                    <section className="glass-card p-8 border border-neon-green/30 shadow-[0_0_30px_rgba(0,255,157,0.1)] relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-40 h-40 bg-neon-green opacity-10 blur-[50px] pointer-events-none"></div>
-                        <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/40 rounded-lg px-2 py-1 border border-white/10 z-20">
-                            <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1"><ArrowRightLeft size={10}/> 汇率</span>
-                            <input type="number" name="exchangeRate" value={formData.exchangeRate} onChange={handleChange} className="w-12 bg-transparent text-xs font-bold text-white text-right outline-none focus:text-neon-blue"/>
-                        </div>
-
-                        <h3 className="text-sm font-bold text-neon-green uppercase tracking-widest mb-8 flex items-center gap-2 relative z-10"><Calculator size={16} /> 单品利润分析 (USD)</h3>
-
-                        <div className="w-48 h-48 mx-auto mb-6 relative z-10">
-                             <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={chartData} innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="value">
-                                        {chartData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                                        ))}
-                                    </Pie>
-                                    <RechartsTooltip contentStyle={{ backgroundColor: '#000', borderRadius: '8px', border: '1px solid #333' }} formatter={(val: number) => `$${val.toFixed(2)}`} />
-                                </PieChart>
-                             </ResponsiveContainer>
-                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                 <span className="text-2xl font-bold text-white">{metrics.netMargin.toFixed(1)}%</span>
-                                 <span className="text-[10px] text-gray-400">Margin</span>
-                             </div>
-                        </div>
-
-                        <div className="relative z-10 text-center space-y-2 mb-6">
-                             <div className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">单品净利</div>
-                             <div className="text-[40px] font-display font-bold text-white leading-none tracking-tight flex items-center justify-center gap-2 drop-shadow-[0_0_15px_rgba(0,255,157,0.3)]">
-                                 <span className="text-xl text-neon-green mt-2">$</span>
-                                 {metrics.unitProfit.toFixed(2)}
-                             </div>
-                             <div className="text-xs text-gray-500 font-mono mt-2">
-                                ≈ ¥{(metrics.unitProfit * formData.exchangeRate).toFixed(2)} RMB
-                             </div>
-                        </div>
-
-                        {/* PROFIT EQUATION DISPLAY */}
-                        <div className="relative z-10 bg-black/40 rounded-xl p-3 border border-white/10 space-y-2 mb-6">
-                            <div className="flex justify-between items-center text-[10px] text-gray-400 border-b border-white/5 pb-1 mb-1">
-                                <span>PROFIT EQUATION</span>
-                                <HelpCircle size={10}/>
-                            </div>
-                            <div className="flex justify-between text-xs items-center">
-                                <span className="text-white font-bold">${formData.sellingPrice.toFixed(2)}</span>
-                                <span className="text-gray-500">-</span>
-                                <span className="text-blue-400 font-bold">${metrics.totalHardCostUSD.toFixed(2)}</span>
-                                <span className="text-gray-500">-</span>
-                                <span className="text-pink-400 font-bold">${metrics.totalSoftCostUSD.toFixed(2)}</span>
-                                <span className="text-gray-500">=</span>
-                                <span className="text-neon-green font-bold">${metrics.unitProfit.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between text-[9px] text-gray-500 px-1">
-                                <span>Revenue</span>
-                                <span>Hard Cost</span>
-                                <span>Soft Cost</span>
-                                <span>Profit</span>
-                            </div>
-                        </div>
-
-                        <div className="mt-6 grid grid-cols-2 gap-2">
-                             <CostItem label={`货值 (¥${formData.unitCost})`} value={metrics.unitCostUSD} color="bg-blue-500" />
-                             <CostItem label={`头程 (¥${metrics.unitShippingCostRMB.toFixed(1)})`} value={metrics.unitShippingCostUSD} color="bg-yellow-500" />
-                             <CostItem label="平台/达人佣金" value={metrics.breakdown.platformFeeUSD + metrics.breakdown.influencerFeeUSD} color="bg-purple-500" />
-                             <CostItem label="定费/杂 (Excl. LastMile)" value={metrics.breakdown.fixedFeeUSD + metrics.breakdown.otherCostUSD} color="bg-orange-500" />
-                             <CostItem label="广告/退货" value={metrics.breakdown.adCostUSD + metrics.breakdown.estimatedReturnCostUSD} color="bg-red-500" />
-                        </div>
-                    </section>
-                    
-                    <div className="grid grid-cols-4 gap-3">
-                         <button onClick={onDelete} className="col-span-1 py-4 bg-white/5 border border-white/10 hover:bg-neon-pink/20 hover:border-neon-pink text-gray-400 hover:text-neon-pink rounded-xl flex items-center justify-center transition-all" title="删除此 SKU"><Trash2 size={20} /></button>
-                         <button onClick={handleSave} className="col-span-3 py-4 bg-gradient-neon-green text-black rounded-xl font-bold text-sm shadow-glow-green hover:scale-105 transition-all flex items-center justify-center gap-2"><Save size={18} /> 保存配置</button>
-                    </div>
+                <div className="grid grid-cols-4 gap-3 pt-4">
+                     <button onClick={onDelete} className="col-span-1 py-4 bg-white/5 border border-white/10 hover:bg-neon-pink/20 hover:border-neon-pink text-gray-400 hover:text-neon-pink rounded-xl flex items-center justify-center transition-all" title="删除此 SKU"><Trash2 size={20} /></button>
+                     <button onClick={handleSave} className="col-span-3 py-4 bg-gradient-neon-green text-black rounded-xl font-bold text-sm shadow-glow-green hover:scale-105 transition-all flex items-center justify-center gap-2"><Save size={18} /> 保存配置</button>
                 </div>
             </div>
 
@@ -677,15 +600,5 @@ const InputGroup = ({ label, name, value, onChange, type="number", highlight="",
         <input type={type} name={name} value={value} onChange={onChange} placeholder={placeholder} className={`w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white outline-none focus:border-white/30 transition-colors ${highlight}`}/>
     </div>
 );
-
-const CostItem = ({ label, value, color }: any) => (
-    <div className="bg-white/5 p-2 rounded-lg border border-white/5">
-        <div className="flex items-center gap-1.5 mb-1">
-            <div className={`w-1.5 h-1.5 rounded-full ${color}`}></div>
-            <span className="text-[10px] text-gray-400 truncate">{label}</span>
-        </div>
-        <div className="text-xs font-bold text-white">${value.toFixed(2)}</div>
-    </div>
-)
 
 export default SKUDetailEditor;
