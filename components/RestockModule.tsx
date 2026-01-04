@@ -4,7 +4,7 @@ import { Product } from '../types';
 import { 
   Search, Plus, Filter, Factory, Truck, Plane, Ship, 
   DollarSign, Package, Edit3, Copy, Trash2, StickyNote, Wallet, ExternalLink,
-  Activity, AlertTriangle, TrendingUp, Container, CheckSquare, Square, ShoppingCart, ArrowRight, Scale, ArrowRightCircle
+  Activity, AlertTriangle, TrendingUp, Container, CheckSquare, Square, ShoppingCart, ArrowRight, Scale, ArrowRightCircle, ListTree
 } from 'lucide-react';
 
 interface RestockModuleProps {
@@ -22,7 +22,11 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isPOModalOpen, setIsPOModalOpen] = useState(false);
-  const [poDraft, setPoDraft] = useState<{ id: string, name: string, sku: string, qty: number, cost: number }[]>([]);
+  
+  // Updated PO Draft Structure to support Variants
+  // skuId: original product ID (for reference)
+  // variantKey: specific variant ID or SKU
+  const [poDraft, setPoDraft] = useState<{ uniqueKey: string, skuId: string, name: string, sku: string, qty: number, cost: number, isVariant: boolean }[]>([]);
   const [supplierName, setSupplierName] = useState('Default Supplier');
 
   const filteredData = products.filter(p => 
@@ -30,24 +34,16 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- STRICT CALCULATION CORE (MUST MIRROR SKUDETAILEDITOR EXACTLY) ---
+  // --- STRICT CALCULATION CORE ---
   const getFinancials = (item: Product) => {
-      // 1. Core Params
       const rate = item.exchangeRate && item.exchangeRate > 0 ? item.exchangeRate : 7.2;
       const sellingPrice = item.financials?.sellingPrice || item.price || 0;
-      
-      // 2. Hard Costs (RMB -> USD)
       const unitCostRMB = item.financials?.costOfGoods || 0;
       
-      // Calculate Shipping RMB
-      // STRICT LOGIC: Always prefer manualChargeableWeight if it exists (it comes from the Total Weight input in Editor)
       let unitChargeableWeight = item.logistics?.manualChargeableWeight;
       
-      // Fallback only if manual is explicitly missing or 0
       if (!unitChargeableWeight || unitChargeableWeight === 0) {
           unitChargeableWeight = item.unitWeight || 0;
-          
-          // Double fallback to box dims
           if (unitChargeableWeight === 0 && item.itemsPerBox && item.boxLength && item.boxWidth && item.boxHeight && item.boxWeight) {
                const boxVolWeight = (item.boxLength * item.boxWidth * item.boxHeight) / 6000;
                const boxRealWeight = item.boxWeight;
@@ -57,24 +53,20 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       }
 
       const shippingRate = item.logistics?.shippingRate || 0;
-      // FORMULA: Unit Shipping RMB = Unit Weight * Rate
       const unitShippingCostRMB = unitChargeableWeight * shippingRate;
       
       const totalHardCostRMB = unitCostRMB + unitShippingCostRMB;
       const totalHardCostUSD = totalHardCostRMB / rate;
 
-      // 3. Soft Costs (USD)
+      // Soft Costs
       const platformFee = sellingPrice * ((item.platformCommission || 0) / 100);
       const influencerFee = sellingPrice * ((item.influencerCommission || 0) / 100);
       const returnCost = sellingPrice * ((item.returnRate || 0) / 100);
       const fixedFee = item.orderFixedFee || 0;
       const adCost = item.financials?.adCost || 0;
       const otherCost = item.financials?.otherCost || 0;
-      // Last Mile Shipping excluded per request
 
       const totalSoftCostUSD = platformFee + influencerFee + fixedFee + adCost + returnCost + otherCost;
-
-      // 4. Profit
       const totalUnitCostUSD = totalHardCostUSD + totalSoftCostUSD;
       const unitProfitUSD = sellingPrice - totalUnitCostUSD;
 
@@ -88,9 +80,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       };
   };
 
-  // Capital Calculation (RMB Base)
   const totalCapitalRMB = products.reduce((sum, item) => {
-      // Inventory Value = (Purchase Cost + Shipping Cost) * Stock
       const { totalHardCostRMB } = getFinancials(item);
       return sum + (totalHardCostRMB * item.stock);
   }, 0);
@@ -111,8 +101,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       }
   };
 
-  // --- Actions ---
-  
   const handleBatchDelete = () => {
       if (onDeleteMultiple && selectedIds.size > 0) {
           onDeleteMultiple(Array.from(selectedIds));
@@ -120,35 +108,89 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       }
   };
 
-  // --- PO Logic ---
+  // --- REWRITTEN: PO Logic with Multi-SKU Support ---
   const handleOpenPO = () => {
       if (selectedIds.size === 0) return;
-      const items = products
-          .filter(p => selectedIds.has(p.id))
-          .map(p => ({
-              id: p.id,
-              name: p.name,
-              sku: p.sku,
-              qty: 100, 
-              cost: p.financials?.costOfGoods || 0 
-          }));
       
-      setPoDraft(items);
-      const firstProduct = products.find(p => p.id === Array.from(selectedIds)[0]);
-      setSupplierName(firstProduct?.supplier || '深圳科技实业有限公司');
+      const draftItems: typeof poDraft = [];
+      const selectedProducts = products.filter(p => selectedIds.has(p.id));
+
+      selectedProducts.forEach(p => {
+          const cost = p.financials?.costOfGoods || 0;
+          
+          // CHECK 1: Does it have variants configured in the Restock Matrix?
+          const hasVariantConfig = p.variantRestockMap && Object.keys(p.variantRestockMap).length > 0;
+          
+          if (hasVariantConfig) {
+              // EXPLODE VARIANTS
+              Object.entries(p.variantRestockMap!).forEach(([variantSku, qty]) => {
+                  if (typeof qty === 'number' && qty > 0) {
+                      // Find variant name if possible
+                      const variantDef = p.variants?.find(v => v.sku === variantSku);
+                      const nameSuffix = variantDef ? `[${variantDef.name}]` : '';
+                      
+                      draftItems.push({
+                          uniqueKey: `${p.id}-${variantSku}`,
+                          skuId: p.id,
+                          name: `${p.name} ${nameSuffix}`,
+                          sku: variantSku,
+                          qty: qty,
+                          cost: cost,
+                          isVariant: true
+                      });
+                  }
+              });
+          } 
+          
+          // Fallback: If no variants exploded (or map was empty/zeros), add the main SKU
+          // Use planned `totalRestockUnits` if available, otherwise 0 (user must enter)
+          const alreadyAdded = draftItems.some(i => i.skuId === p.id);
+          if (!alreadyAdded) {
+              const plannedQty = p.totalRestockUnits || 0;
+              draftItems.push({
+                  uniqueKey: `${p.id}-MAIN`,
+                  skuId: p.id,
+                  name: p.name,
+                  sku: p.sku,
+                  qty: plannedQty > 0 ? plannedQty : 0, // Default to 0 if no plan, force user input
+                  cost: cost,
+                  isVariant: false
+              });
+          }
+      });
+      
+      setPoDraft(draftItems);
+      
+      // Auto-fill supplier from first item
+      const firstProduct = selectedProducts[0];
+      setSupplierName(firstProduct?.supplier || '未指定供应商');
+      
       setIsPOModalOpen(true);
   };
 
   const handleConfirmPO = () => {
       if (!onCreatePO) return;
-      const payload = poDraft.map(item => ({ skuId: item.id, quantity: item.qty, cost: item.cost }));
+      // Filter out zero qty items
+      const validItems = poDraft.filter(i => i.qty > 0);
+      if (validItems.length === 0) {
+          alert("请至少为一个商品输入采购数量");
+          return;
+      }
+      
+      const payload = validItems.map(item => ({ 
+          skuId: item.skuId, 
+          quantity: item.qty, 
+          cost: item.cost,
+          // We might want to pass variant info in the future, but for now strictly matching interface
+      }));
+      
       onCreatePO(payload, supplierName);
       setIsPOModalOpen(false);
       setSelectedIds(new Set());
   };
 
-  const updatePoQty = (id: string, newQty: number) => {
-      setPoDraft(prev => prev.map(item => item.id === id ? { ...item, qty: Math.max(1, newQty) } : item));
+  const updatePoQty = (uniqueKey: string, newQty: number) => {
+      setPoDraft(prev => prev.map(item => item.uniqueKey === uniqueKey ? { ...item, qty: Math.max(0, newQty) } : item));
   };
 
   const poTotalCostRMB = poDraft.reduce((acc, item) => acc + (item.cost * item.qty), 0);
@@ -161,27 +203,10 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
     }
   };
 
-  const getStatusCN = (status?: string) => {
-      if (!status) return '待配置';
-      switch(status) {
-          case 'In Transit': return '运输中';
-          case 'Delivered': return '已送达';
-          case 'In Production': return '生产中';
-          case 'Customs': return '清关中';
-          case 'Pending': return '待发货'; 
-          case 'Out for Delivery': return '派送中';
-          case 'Exception': return '异常';
-          default: return status;
-      }
-  }
-
   const getTrackingUrl = (carrier: string = '', trackingNo: string = '') => {
       if (!trackingNo) return '#';
       const c = carrier.toLowerCase().trim();
-      const t = trackingNo.toUpperCase().trim();
-      if (c.includes('ups') || t.startsWith('1Z')) return `https://www.ups.com/track?loc=zh_CN&tracknum=${trackingNo}`;
-      if (c.includes('dhl')) return `https://www.dhl.com/cn-zh/home/tracking/tracking-express.html?submit=1&tracking-id=${trackingNo}`;
-      if (c.includes('fedex')) return `https://www.fedex.com/zh-cn/home.html`;
+      if (c.includes('ups')) return `https://www.ups.com/track?loc=zh_CN&tracknum=${trackingNo}`;
       return `https://www.17track.net/zh-cn/track?nums=${trackingNo}`;
   };
 
@@ -196,7 +221,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               <span className="text-neon-blue/50 font-sans text-sm tracking-widest font-medium border border-neon-blue/30 px-2 py-0.5 rounded">SMART RESTOCK</span>
            </h1>
         </div>
-        
         <div className="md:col-span-6 flex gap-4 justify-end">
              <div className="glass-card px-5 py-3 flex items-center gap-4 min-w-[200px] border-white/10 bg-white/5">
                 <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-gray-300">
@@ -207,7 +231,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                     <div className="text-xl font-display font-bold text-white">{products.length}</div>
                 </div>
              </div>
-             
              <div className="glass-card px-5 py-3 flex items-center gap-4 min-w-[240px] border-neon-green/20 bg-neon-green/5 relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-2 opacity-20"><Wallet size={40} className="text-neon-green"/></div>
                 <div className="w-10 h-10 rounded-full bg-neon-green/10 flex items-center justify-center text-neon-green shadow-glow-green/30">
@@ -235,9 +258,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                   placeholder="搜索 SKU, 产品名称..."
               />
           </div>
-          
           <div className="flex gap-3 items-center">
-              {/* Batch Actions */}
               {selectedIds.size > 0 && (
                   <>
                       <button 
@@ -255,15 +276,11 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                               title="批量删除选中项"
                           >
                               <Trash2 size={18} /> 
-                              批量删除 ({selectedIds.size})
+                              批量删除
                           </button>
                       )}
                   </>
               )}
-
-              <button className="h-12 px-5 rounded-xl border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white transition-colors flex items-center gap-2 text-xs font-bold">
-                  <Filter size={16} /> 筛选
-              </button>
               {onAddNew && (
                   <button 
                     onClick={onAddNew}
@@ -279,13 +296,13 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       <div className="flex-1 overflow-y-auto custom-scrollbar relative px-2 min-h-0 bg-[#050510]">
           
           <div className="sticky top-0 bg-[#050510] z-30 grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12 border-b border-white/5 mb-2">
-              <div className="col-span-2">SKU / 入库单 / 备注</div>
+              <div className="col-span-3">SKU / 入库信息</div>
               <div className="col-span-2">产品详情 / 箱规</div>
-              <div className="col-span-2">物流状态 / 费率</div>
-              <div className="col-span-2">库存健康度 (DOI)</div>
+              <div className="col-span-2">物流状态</div>
+              <div className="col-span-2">库存 / <span className="text-neon-green">计划补货量</span></div>
               <div className="col-span-1">硬成本 (RMB)</div>
-              <div className="col-span-1">净利润 (USD)</div>
-              <div className="col-span-2 text-center">操作</div>
+              <div className="col-span-1">单品净利 ($)</div>
+              <div className="col-span-1 text-center">操作</div>
           </div>
 
           <div className="absolute top-[12px] left-4 z-40" title="全选">
@@ -301,22 +318,14 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               </div>
           ) : (
              filteredData.map((item) => {
-                 // Use unified calculation logic
                  const { unitProfitUSD, costRMB, shippingCostRMB_Display, totalHardCostRMB } = getFinancials(item);
-                 
                  const hasData = !!item.financials;
                  const trackingUrl = getTrackingUrl(item.logistics?.carrier, item.logistics?.trackingNo);
-                 const dailySales = item.dailySales || 1; 
-                 const daysOfInventory = Math.floor(item.stock / dailySales);
-                 const safeStockDays = 30; 
-                 const stockProgress = Math.min((daysOfInventory / safeStockDays) * 100, 100);
-                 const isLowStock = daysOfInventory < 15;
-                 const isCritical = daysOfInventory < 7;
-                 const urgencyColor = isCritical ? 'bg-neon-pink' : (isLowStock ? 'bg-neon-yellow' : 'bg-neon-green');
-                 const urgencyText = isCritical ? 'text-neon-pink' : (isLowStock ? 'text-neon-yellow' : 'text-neon-green');
-                 
-                 const totalPotentialProfitUSD = unitProfitUSD * item.stock;
                  const isSelected = selectedIds.has(item.id);
+                 
+                 // Calc variants count
+                 const variantCount = item.variants?.length || 0;
+                 const plannedRestock = item.totalRestockUnits || 0;
 
                  return (
                   <div key={item.id} onClick={() => onEditSKU && onEditSKU(item)} className={`glass-card grid grid-cols-12 items-center p-0 min-h-[110px] hover:border-white/20 transition-all group relative overflow-visible cursor-pointer ${isSelected ? 'border-neon-blue/30 bg-neon-blue/5' : ''}`}>
@@ -325,34 +334,18 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           {isSelected ? <CheckSquare size={20} className="text-neon-blue" /> : <Square size={20} className="text-gray-600 hover:text-gray-400" />}
                       </div>
 
-                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${urgencyColor}`}></div>
-
                       {/* 1. Identity */}
-                      <div className="col-span-2 p-4 pl-12 border-r border-white/5 h-full flex flex-col justify-center gap-1.5 relative">
-                          <div className="font-mono text-neon-blue font-bold text-sm">
+                      <div className="col-span-3 p-4 pl-12 border-r border-white/5 h-full flex flex-col justify-center gap-1.5 relative">
+                          <div className="font-mono text-neon-blue font-bold text-sm flex items-center gap-2">
                               {item.sku}
+                              {variantCount > 0 && <span className="text-[9px] bg-neon-purple/20 text-neon-purple px-1.5 rounded border border-neon-purple/30 flex items-center gap-1"><ListTree size={10}/> {variantCount} Vars</span>}
                           </div>
                           {item.inboundId ? (
-                              <div className="flex items-start gap-1.5 text-[10px] text-neon-purple w-full mt-1" title="Inbound ID (入库单号)">
+                              <div className="flex items-start gap-1.5 text-[10px] text-gray-400 w-full mt-1">
                                   <Container size={10} className="shrink-0 mt-[2px]" />
-                                  <span className="font-mono font-bold tracking-wide break-all whitespace-normal leading-tight">
-                                      {item.inboundId}
-                                  </span>
-                                  {item.inboundStatus === 'Received' ? (
-                                      <span className="ml-1 text-[9px] bg-neon-green/20 text-neon-green px-1 rounded border border-neon-green/20 shrink-0">已入库</span>
-                                  ) : (
-                                      <span className="ml-1 text-[9px] bg-neon-yellow/20 text-neon-yellow px-1 rounded border border-neon-yellow/20 shrink-0">待入库</span>
-                                  )}
+                                  <span className="font-mono tracking-wide">{item.inboundId}</span>
                               </div>
-                          ) : (
-                              <div className="text-[9px] text-gray-600 border border-dashed border-gray-800 px-1 py-0.5 rounded w-fit mt-1">无入库单号</div>
-                          )}
-                          {item.note && (
-                              <div className="flex items-start gap-1.5 text-[10px] text-gray-400 bg-white/5 p-1.5 rounded border border-white/5 w-fit mt-1">
-                                   <StickyNote size={10} className="text-neon-yellow shrink-0 mt-[1px]" />
-                                   <span className="text-gray-300 leading-snug line-clamp-2 break-all" title={item.note}>{item.note}</span>
-                              </div>
-                          )}
+                          ) : <div className="text-[9px] text-gray-600 italic mt-1">无入库单</div>}
                       </div>
 
                       {/* 2. Product Detail */}
@@ -363,15 +356,12 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                               </div>
                               <div className="min-w-0 flex-1">
                                   <div className="font-bold text-white text-xs truncate mb-1" title={item.name}>{item.name}</div>
-                                  <div className="flex items-center gap-2 text-[10px] text-gray-500 truncate">
-                                      <Factory size={10} className="shrink-0"/> <span className="truncate">{item.supplier || '未指定供应商'}</span>
-                                  </div>
+                                  <div className="text-[10px] text-gray-500 truncate">{item.supplier || '未指定供应商'}</div>
                               </div>
                           </div>
                           <div className="flex gap-2 text-[9px] text-gray-400 bg-black/20 p-1.5 rounded border border-white/5">
-                              <span>装箱: <strong className="text-white">{item.itemsPerBox || 0}</strong> pcs/箱</span>
-                              <span className="text-gray-600">|</span>
-                              <span>箱数: <strong className="text-white">{item.restockCartons || 0}</strong> ctns</span>
+                              <span>装箱: <strong className="text-white">{item.itemsPerBox || 0}</strong> pcs</span>
+                              <span>| 箱数: <strong className="text-white">{item.restockCartons || 0}</strong></span>
                           </div>
                       </div>
 
@@ -381,50 +371,35 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                               <>
                                 <div className="flex items-center gap-2 text-white font-bold text-xs">
                                     {getLogisticsIcon(item.logistics.method)}
-                                    <span className={item.logistics.status === 'In Transit' ? 'text-neon-blue' : ''}>{getStatusCN(item.logistics.status)}</span>
+                                    <span className={item.logistics.status === 'In Transit' ? 'text-neon-blue' : ''}>{item.logistics.status}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <div className="text-[10px] text-gray-500 font-mono truncate max-w-[80px]" title={item.logistics.trackingNo}>{item.logistics.trackingNo || '无运单号'}</div>
+                                    <div className="text-[10px] text-gray-500 font-mono truncate max-w-[80px]" title={item.logistics.trackingNo}>{item.logistics.trackingNo || 'No Track'}</div>
                                     {item.logistics.trackingNo && (
-                                        <div className="flex gap-1">
-                                            <a href={trackingUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-500 hover:text-white" title="查询轨迹">
-                                                <ExternalLink size={10} />
-                                            </a>
-                                            {onSyncToLogistics && (
-                                                <button onClick={(e) => { e.stopPropagation(); onSyncToLogistics(item); }} className="text-neon-green hover:text-white animate-pulse hover:animate-none transition-colors">
-                                                    <ArrowRightCircle size={10} />
-                                                </button>
-                                            )}
-                                        </div>
+                                        <a href={trackingUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-500 hover:text-white">
+                                            <ExternalLink size={10} />
+                                        </a>
                                     )}
                                 </div>
                               </>
-                          ) : <div className="text-[10px] text-gray-600 italic">暂无物流数据</div>}
-                          
-                          {shippingCostRMB_Display > 0 && (
-                              <div className="text-[10px] text-neon-yellow flex items-center gap-1">
-                                  <Scale size={10}/> 头程: ¥{shippingCostRMB_Display.toFixed(1)}/pcs
-                              </div>
-                          )}
+                          ) : <div className="text-[10px] text-gray-600 italic">暂无物流</div>}
                       </div>
 
-                      {/* 4. Inventory */}
+                      {/* 4. Inventory Plan (FIXED) */}
                       <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
-                           <div className="flex justify-between items-end">
-                                <div className="text-lg font-display font-bold text-white leading-none">{item.stock} <span className="text-[10px] text-gray-500 font-sans">pcs (总数)</span></div>
-                                <div className={`text-[10px] font-bold ${urgencyText} flex items-center gap-1`}>
-                                    {isCritical && <AlertTriangle size={10} />}
-                                    {daysOfInventory > 365 ? '>1年' : `${daysOfInventory}天可售`}
-                                </div>
+                           <div className="flex justify-between items-center text-[10px] text-gray-500 mb-1">
+                               <span>现货库存:</span>
+                               <span className="text-white font-bold">{item.stock}</span>
                            </div>
-                           <div className="flex items-center justify-between gap-1 text-[10px] text-gray-500">
-                               <div className="flex items-center gap-1">
-                                   <Activity size={10} /> 日销: <span className="text-white font-mono">{item.dailySales || 0}</span>
+                           <div className="p-2 bg-neon-green/5 border border-neon-green/20 rounded-lg flex justify-between items-center">
+                               <span className="text-[10px] text-neon-green font-bold uppercase">本批计划</span>
+                               <span className="text-sm font-bold text-white">{plannedRestock} <span className="text-[10px] text-gray-500 font-normal">pcs</span></span>
+                           </div>
+                           {plannedRestock === 0 && (
+                               <div className="text-[9px] text-neon-pink flex items-center gap-1">
+                                   <AlertTriangle size={8}/> 未配置补货量
                                </div>
-                           </div>
-                           <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                               <div className={`h-full rounded-full ${urgencyColor}`} style={{ width: `${stockProgress}%` }}></div>
-                           </div>
+                           )}
                       </div>
 
                       {/* 5. Cost Structure */}
@@ -452,16 +427,12 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                                       <span className="text-[9px] text-gray-500 uppercase">净利 (Net Profit)</span>
                                       <span className={`text-[11px] font-bold leading-none ${unitProfitUSD > 0 ? 'text-neon-green' : 'text-neon-pink'}`}>{unitProfitUSD > 0 ? '+' : ''}${unitProfitUSD.toFixed(2)}</span>
                                   </div>
-                                  <div className="flex flex-col">
-                                      <span className="text-[9px] text-gray-500 uppercase flex items-center gap-1"><TrendingUp size={8} /> 潜在总利 (USD)</span>
-                                      <span className={`text-[11px] font-bold leading-none ${totalPotentialProfitUSD > 0 ? 'text-neon-green' : 'text-neon-pink'}`}>{totalPotentialProfitUSD > 0 ? '+' : ''}${totalPotentialProfitUSD.toLocaleString(undefined, {maximumFractionDigits: 0})}</span>
-                                  </div>
                               </div>
                           ) : <span className="text-[10px] text-gray-600">-</span>}
                       </div>
 
                       {/* 7. Action */}
-                      <div className="col-span-2 p-4 h-full flex items-center justify-center gap-2">
+                      <div className="col-span-1 p-4 h-full flex items-center justify-center gap-2">
                           <button onClick={(e) => { e.stopPropagation(); onEditSKU && onEditSKU(item); }} className="w-8 h-8 rounded-lg bg-white/5 hover:bg-neon-blue hover:text-black flex items-center justify-center text-gray-400 transition-colors" title="编辑详情"><Edit3 size={14} /></button>
                           <button onClick={(e) => { e.stopPropagation(); onCloneSKU && onCloneSKU(item); }} className="w-8 h-8 rounded-lg bg-white/5 hover:bg-neon-purple hover:text-white flex items-center justify-center text-gray-400 transition-colors" title="复制 SKU"><Copy size={14} /></button>
                           <button onClick={(e) => { e.stopPropagation(); onDeleteSKU && onDeleteSKU(item.id); }} className="w-8 h-8 rounded-lg bg-white/5 hover:bg-neon-pink hover:text-white flex items-center justify-center text-gray-400 transition-colors" title="删除"><Trash2 size={14} /></button>
@@ -472,10 +443,10 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           </div>
       </div>
 
-      {/* PO Creation Modal */}
+      {/* PO Creation Modal (REFACTORED) */}
       {isPOModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
-              <div className="w-full max-w-4xl glass-card border border-white/20 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="w-full max-w-5xl glass-card border border-white/20 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
                   <div className="px-8 py-5 border-b border-white/10 bg-white/5 flex justify-between items-center">
                       <h3 className="text-lg font-bold text-white flex items-center gap-2">
                           <ShoppingCart size={20} className="text-neon-green"/> 生成采购单 (Create Purchase Order)
@@ -497,27 +468,35 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           <thead className="bg-white/5 text-[10px] font-bold text-gray-500 uppercase">
                               <tr>
                                   <th className="px-4 py-3">SKU</th>
-                                  <th className="px-4 py-3">名称</th>
+                                  <th className="px-4 py-3">产品名称 / 变体</th>
                                   <th className="px-4 py-3">采购价 (¥)</th>
-                                  <th className="px-4 py-3">数量 (Qty)</th>
+                                  <th className="px-4 py-3">下单数量 (Qty)</th>
                                   <th className="px-4 py-3 text-right">小计 (¥)</th>
                               </tr>
                           </thead>
                           <tbody className="divide-y divide-white/5">
-                              {poDraft.map(item => (
-                                  <tr key={item.id}>
-                                      <td className="px-4 py-3 font-mono text-neon-blue text-xs">{item.sku}</td>
-                                      <td className="px-4 py-3 text-xs text-white max-w-[200px] truncate">{item.name}</td>
-                                      <td className="px-4 py-3 text-xs text-gray-300">¥{item.cost}</td>
-                                      <td className="px-4 py-3">
+                              {poDraft.length === 0 ? (
+                                  <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500">无有效采购项，请检查“补货数量”配置</td></tr>
+                              ) : poDraft.map(item => (
+                                  <tr key={item.uniqueKey} className={item.qty === 0 ? "opacity-50" : ""}>
+                                      <td className="px-4 py-3 font-mono text-neon-blue text-xs align-middle">
+                                          {item.sku}
+                                      </td>
+                                      <td className="px-4 py-3 align-middle">
+                                          <div className="text-xs text-white max-w-[250px] truncate">{item.name}</div>
+                                          {item.isVariant && <div className="text-[9px] text-neon-purple mt-0.5">Variant Line</div>}
+                                      </td>
+                                      <td className="px-4 py-3 text-xs text-gray-300 align-middle">¥{item.cost}</td>
+                                      <td className="px-4 py-3 align-middle">
                                           <input 
                                               type="number" 
                                               value={item.qty}
-                                              onChange={(e) => updatePoQty(item.id, parseInt(e.target.value))}
-                                              className="w-20 bg-black/30 border border-white/10 rounded px-2 py-1 text-white text-xs outline-none focus:border-neon-green"
+                                              onChange={(e) => updatePoQty(item.uniqueKey, parseInt(e.target.value) || 0)}
+                                              className={`w-24 bg-black/30 border rounded px-2 py-1 text-white text-xs outline-none focus:border-neon-green font-bold ${item.qty === 0 ? 'border-red-500/50 text-red-500' : 'border-white/10'}`}
                                           />
+                                          {item.qty === 0 && <span className="ml-2 text-[9px] text-red-500">需输入</span>}
                                       </td>
-                                      <td className="px-4 py-3 text-right text-xs font-bold text-white">¥{(item.cost * item.qty).toLocaleString()}</td>
+                                      <td className="px-4 py-3 text-right text-xs font-bold text-white align-middle">¥{(item.cost * item.qty).toLocaleString()}</td>
                                   </tr>
                               ))}
                           </tbody>
