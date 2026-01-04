@@ -31,11 +31,12 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   );
 
   // Capital Calculation (RMB Base for Procurement + Logistics)
+  // FIX: Use dynamic calculation for consistency
   const totalCapitalRMB = products.reduce((sum, item) => {
-      const rate = item.exchangeRate || 7.2;
-      const costRMB = item.financials?.costOfGoods || 0; // RMB
-      const shipUSD = item.financials?.shippingCost || 0; // USD
-      const shipRMB = shipUSD * rate;
+      const costRMB = item.financials?.costOfGoods || 0; 
+      const weight = item.unitWeight || 0;
+      const shipRate = item.logistics?.shippingRate || 0;
+      const shipRMB = weight * shipRate;
       return sum + ((costRMB + shipRMB) * item.stock);
   }, 0);
 
@@ -60,7 +61,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   const handleBatchDelete = () => {
       if (onDeleteMultiple && selectedIds.size > 0) {
           onDeleteMultiple(Array.from(selectedIds));
-          setSelectedIds(new Set()); // Clear selection regardless of result, assume success or re-select if needed
+          setSelectedIds(new Set()); 
       }
   };
 
@@ -73,8 +74,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               id: p.id,
               name: p.name,
               sku: p.sku,
-              qty: 100, // Default restock qty
-              cost: p.financials?.costOfGoods || 0 // RMB Cost
+              qty: 100, 
+              cost: p.financials?.costOfGoods || 0 
           }));
       
       setPoDraft(items);
@@ -129,12 +130,17 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       return `https://www.17track.net/zh-cn/track?nums=${trackingNo}`;
   };
 
-  const calculateProfitUSD = (item: Product) => {
+  // STRICT CALCULATION LOGIC (Matching Editor)
+  const calculateMetrics = (item: Product) => {
       const rate = item.exchangeRate || 7.2;
       const sellingPrice = item.financials?.sellingPrice || 0;
       
       const costOfGoodsUSD = (item.financials?.costOfGoods || 0) / rate;
-      const shippingCostUSD = item.financials?.shippingCost || 0; 
+      
+      // Dynamic Shipping Calculation: (Weight * Rate) / Exchange
+      const weight = item.unitWeight || 0;
+      const shippingRate = item.logistics?.shippingRate || 0;
+      const shippingCostUSD = (weight * shippingRate) / rate;
       
       const platformFee = sellingPrice * ((item.platformCommission || 0) / 100);
       const influencerFee = sellingPrice * ((item.influencerCommission || 0) / 100);
@@ -142,16 +148,18 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       const lastMile = item.lastMileShipping || 0;
       const adCost = item.financials?.adCost || 0;
       const returnCost = sellingPrice * ((item.returnRate || 0) / 100);
+      const otherCost = item.financials?.otherCost || 0;
 
-      const totalCostUSD = costOfGoodsUSD + shippingCostUSD + platformFee + influencerFee + fixedFee + lastMile + adCost + returnCost;
+      const totalCostUSD = costOfGoodsUSD + shippingCostUSD + platformFee + influencerFee + fixedFee + lastMile + adCost + returnCost + otherCost;
+      const unitProfitUSD = sellingPrice - totalCostUSD;
       
-      return sellingPrice - totalCostUSD;
+      return { unitProfitUSD, shippingCostUSD };
   };
 
   return (
     <div className="h-full flex flex-col w-full animate-fade-in overflow-hidden">
       
-      {/* 1. Header Area (No Shrink) */}
+      {/* 1. Header Area */}
       <div className="shrink-0 grid grid-cols-1 md:grid-cols-12 gap-6 items-end border-b border-white/10 pb-6 px-2">
         <div className="md:col-span-6">
            <h1 className="text-[32px] font-display font-bold text-white tracking-tight leading-none flex items-center gap-3">
@@ -187,7 +195,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
         </div>
       </div>
 
-      {/* 2. Controls Area (No Shrink) */}
+      {/* 2. Controls Area */}
       <div className="shrink-0 flex justify-between items-center py-4 bg-[#050510]/80 border-b border-white/5 z-20 px-2">
           <div className="relative w-[400px] group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon-blue transition-colors" size={18} />
@@ -238,10 +246,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           </div>
       </div>
 
-      {/* 3. The List Area (FLEX GROW TO FILL) */}
+      {/* 3. The List Area */}
       <div className="flex-1 overflow-y-auto custom-scrollbar relative px-2 min-h-0 bg-[#050510]">
           
-          {/* Sticky Header Row */}
           <div className="sticky top-0 bg-[#050510] z-30 grid grid-cols-12 px-6 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-12 border-b border-white/5 mb-2">
               <div className="col-span-2">SKU / 入库单 / 备注</div>
               <div className="col-span-2">产品详情 / 箱规</div>
@@ -252,14 +259,12 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               <div className="col-span-2 text-center">操作</div>
           </div>
 
-          {/* Select All Checkbox Overlay */}
           <div className="absolute top-[12px] left-4 z-40" title="全选">
               <button onClick={handleSelectAll} className="text-gray-500 hover:text-white">
                   {selectedIds.size === filteredData.length && filteredData.length > 0 ? <CheckSquare size={20} className="text-neon-blue"/> : <Square size={20}/>}
               </button>
           </div>
 
-          {/* Data Rows Container */}
           <div className="space-y-3 pb-10">
           {filteredData.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
@@ -267,7 +272,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               </div>
           ) : (
              filteredData.map((item) => {
-                 const unitProfitUSD = calculateProfitUSD(item);
+                 const { unitProfitUSD, shippingCostUSD } = calculateMetrics(item);
                  const hasData = !!item.financials;
                  const trackingUrl = getTrackingUrl(item.logistics?.carrier, item.logistics?.trackingNo);
                  const dailySales = item.dailySales || 1; 
@@ -282,9 +287,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  const totalPotentialProfitUSD = unitProfitUSD * item.stock;
                  const isSelected = selectedIds.has(item.id);
 
+                 // Dynamic Display Values
                  const exchangeRate = item.exchangeRate || 7.2;
                  const costOfGoodsRMB = item.financials?.costOfGoods || 0; 
-                 const shippingCostUSD = item.financials?.shippingCost || 0; 
                  const shippingCostRMB = shippingCostUSD * exchangeRate; 
                  const totalUnitCostRMB = costOfGoodsRMB + shippingCostRMB;
 
@@ -397,7 +402,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                            </div>
                       </div>
 
-                      {/* 5. Cost Structure (Modified) */}
+                      {/* 5. Cost Structure */}
                       <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-1">
                           <div className="flex justify-between items-center">
                               <span className="text-[9px] text-gray-500">采购</span>
