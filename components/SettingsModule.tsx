@@ -81,10 +81,23 @@ const parseCleanNum = (val: any): number => {
     if (val === undefined || val === null) return 0;
     if (typeof val === 'number') return val;
     if (typeof val === 'string') {
-        const cleanStr = val.replace(/,/g, '').replace(/[¥$€£]/g, '').replace('kg', '').replace('g', '').trim();
-        if (!cleanStr) return 0;
+        // Handle cases like "0.5kg", "500g" (naive), "$10.00"
+        let cleanStr = val.toLowerCase().replace(/,/g, '').replace(/[¥$€£]/g, '').trim();
+        
+        // Simple unit conversion heuristic
+        let multiplier = 1;
+        if (cleanStr.endsWith('g') && !cleanStr.endsWith('kg')) {
+             multiplier = 0.001; // grams to kg
+             cleanStr = cleanStr.replace('g', '');
+        } else if (cleanStr.endsWith('kg')) {
+             cleanStr = cleanStr.replace('kg', '');
+        } else if (cleanStr.endsWith('lb') || cleanStr.endsWith('lbs')) {
+             multiplier = 0.453592; // lbs to kg
+             cleanStr = cleanStr.replace(/lbs?/, '');
+        }
+
         const match = cleanStr.match(/-?\d+(\.\d+)?/);
-        return match ? parseFloat(match[0]) : 0;
+        return match ? parseFloat(match[0]) * multiplier : 0;
     }
     return 0;
 };
@@ -231,15 +244,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const supplier = raw.supplier || findValueGreedy(raw, ['vendor', 'factory', '供应商', '厂家']);
 
             // 1. Weight Extraction (Enhanced Greedy Match)
-            // Prioritize explicitly named fields
             let unitWeight = parseCleanNum(
                 raw.unitWeight || 
                 raw.weight || 
-                findValueGreedy(raw, ['gross_weight', 'package_weight', '单重', '毛重', 'weight_kg', 'kg', '单品重量'])
+                findValueGreedy(raw, ['gross_weight', 'package_weight', '单重', '毛重', 'weight_kg', 'kg', '单品重量', 'weight_lbs', 'product_weight'])
             );
-            // Safety: if weight < 0.01, assume it's invalid or missing, default to 0.5kg as placeholder if critical
-            if (unitWeight <= 0) unitWeight = 0; 
-
+            
             // 2. Cost & Price
             const unitCost = parseCleanNum(raw.financials?.costOfGoods || findValueGreedy(raw, ['cost', 'purchase_price', '采购价', '进货价', '成本']));
             const price = parseCleanNum(raw.financials?.sellingPrice || raw.price || findValueGreedy(raw, ['selling_price', 'retail_price', '销售价', '售价']));
@@ -304,7 +314,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 lastUpdated: new Date().toISOString(),
                 supplier: String(supplier || ''),
                 note: raw.note || '',
-                unitWeight: unitWeight,
+                unitWeight: unitWeight, // Correctly captured now
                 
                 // Physical Props
                 boxLength: Number(raw.boxLength) || 0,
@@ -347,7 +357,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条数据 (已智能识别物流信息)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条数据 (已智能识别重量与物流)`);
         setTimeout(() => { setImportStatus('idle'); setImportMessage(''); }, 4000);
       } catch (err: any) {
         setImportStatus('error');

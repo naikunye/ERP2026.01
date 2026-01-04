@@ -65,7 +65,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   // Initialize state flattened
   const [formData, setFormData] = useState<SKUFormData>(() => {
       const savedMap: Record<string, number> = product.variantRestockMap || {};
-      const variantSum: number = Object.values(savedMap).reduce((a: number, b: number) => a + (Number(b) || 0), 0);
+      const variantSum: number = Object.values(savedMap).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
       const hasVariants = product.variants && product.variants.length > 0; 
       
       let initialTotal = 0;
@@ -163,7 +163,10 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     const influencerFeeUSD = revenue * (formData.influencerCommission / 100);
     const estimatedReturnCostUSD = revenue * (formData.returnRate / 100);
     const fixedFeeUSD = formData.orderFixedFee;
-    const lastMileUSD = formData.lastMileShipping;
+    
+    // EXCLUDED per user request: Last Mile Shipping (Customer pays)
+    const lastMileUSD = 0; 
+    
     const adCostUSD = formData.adCostPerUnit;
     const otherCostUSD = formData.otherCost;
 
@@ -218,7 +221,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   const handleVariantQtyChange = (variantSku: string, qty: number) => {
       setFormData(prev => {
           const newMap = { ...prev.variantRestockMap, [variantSku]: qty };
-          const total = Object.values(newMap).reduce((a, b) => a + b, 0);
+          const total = Object.values(newMap).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
           return {
               ...prev,
               variantRestockMap: newMap,
@@ -262,7 +265,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     { name: '货值', value: metrics.unitCostUSD, color: '#3b82f6' }, // Blue
     { name: '头程', value: metrics.unitShippingCostUSD, color: '#eab308' }, // Yellow
     { name: '平台/达人', value: metrics.breakdown.platformFeeUSD + metrics.breakdown.influencerFeeUSD, color: '#a855f7' }, // Purple
-    { name: '物流/杂费', value: metrics.breakdown.lastMileUSD + metrics.breakdown.fixedFeeUSD + metrics.breakdown.otherCostUSD, color: '#f97316' }, // Orange
+    { name: '定费/杂', value: metrics.breakdown.fixedFeeUSD + metrics.breakdown.otherCostUSD, color: '#f97316' }, // Orange (Removed Last Mile)
     { name: '广告/退货', value: metrics.breakdown.adCostUSD + metrics.breakdown.estimatedReturnCostUSD, color: '#ef4444' }, // Red
     { name: '净利', value: Math.max(0, metrics.unitProfit), color: '#22c55e' } // Green
   ].filter(d => d.value > 0);
@@ -520,7 +523,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                              <CostItem label={`货值 (¥${formData.unitCost})`} value={metrics.unitCostUSD} color="bg-blue-500" />
                              <CostItem label={`头程 (¥${metrics.unitShippingCostRMB.toFixed(1)})`} value={metrics.unitShippingCostUSD} color="bg-yellow-500" />
                              <CostItem label="平台/达人佣金" value={metrics.breakdown.platformFeeUSD + metrics.breakdown.influencerFeeUSD} color="bg-purple-500" />
-                             <CostItem label="尾程/定费/杂" value={metrics.breakdown.lastMileUSD + metrics.breakdown.fixedFeeUSD + metrics.breakdown.otherCostUSD} color="bg-orange-500" />
+                             <CostItem label="定费/杂 (Excl. LastMile)" value={metrics.breakdown.fixedFeeUSD + metrics.breakdown.otherCostUSD} color="bg-orange-500" />
                              <CostItem label="广告/退货" value={metrics.breakdown.adCostUSD + metrics.breakdown.estimatedReturnCostUSD} color="bg-red-500" />
                         </div>
                     </section>

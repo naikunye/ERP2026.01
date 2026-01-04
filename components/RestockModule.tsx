@@ -67,12 +67,12 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       const returnCost = sellingPrice * ((item.returnRate || 0) / 100);
       
       const fixedFee = item.orderFixedFee || 0;
-      const lastMile = item.lastMileShipping || 0;
+      // const lastMile = item.lastMileShipping || 0; // EXCLUDED per request
       const adCost = item.financials?.adCost || 0; // Ad cost per unit
       const otherCost = item.financials?.otherCost || 0;
 
-      // Sum of all deductions
-      const totalSoftCostsUSD = platformFee + influencerFee + fixedFee + lastMile + adCost + returnCost + otherCost;
+      // Sum of all deductions (Excluding Last Mile)
+      const totalSoftCostsUSD = platformFee + influencerFee + fixedFee + adCost + returnCost + otherCost;
       
       // 3. PROFIT CALCULATION
       const totalHardCostUSD = costUSD + shippingCostUSD;
