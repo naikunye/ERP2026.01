@@ -22,6 +22,7 @@ interface SKUDetailEditorProps {
 }
 
 interface SKUFormData {
+  sku: string; // Added editable SKU
   name: string;
   variants: ProductVariant[];
   note: string;
@@ -90,6 +91,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       }
 
       return {
+        sku: product.sku, // Init SKU
         name: product.name, 
         variants: product.variants ? JSON.parse(JSON.stringify(product.variants)) : [], 
 
@@ -279,7 +281,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   // --- NEW VARIANT HANDLERS ---
   const handleAddNewVariant = () => {
       if (!newVariantName.trim()) return;
-      const newSku = `${product.sku}-${newVariantName.toUpperCase().slice(0,3)}`;
+      const newSku = `${formData.sku}-${newVariantName.toUpperCase().slice(0,3)}`; // Use formData.sku to reflect edits
       const newVar: ProductVariant = {
           id: `VAR-${Date.now()}`,
           sku: newSku,
@@ -335,6 +337,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
 
       onSave({
           ...formData,
+          sku: formData.sku, // Explicitly save SKU
           financials: {
               costOfGoods: formData.unitCost, // RMB
               shippingCost: parseFloat(metrics.unitShippingCostUSD.toFixed(3)), // USD
@@ -387,7 +390,18 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                           className="bg-transparent border border-transparent hover:border-white/20 focus:border-neon-blue rounded-lg px-2 py-1 text-xl font-bold text-white w-full focus:outline-none transition-all placeholder-gray-600"
                           placeholder="产品名称 (Editable)"
                       />
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/10 text-gray-400 border border-white/10 font-mono shrink-0">{product.sku}</span>
+                      {/* SKU CODE INPUT - Fully Editable */}
+                      <div className="flex items-center gap-2 bg-white/5 rounded-lg px-2 py-1 border border-white/10 group focus-within:border-neon-blue/50 transition-colors">
+                          <span className="text-[10px] text-gray-500 font-bold shrink-0">SKU:</span>
+                          <input 
+                              type="text" 
+                              name="sku"
+                              value={formData.sku}
+                              onChange={handleChange}
+                              className="bg-transparent text-[10px] font-mono text-neon-blue font-bold outline-none w-28 focus:w-36 transition-all"
+                              placeholder="SKU-CODE"
+                          />
+                      </div>
                   </div>
                 </div>
               </div>
