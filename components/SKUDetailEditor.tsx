@@ -63,6 +63,9 @@ interface SKUFormData {
 
 const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete, onChangeView }) => {
   
+  // New Variant State
+  const [newVariantName, setNewVariantName] = useState('');
+
   // Initialize state flattened
   const [formData, setFormData] = useState<SKUFormData>(() => {
       const savedMap: Record<string, number> = product.variantRestockMap || {};
@@ -232,6 +235,16 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     });
   };
 
+  const handleTotalWeightChange = (val: number) => {
+      // Reverse calculate unit weight: Unit Weight = Total Weight / Total Units
+      const totalUnits = formData.totalRestockUnits || 1;
+      const newUnitWeight = val / totalUnits;
+      setFormData(prev => ({
+          ...prev,
+          manualChargeableWeight: newUnitWeight
+      }));
+  };
+
   const handleVariantQtyChange = (variantSku: string, qty: number) => {
       setFormData(prev => {
           const newMap = { ...prev.variantRestockMap, [variantSku]: qty };
@@ -239,6 +252,45 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
           return {
               ...prev,
               variantRestockMap: newMap,
+              totalRestockUnits: total
+          };
+      });
+  };
+
+  // --- NEW VARIANT HANDLERS ---
+  const handleAddNewVariant = () => {
+      if (!newVariantName.trim()) return;
+      const newSku = `${product.sku}-${newVariantName.toUpperCase().slice(0,3)}`;
+      const newVar: ProductVariant = {
+          id: `VAR-${Date.now()}`,
+          sku: newSku,
+          name: newVariantName,
+          price: product.price,
+          stock: 0,
+          attributes: { name: newVariantName }
+      };
+      
+      setFormData(prev => ({
+          ...prev,
+          variants: [...prev.variants, newVar],
+          variantRestockMap: { ...prev.variantRestockMap, [newSku]: 0 }
+      }));
+      setNewVariantName('');
+  };
+
+  const handleDeleteVariant = (skuToDelete: string) => {
+      setFormData(prev => {
+          const updatedVars = prev.variants.filter(v => v.sku !== skuToDelete);
+          const updatedMap = { ...prev.variantRestockMap };
+          delete updatedMap[skuToDelete];
+          
+          // Re-sum
+          const total = Object.values(updatedMap).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+          
+          return {
+              ...prev,
+              variants: updatedVars,
+              variantRestockMap: updatedMap,
               totalRestockUnits: total
           };
       });
@@ -260,7 +312,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
               carrier: formData.carrier,
               trackingNo: formData.trackingNo,
               shippingRate: formData.shippingRate, // RMB per KG
-              manualChargeableWeight: formData.manualChargeableWeight,
+              manualChargeableWeight: formData.manualChargeableWeight, // CRITICAL: Save derived unit weight
               destination: formData.destinationWarehouse
           },
           platformCommission: formData.platformCommission,
@@ -364,39 +416,57 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                 <section className="glass-card p-6 border-l-4 border-l-gray-500 group hover:border-white/20 transition-all">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Package size={16} className="text-gray-300" /> 装箱配置</h3>
                     
-                    {/* Variant Restock Matrix - Explicitly render if variants exist OR if user wants to add them */}
+                    {/* Multi-SKU Variant Manager (ADD/EDIT ENABLED) */}
                     <div className="mb-4">
-                        {formData.variants && formData.variants.length > 0 ? (
-                            <div className="space-y-2 bg-white/5 p-3 rounded-xl border border-white/10">
-                                <div className="text-[10px] font-bold text-neon-purple uppercase mb-2 flex items-center gap-2">
-                                    <Box size={10}/> Multi-SKU 补货矩阵
-                                </div>
-                                <div className="max-h-[150px] overflow-y-auto custom-scrollbar space-y-2">
-                                    {formData.variants.map((v) => (
-                                        <div key={v.sku} className="flex items-center justify-between gap-2 bg-black/20 p-2 rounded-lg">
-                                            <div className="text-xs text-white truncate w-1/3" title={v.name}>{v.name}</div>
-                                            <div className="flex-1">
-                                                <input 
-                                                    type="number"
-                                                    value={formData.variantRestockMap[v.sku] || 0}
-                                                    onChange={(e) => handleVariantQtyChange(v.sku, parseInt(e.target.value) || 0)}
-                                                    className="w-full bg-transparent text-right text-sm font-bold text-neon-purple outline-none border-b border-neon-purple/30 focus:border-neon-purple"
-                                                    placeholder="0"
-                                                />
-                                            </div>
-                                            <div className="text-[10px] text-gray-500">pcs</div>
+                        <div className="space-y-2 bg-white/5 p-3 rounded-xl border border-white/10">
+                            <div className="text-[10px] font-bold text-neon-purple uppercase mb-2 flex items-center gap-2 justify-between">
+                                <span className="flex items-center gap-2"><Box size={10}/> Multi-SKU 补货矩阵</span>
+                                <span className="text-gray-500">{formData.variants.length} items</span>
+                            </div>
+                            
+                            {/* Scrollable List */}
+                            <div className="max-h-[150px] overflow-y-auto custom-scrollbar space-y-2">
+                                {formData.variants.map((v) => (
+                                    <div key={v.sku} className="flex items-center justify-between gap-2 bg-black/20 p-2 rounded-lg group">
+                                        <div className="text-xs text-white truncate w-1/3" title={v.name}>{v.name}</div>
+                                        <div className="flex-1">
+                                            <input 
+                                                type="number"
+                                                value={formData.variantRestockMap[v.sku] || 0}
+                                                onChange={(e) => handleVariantQtyChange(v.sku, parseInt(e.target.value) || 0)}
+                                                className="w-full bg-transparent text-right text-sm font-bold text-neon-purple outline-none border-b border-neon-purple/30 focus:border-neon-purple"
+                                                placeholder="0"
+                                            />
                                         </div>
-                                    ))}
-                                </div>
-                                <div className="text-right text-xs font-bold text-white pt-2 border-t border-white/5">
-                                    Total: {formData.totalRestockUnits} pcs
-                                </div>
+                                        <div className="text-[10px] text-gray-500">pcs</div>
+                                        <button onClick={() => handleDeleteVariant(v.sku)} className="text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
-                        ) : (
-                            <div className="p-3 border border-dashed border-white/10 rounded-xl text-center text-xs text-gray-500 hover:border-neon-purple/50 transition-colors">
-                                此为单品 (Single SKU)。如需多变体补货，请在商品编辑页添加变体。
+
+                            {/* Add New Variant Interface */}
+                            <div className="flex gap-2 pt-2 border-t border-white/5">
+                                <input 
+                                    value={newVariantName}
+                                    onChange={(e) => setNewVariantName(e.target.value)}
+                                    placeholder="新增变体 (e.g. XL/Red)"
+                                    className="flex-1 bg-black/30 border border-white/10 rounded px-2 py-1 text-xs text-white outline-none focus:border-neon-purple"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAddNewVariant()}
+                                />
+                                <button 
+                                    onClick={handleAddNewVariant}
+                                    className="bg-neon-purple text-white px-2 rounded text-xs font-bold hover:bg-neon-purple/80"
+                                >
+                                    <Plus size={14}/>
+                                </button>
                             </div>
-                        )}
+
+                            <div className="text-right text-xs font-bold text-white pt-2 border-t border-white/5">
+                                Total: {formData.totalRestockUnits} pcs
+                            </div>
+                        </div>
                     </div>
 
                     {/* Standard Inputs (Always Visible for Box Dimensions) */}
@@ -445,18 +515,15 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                  <InputGroup label="头程费率 (¥/kg)" name="shippingRate" value={formData.shippingRate} onChange={handleChange} />
                                  <div className="space-y-1">
                                     <label className="text-[10px] text-gray-500 font-bold flex items-center gap-1">
-                                        单品计费重 (kg)
+                                        本批次总重量 (kg)
                                     </label>
                                     <div className="relative">
                                         <input 
                                             type="number"
-                                            name="manualChargeableWeight"
-                                            value={formData.manualChargeableWeight || ''}
-                                            placeholder={metrics.unitChargeableWeight.toFixed(3)}
-                                            onChange={handleChange}
+                                            value={metrics.totalBatchWeight.toFixed(3)}
+                                            onChange={(e) => handleTotalWeightChange(parseFloat(e.target.value))}
                                             className="w-full h-10 px-3 bg-black/20 border border-white/10 rounded-lg text-sm text-neon-yellow font-mono focus:border-neon-yellow/50 outline-none"
                                         />
-                                        {formData.manualChargeableWeight > 0 && <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-gray-500">Manual</div>}
                                     </div>
                                  </div>
                              </div>

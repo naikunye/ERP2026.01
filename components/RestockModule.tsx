@@ -30,60 +30,59 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- STRICT CALCULATION CORE (MATCHING EDITOR) ---
+  // --- STRICT CALCULATION CORE (MUST MIRROR SKUDETAILEDITOR EXACTLY) ---
   const getFinancials = (item: Product) => {
+      // 1. Core Params
       const rate = item.exchangeRate && item.exchangeRate > 0 ? item.exchangeRate : 7.2;
-      const sellingPrice = item.financials?.sellingPrice || 0;
+      const sellingPrice = item.financials?.sellingPrice || item.price || 0;
       
-      // 1. HARD COSTS (RMB Inputs -> USD)
-      const costRMB = item.financials?.costOfGoods || 0;
-      const costUSD = costRMB / rate;
+      // 2. Hard Costs (RMB -> USD)
+      const unitCostRMB = item.financials?.costOfGoods || 0;
       
-      // Shipping: 
-      // Priority 1: Saved USD Shipping Cost (if calc'd in editor)
-      // Priority 2: Calc from Weight * Rate
-      let shippingCostUSD = item.financials?.shippingCost || 0;
-      let shippingCostRMB_Display = 0;
-
-      if (shippingCostUSD > 0) {
-          shippingCostRMB_Display = shippingCostUSD * rate;
-      } else {
-          // Dynamic Fallback
-          // Use manual chargeable weight if available, else unit weight
-          const weight = item.logistics?.manualChargeableWeight || item.unitWeight || 0;
-          const rmbRate = item.logistics?.shippingRate || 0;
-          if (weight > 0 && rmbRate > 0) {
-              const shipRMB = weight * rmbRate;
-              shippingCostUSD = shipRMB / rate;
-              shippingCostRMB_Display = shipRMB;
+      // Calculate Shipping RMB
+      // STRICT LOGIC: Always prefer manualChargeableWeight if it exists (it comes from the Total Weight input in Editor)
+      let unitChargeableWeight = item.logistics?.manualChargeableWeight;
+      
+      // Fallback only if manual is explicitly missing or 0
+      if (!unitChargeableWeight || unitChargeableWeight === 0) {
+          unitChargeableWeight = item.unitWeight || 0;
+          
+          // Double fallback to box dims
+          if (unitChargeableWeight === 0 && item.itemsPerBox && item.boxLength && item.boxWidth && item.boxHeight && item.boxWeight) {
+               const boxVolWeight = (item.boxLength * item.boxWidth * item.boxHeight) / 6000;
+               const boxRealWeight = item.boxWeight;
+               const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
+               unitChargeableWeight = boxChargeable / item.itemsPerBox;
           }
       }
 
-      // 2. SOFT COSTS (Native USD Inputs)
-      // IMPORTANT: These must match SKUDetailEditor's subtraction logic exactly
-      // Explicitly check for fields, fallback to 0
-      const platformFee = item.financials?.platformFee || (sellingPrice * ((item.platformCommission || 0) / 100));
+      const shippingRate = item.logistics?.shippingRate || 0;
+      // FORMULA: Unit Shipping RMB = Unit Weight * Rate
+      const unitShippingCostRMB = unitChargeableWeight * shippingRate;
+      
+      const totalHardCostRMB = unitCostRMB + unitShippingCostRMB;
+      const totalHardCostUSD = totalHardCostRMB / rate;
+
+      // 3. Soft Costs (USD)
+      const platformFee = sellingPrice * ((item.platformCommission || 0) / 100);
       const influencerFee = sellingPrice * ((item.influencerCommission || 0) / 100);
       const returnCost = sellingPrice * ((item.returnRate || 0) / 100);
-      
       const fixedFee = item.orderFixedFee || 0;
-      // const lastMile = item.lastMileShipping || 0; // EXCLUDED per request
-      const adCost = item.financials?.adCost || 0; // Ad cost per unit
+      const adCost = item.financials?.adCost || 0;
       const otherCost = item.financials?.otherCost || 0;
+      // Last Mile Shipping excluded per request
 
-      // Sum of all deductions (Excluding Last Mile)
-      const totalSoftCostsUSD = platformFee + influencerFee + fixedFee + adCost + returnCost + otherCost;
-      
-      // 3. PROFIT CALCULATION
-      const totalHardCostUSD = costUSD + shippingCostUSD;
-      const totalUnitCostUSD = totalHardCostUSD + totalSoftCostsUSD;
+      const totalSoftCostUSD = platformFee + influencerFee + fixedFee + adCost + returnCost + otherCost;
+
+      // 4. Profit
+      const totalUnitCostUSD = totalHardCostUSD + totalSoftCostUSD;
       const unitProfitUSD = sellingPrice - totalUnitCostUSD;
 
       return {
           rate,
-          costRMB, 
-          shippingCostRMB_Display,
-          totalHardCostRMB: costRMB + shippingCostRMB_Display,
+          costRMB: unitCostRMB, 
+          shippingCostRMB_Display: unitShippingCostRMB,
+          totalHardCostRMB,
           unitProfitUSD,
           totalUnitCostUSD
       };
