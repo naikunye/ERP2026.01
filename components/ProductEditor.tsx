@@ -2,29 +2,19 @@
 import React, { useState, useMemo } from 'react';
 import { Product, ProductStatus, Currency, ProductVariant, InventoryLog } from '../types';
 import { 
-  Sparkles, X, Globe, Check, Loader2, Image as ImageIcon, Activity, Layers, Cpu, Scan, 
-  Terminal, Tag, Box, Plus, Trash2, DollarSign, Calculator, Wand2, TrendingUp, Search, History, ArrowRightLeft
+  X, Check, Loader2, Layers, Box, Plus, Trash2, Calculator, TrendingUp, Search, History, ArrowRightLeft, Factory, Truck, Package
 } from 'lucide-react';
-import { 
-  generateProductDescription, 
-  optimizeProductTitle,
-  generateSeoKeywords,
-  analyzeMarketFit
-} from '../services/geminiService';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import ImageUpload from './ImageUpload';
 
 interface ProductEditorProps {
   onClose: () => void;
   onSave: (product: Product) => void;
   initialProduct?: Product | null;
-  inventoryLogs?: InventoryLog[]; // New Prop
+  inventoryLogs?: InventoryLog[];
 }
 
 const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialProduct, inventoryLogs = [] }) => {
-  const [activeTab, setActiveTab] = useState<'details' | 'variants' | 'financials' | 'intelligence' | 'logs'>('details');
   const [isLoadingAi, setIsLoadingAi] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState<{ score: number; reasoning: string } | null>(null);
   
   const [formData, setFormData] = useState<Partial<Product>>(
     initialProduct || {
@@ -40,13 +30,30 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
       variants: [],
       seoKeywords: [],
       imageUrl: '',
-      exchangeRate: 7.2 // Default
+      exchangeRate: 7.2,
+      supplier: '',
+      moq: 100,
+      leadTimeProduction: 15,
+      procurementLossRate: 0,
+      paymentTerms: '30/70',
+      unitWeight: 0.1,
+      itemsPerBox: 20,
+      boxLength: 40,
+      boxWidth: 30,
+      boxHeight: 30,
+      boxWeight: 10,
+      logistics: {
+          method: 'Sea',
+          carrier: '',
+          shippingRate: 10,
+          minWeight: 0,
+          customsMode: 'DDP',
+          dutyRate: 0,
+          riskBuffer: 2,
+          volumetricDivisor: 6000
+      }
     }
   );
-
-  // ... (Keep existing variant & AI logic) ...
-  const [variantColor, setVariantColor] = useState('');
-  const [variantSize, setVariantSize] = useState('');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -56,531 +63,156 @@ const ProductEditor: React.FC<ProductEditorProps> = ({ onClose, onSave, initialP
     }));
   };
 
-  const handleFinancialChange = (key: string, value: string) => {
-      const numValue = parseFloat(value) || 0;
-      setFormData(prev => ({
-          ...prev,
-          financials: {
-              ...prev.financials,
-              costOfGoods: 0,
-              shippingCost: 0,
-              otherCost: 0,
-              sellingPrice: 0,
-              platformFee: 0,
-              adCost: 0,
-              [key]: numValue
-          } as any
-      }));
-  };
-
-  const handleAiGenerate = async () => {
-    if (!formData.name) return;
-    setIsLoadingAi(true);
-    const desc = await generateProductDescription(formData.name!, formData.category || 'General', 'Futuristic and Compelling, in Chinese');
-    setFormData(prev => ({ ...prev, description: desc }));
-    setIsLoadingAi(false);
-  };
-
-  const handleAiOptimizeTitle = async () => {
-      if(!formData.name) return;
-      setIsLoadingAi(true);
-      const optimized = await optimizeProductTitle(formData.name, formData.category || '');
-      setFormData(prev => ({ ...prev, seoTitle: optimized }));
-      setIsLoadingAi(false);
-  };
-
-  const handleAiKeywords = async () => {
-      if(!formData.name) return;
-      setIsLoadingAi(true);
-      const keywords = await generateSeoKeywords(formData.name, formData.description || '');
-      setFormData(prev => ({ ...prev, seoKeywords: keywords }));
-      setIsLoadingAi(false);
-  };
-
-  const handleMarketAnalysis = async () => {
-      if(!formData.name || !formData.price) return;
-      setIsLoadingAi(true);
-      const result = await analyzeMarketFit(formData.name, formData.price);
-      setAiAnalysis(result);
-      setIsLoadingAi(false);
-  }
-
-  const handleAddVariant = () => {
-      if(!variantColor || !variantSize) return;
-      const newVariant: ProductVariant = {
-          id: `VAR-${Date.now()}`,
-          sku: `${formData.sku}-${variantColor.slice(0,2).toUpperCase()}-${variantSize}`,
-          name: `${variantColor} / ${variantSize}`,
-          price: formData.price || 0,
-          stock: 0,
-          attributes: { color: variantColor, size: variantSize }
-      };
-      setFormData(prev => ({
-          ...prev,
-          variants: [...(prev.variants || []), newVariant],
-          hasVariants: true
-      }));
-      setVariantColor('');
-      setVariantSize('');
-  };
-
-  const handleRemoveVariant = (id: string) => {
-      setFormData(prev => ({
-          ...prev,
-          variants: prev.variants?.filter(v => v.id !== id)
-      }));
+  const handleNestedUpdate = (path: string, value: any) => {
+      const keys = path.split('.');
+      setFormData(prev => {
+          if (keys.length === 2) {
+              return { ...prev, [keys[0]]: { ...(prev[keys[0] as any] || {}), [keys[1]]: value } };
+          }
+          return { ...prev, [path]: value };
+      });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({
-      id: initialProduct?.id || Math.random().toString(36).substr(2, 9),
+      id: initialProduct?.id || `PROD-${Date.now()}`,
       lastUpdated: new Date().toISOString(),
       imageUrl: formData.imageUrl || `https://picsum.photos/400/400?random=${Math.random()}`,
+      lifecycle: 'New',
       ...formData as Product
     });
     onClose();
   };
 
-  const profitMetrics = useMemo(() => {
-      const f = formData.financials || { costOfGoods: 0, shippingCost: 0, otherCost: 0, sellingPrice: 0, platformFee: 0, adCost: 0 };
-      const rate = formData.exchangeRate || 7.2;
-      const sellingPrice = f.sellingPrice || formData.price || 0;
-      
-      // Convert RMB Cost to USD
-      const costOfGoodsUSD = f.costOfGoods / rate;
-      // Shipping assumed USD here in simplified editor, OR we can stick to the strict model
-      // Let's assume standard input for simplified editor: 
-      // If user uses this editor, they might input direct USD values or need conversion.
-      // To be safe, we calculate total cost in USD
-      const costUSD = costOfGoodsUSD + f.shippingCost + f.otherCost + f.platformFee + f.adCost;
-      
-      const profit = sellingPrice - costUSD;
-      const margin = sellingPrice > 0 ? (profit / sellingPrice) * 100 : 0;
-      return { sellingPrice, costUSD, profit, margin, f, costOfGoodsUSD };
-  }, [formData]);
-
-  const chartData = [
-    { name: 'Cost', value: profitMetrics.costOfGoodsUSD, color: '#FF2975' },
-    { name: 'Shipping', value: profitMetrics.f.shippingCost, color: '#B829FF' },
-    { name: 'Fees/Ads', value: profitMetrics.f.platformFee + profitMetrics.f.adCost, color: '#29D9FF' },
-    { name: 'Profit', value: profitMetrics.profit, color: '#00FF9D' }
-  ].filter(d => d.value > 0);
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-8 perspective-1000">
-      <div className="absolute inset-0 bg-[#050510]/90 backdrop-blur-xl animate-fade-in" onClick={onClose} />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-8">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-xl animate-fade-in" onClick={onClose} />
       
-      <div className="w-full max-w-6xl h-[90vh] glass-card flex flex-col animate-scale-in z-10 border-white/10 shadow-2xl relative overflow-hidden">
+      <div className="w-full max-w-6xl h-[95vh] glass-card flex flex-col animate-scale-in z-10 border-white/10 shadow-2xl relative overflow-hidden bg-zinc-950">
         
-        {/* Top Navigation Bar */}
-        <div className="h-16 border-b border-white/10 flex items-center px-6 z-20 justify-between bg-black/20 backdrop-blur-md">
+        {/* Header */}
+        <div className="h-16 border-b border-white/5 flex items-center px-8 z-20 justify-between bg-zinc-900/40 backdrop-blur-md">
              <div className="flex items-center gap-4">
                  <button className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all" onClick={onClose}>
                     <X size={16} />
                  </button>
-                 <div className="h-6 w-px bg-white/10"></div>
-                 <div>
-                    <h2 className="text-sm font-bold text-white leading-none tracking-wide flex items-center gap-2">
-                        {formData.name || '新建资产 (New Asset)'}
-                        {formData.hasVariants && <span className="px-1.5 py-0.5 rounded text-[9px] bg-neon-purple/20 text-neon-purple border border-neon-purple/30">MULTI-SKU</span>}
-                    </h2>
-                 </div>
+                 <h2 className="text-sm font-bold text-white tracking-wide">
+                    {initialProduct ? '编辑资产 (Edit Asset)' : '新建资产 (New Asset)'}
+                 </h2>
              </div>
-             
-             {/* Tabs */}
-             <div className="flex bg-white/5 rounded-lg p-1 border border-white/5">
-                {[
-                    { id: 'details', label: '基础信息', icon: <Layers size={14} /> },
-                    { id: 'variants', label: 'SKU 矩阵', icon: <Box size={14} /> },
-                    { id: 'financials', label: '利润实验室', icon: <Calculator size={14} /> },
-                    { id: 'intelligence', label: 'AI 营销', icon: <Cpu size={14} /> },
-                    { id: 'logs', label: '库存流水', icon: <History size={14} /> }
-                ].map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id as any)}
-                        className={`px-4 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${
-                            activeTab === tab.id 
-                            ? 'bg-white/10 text-white shadow-sm' 
-                            : 'text-gray-500 hover:text-gray-300'
-                        }`}
-                    >
-                        {tab.icon} {tab.label}
-                    </button>
-                ))}
-             </div>
-
              <button 
                 onClick={handleSubmit} 
-                className="px-6 py-2 bg-neon-blue text-black rounded-lg font-bold text-xs shadow-glow-blue hover:scale-105 transition-all flex items-center gap-2"
+                className="px-6 py-2 bg-white text-black rounded-xl font-bold text-xs shadow-glow-white hover:scale-105 transition-all flex items-center gap-2"
             >
                 <Check size={14} strokeWidth={3} />
                 保存资产
             </button>
         </div>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-gradient-to-b from-transparent to-black/30">
-            <div className="max-w-5xl mx-auto p-8 pb-20">
-                
-                {activeTab === 'details' && (
-                    <div className="grid grid-cols-12 gap-8 animate-fade-in h-full">
-                        {/* Left: Image & Upload */}
-                        <div className="col-span-12 md:col-span-4 flex flex-col gap-6">
-                            <div className="aspect-square w-full">
-                                <ImageUpload 
-                                    currentImage={formData.imageUrl} 
-                                    onImageChange={(newImg) => setFormData(prev => ({...prev, imageUrl: newImg}))}
-                                    productName={formData.name}
-                                />
-                            </div>
-                            
-                            <div className="glass-card p-4 border-white/5 space-y-3">
-                                <div className="flex justify-between items-center text-xs">
-                                    <span className="text-gray-500">创建时间</span>
-                                    <span className="text-white font-mono">{new Date().toLocaleDateString()}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-xs pt-2 border-t border-white/5">
-                                    <span className="text-gray-500">状态</span>
-                                    <span className="text-neon-green font-bold">Draft</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Right: Inputs */}
-                        <div className="col-span-12 md:col-span-8 space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">产品名称</label>
-                                <input
-                                    name="name"
-                                    value={formData.name}
-                                    onChange={handleInputChange}
-                                    className="w-full h-14 px-5 input-glass rounded-xl text-lg font-bold tracking-wide placeholder-gray-600 focus:border-neon-blue"
-                                    placeholder="输入产品名称 (Official Name)"
-                                />
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">SKU Code</label>
-                                    <input
-                                        name="sku"
-                                        value={formData.sku}
-                                        onChange={handleInputChange}
-                                        className="w-full h-12 px-4 input-glass rounded-xl font-mono text-sm text-neon-blue"
-                                        placeholder="AUTO-GEN-001"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">库存 (Manual Override)</label>
-                                    <input
-                                        type="number"
-                                        name="stock"
-                                        value={formData.stock}
-                                        onChange={handleInputChange}
-                                        className="w-full h-12 px-4 input-glass rounded-xl text-sm"
-                                        placeholder="0"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <div className="flex justify-between items-center">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">产品描述</label>
-                                    <button onClick={handleAiGenerate} disabled={isLoadingAi} className="text-[10px] text-neon-blue hover:text-white flex items-center gap-1 transition-colors">
-                                        {isLoadingAi ? <Loader2 size={10} className="animate-spin"/> : <Sparkles size={10}/>} AI Writer
-                                    </button>
-                                </div>
-                                <textarea
-                                    name="description"
-                                    value={formData.description}
-                                    onChange={handleInputChange}
-                                    className="w-full h-40 p-4 input-glass rounded-xl text-sm leading-relaxed resize-none focus:border-neon-blue"
-                                    placeholder="输入详细的产品描述或参数..."
-                                />
-                            </div>
-                        </div>
+        {/* Single Scrollable Page */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-10 space-y-10">
+            
+            {/* Block 1: Basic Info */}
+            <div className="grid grid-cols-12 gap-8">
+                <div className="col-span-4">
+                    <ImageUpload 
+                        currentImage={formData.imageUrl} 
+                        onImageChange={(newImg) => setFormData(prev => ({...prev, imageUrl: newImg}))}
+                        productName={formData.name}
+                    />
+                </div>
+                <div className="col-span-8 space-y-6">
+                    <InputField label="产品名称 (Official Name)" name="name" value={formData.name} onChange={handleInputChange} placeholder="输入官方名称" />
+                    <div className="grid grid-cols-2 gap-6">
+                        <InputField label="SKU 代码" name="sku" value={formData.sku} onChange={handleInputChange} placeholder="AUTO-GEN-001" isMono />
+                        <InputField label="初始库存" type="number" name="stock" value={formData.stock} onChange={handleInputChange} />
                     </div>
-                )}
-
-                {/* ... (Variants and Financials and Intelligence tabs same as before) ... */}
-                {activeTab === 'variants' && (
-                    <div className="space-y-8 animate-fade-in">
-                        <div className="glass-card p-6 border-white/5 bg-gradient-to-r from-neon-purple/5 to-transparent">
-                            <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                                <Box size={16} className="text-neon-purple" /> 快速生成变体 (Variant Generator)
-                            </h3>
-                            <div className="flex gap-4 items-end">
-                                <div className="flex-1 space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">颜色 (Color)</label>
-                                    <input 
-                                        value={variantColor} onChange={e => setVariantColor(e.target.value)}
-                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-purple outline-none"
-                                        placeholder="e.g. Midnight Blue"
-                                    />
-                                </div>
-                                <div className="flex-1 space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">尺码 (Size)</label>
-                                    <input 
-                                        value={variantSize} onChange={e => setVariantSize(e.target.value)}
-                                        className="w-full h-10 bg-black/20 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-purple outline-none"
-                                        placeholder="e.g. XL"
-                                    />
-                                </div>
-                                <button 
-                                    onClick={handleAddVariant}
-                                    className="h-10 px-6 bg-neon-purple text-white rounded-lg font-bold text-xs hover:bg-neon-purple/80 transition-all flex items-center gap-2"
-                                >
-                                    <Plus size={14} /> 添加
-                                </button>
-                            </div>
-                        </div>
-                        <div className="rounded-xl border border-white/10 overflow-hidden">
-                            <table className="w-full text-left">
-                                <thead className="bg-white/5 text-[10px] font-bold text-gray-500 uppercase">
-                                    <tr>
-                                        <th className="px-6 py-3">Variant Name</th>
-                                        <th className="px-6 py-3">SKU Suffix</th>
-                                        <th className="px-6 py-3">Price Override</th>
-                                        <th className="px-6 py-3">Stock</th>
-                                        <th className="px-6 py-3 text-right">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {formData.variants?.length === 0 && (
-                                        <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500 text-xs italic">暂无变体，请添加</td></tr>
-                                    )}
-                                    {formData.variants?.map(v => (
-                                        <tr key={v.id} className="hover:bg-white/5 transition-colors">
-                                            <td className="px-6 py-3 font-bold text-white text-sm">{v.name}</td>
-                                            <td className="px-6 py-3 font-mono text-xs text-neon-blue">{v.sku}</td>
-                                            <td className="px-6 py-3">
-                                                <input defaultValue={v.price} className="w-20 bg-transparent border-b border-white/10 text-sm text-white focus:border-neon-purple outline-none" />
-                                            </td>
-                                            <td className="px-6 py-3">
-                                                <input defaultValue={v.stock} className="w-20 bg-transparent border-b border-white/10 text-sm text-white focus:border-neon-purple outline-none" />
-                                            </td>
-                                            <td className="px-6 py-3 text-right">
-                                                <button onClick={() => handleRemoveVariant(v.id)} className="text-gray-500 hover:text-red-500 transition-colors">
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'financials' && (
-                    <div className="grid grid-cols-12 gap-8 animate-fade-in">
-                        <div className="col-span-12 md:col-span-7 space-y-6">
-                            <div className="flex justify-between items-center mb-2">
-                                <h3 className="text-lg font-bold text-white">成本结构录入</h3>
-                                <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-lg border border-white/10">
-                                    <span className="text-xs text-gray-400 font-bold uppercase flex items-center gap-1"><ArrowRightLeft size={12}/> 汇率</span>
-                                    <input 
-                                        type="number"
-                                        name="exchangeRate"
-                                        value={formData.exchangeRate}
-                                        onChange={handleInputChange}
-                                        className="w-12 bg-transparent text-sm font-bold text-white text-right outline-none focus:text-neon-blue"
-                                    />
-                                </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">最终售价 ($ USD)</label>
-                                    <input 
-                                        type="number"
-                                        value={formData.financials?.sellingPrice || formData.price} 
-                                        onChange={e => handleFinancialChange('sellingPrice', e.target.value)}
-                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-xl font-bold text-white focus:border-neon-green outline-none"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">采购成本 (¥ RMB)</label>
-                                    <input 
-                                        type="number"
-                                        value={formData.financials?.costOfGoods} 
-                                        onChange={e => handleFinancialChange('costOfGoods', e.target.value)}
-                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white focus:border-neon-pink outline-none"
-                                    />
-                                    <div className="text-[10px] text-gray-500 text-right">≈ ${profitMetrics.costOfGoodsUSD.toFixed(2)} USD</div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">头程运费 ($)</label>
-                                    <input type="number" value={formData.financials?.shippingCost} onChange={e => handleFinancialChange('shippingCost', e.target.value)} className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none" />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">平台佣金 ($)</label>
-                                    <input type="number" value={formData.financials?.platformFee} onChange={e => handleFinancialChange('platformFee', e.target.value)} className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none" />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-gray-500 font-bold uppercase">广告预算/单 ($)</label>
-                                    <input type="number" value={formData.financials?.adCost} onChange={e => handleFinancialChange('adCost', e.target.value)} className="w-full h-10 bg-white/5 border border-white/10 rounded-lg px-3 text-sm text-white focus:border-neon-blue outline-none" />
-                                </div>
-                            </div>
-                        </div>
-                        <div className="col-span-12 md:col-span-5">
-                            <div className="glass-card p-6 border-neon-green/30 bg-gradient-to-b from-neon-green/5 to-transparent h-full flex flex-col items-center justify-center relative">
-                                <h4 className="text-xs font-bold text-neon-green uppercase tracking-widest absolute top-6 left-6">实时利润预测 (USD)</h4>
-                                <div className="w-48 h-48 my-4 relative">
-                                     <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie data={chartData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                                                {chartData.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                                                ))}
-                                            </Pie>
-                                            <RechartsTooltip contentStyle={{ backgroundColor: '#000', borderRadius: '8px', border: '1px solid #333' }} />
-                                        </PieChart>
-                                     </ResponsiveContainer>
-                                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                         <span className="text-2xl font-bold text-white">{profitMetrics.margin.toFixed(1)}%</span>
-                                         <span className="text-[10px] text-gray-400">Margin</span>
-                                     </div>
-                                </div>
-                                <div className="w-full space-y-2 mt-4">
-                                    <div className="flex justify-between text-sm border-b border-white/5 pb-2">
-                                        <span className="text-gray-400">净利润 (Net Profit)</span>
-                                        <span className={`font-bold ${profitMetrics.profit > 0 ? 'text-neon-green' : 'text-neon-pink'}`}>
-                                            ${profitMetrics.profit.toFixed(2)}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between text-xs text-gray-500">
-                                        <span>总成本 (USD折算)</span>
-                                        <span>${profitMetrics.costUSD.toFixed(2)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'intelligence' && (
-                    <div className="space-y-8 animate-fade-in">
-                        <section className="glass-card p-6 border-white/10">
-                             <div className="flex justify-between items-start mb-4">
-                                 <div>
-                                     <h3 className="font-bold text-white flex items-center gap-2"><Search size={16} className="text-neon-blue"/> SEO 标题优化</h3>
-                                     <p className="text-xs text-gray-400 mt-1">根据品类和属性生成高点击率标题。</p>
-                                 </div>
-                                 <button onClick={handleAiOptimizeTitle} disabled={isLoadingAi} className="px-3 py-1.5 bg-neon-blue/10 text-neon-blue rounded-lg text-xs font-bold hover:bg-neon-blue/20 transition-all">
-                                     {isLoadingAi ? <Loader2 className="animate-spin" size={12}/> : '立即优化'}
-                                 </button>
-                             </div>
-                             <div className="bg-black/20 p-4 rounded-xl border border-white/5 font-mono text-sm text-white">
-                                 {formData.seoTitle || "点击优化按钮生成..."}
-                             </div>
-                        </section>
-                        <section className="glass-card p-6 border-white/10">
-                             <div className="flex justify-between items-start mb-4">
-                                 <div>
-                                     <h3 className="font-bold text-white flex items-center gap-2"><Tag size={16} className="text-neon-purple"/> 关键词提取</h3>
-                                     <p className="text-xs text-gray-400 mt-1">自动分析描述提取 Amazon/TikTok 后台关键词。</p>
-                                 </div>
-                                 <button onClick={handleAiKeywords} disabled={isLoadingAi} className="px-3 py-1.5 bg-neon-purple/10 text-neon-purple rounded-lg text-xs font-bold hover:bg-neon-purple/20 transition-all">
-                                     {isLoadingAi ? <Loader2 className="animate-spin" size={12}/> : '提取 Tags'}
-                                 </button>
-                             </div>
-                             <div className="flex flex-wrap gap-2">
-                                 {formData.seoKeywords && formData.seoKeywords.length > 0 ? (
-                                     formData.seoKeywords.map((kw, i) => (
-                                         <span key={i} className="px-3 py-1 bg-white/5 rounded-full border border-white/10 text-xs text-gray-300">
-                                             {kw}
-                                         </span>
-                                     ))
-                                 ) : (
-                                     <span className="text-xs text-gray-600 italic">暂无关键词</span>
-                                 )}
-                             </div>
-                        </section>
-                         <section className="glass-card p-6 border-white/10">
-                             <div className="flex justify-between items-start mb-4">
-                                 <div>
-                                     <h3 className="font-bold text-white flex items-center gap-2"><TrendingUp size={16} className="text-neon-green"/> 市场可行性评分</h3>
-                                 </div>
-                                 <button onClick={handleMarketAnalysis} disabled={isLoadingAi} className="px-3 py-1.5 bg-neon-green/10 text-neon-green rounded-lg text-xs font-bold hover:bg-neon-green/20 transition-all">
-                                     运行算法
-                                 </button>
-                             </div>
-                             {aiAnalysis && (
-                                <div className="flex gap-6 items-center">
-                                    <div className="w-16 h-16 rounded-full border-4 border-neon-green flex items-center justify-center text-xl font-bold text-neon-green shadow-glow-green/30">
-                                        {aiAnalysis.score}
-                                    </div>
-                                    <p className="text-sm text-gray-300 flex-1">{aiAnalysis.reasoning}</p>
-                                </div>
-                             )}
-                        </section>
-                    </div>
-                )}
-
-                {/* NEW TAB: INVENTORY LOGS */}
-                {activeTab === 'logs' && (
-                    <div className="animate-fade-in space-y-4">
-                        <div className="glass-card p-0 overflow-hidden">
-                            <table className="w-full text-left">
-                                <thead className="bg-white/5 text-[10px] font-bold text-gray-500 uppercase">
-                                    <tr>
-                                        <th className="px-6 py-4">时间 (Time)</th>
-                                        <th className="px-6 py-4">类型 (Type)</th>
-                                        <th className="px-6 py-4">变动数量 (Qty)</th>
-                                        <th className="px-6 py-4">变动原因 (Reason)</th>
-                                        <th className="px-6 py-4">操作人</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {inventoryLogs && inventoryLogs.length > 0 ? (
-                                        inventoryLogs.map(log => (
-                                            <tr key={log.id} className="hover:bg-white/5 transition-colors">
-                                                <td className="px-6 py-4 text-xs font-mono text-gray-400">
-                                                    {new Date(log.timestamp).toLocaleString()}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                                        log.type === 'Inbound' ? 'text-neon-green border-neon-green/30 bg-neon-green/10' :
-                                                        log.type === 'Outbound' ? 'text-neon-pink border-neon-pink/30 bg-neon-pink/10' :
-                                                        'text-neon-blue border-neon-blue/30 bg-neon-blue/10'
-                                                    }`}>
-                                                        {log.type === 'Inbound' ? '入库' : log.type === 'Outbound' ? '出库' : '调整'}
-                                                    </span>
-                                                </td>
-                                                <td className={`px-6 py-4 font-bold font-mono text-sm ${log.quantity > 0 ? 'text-neon-green' : 'text-neon-pink'}`}>
-                                                    {log.quantity > 0 ? '+' : ''}{log.quantity}
-                                                </td>
-                                                <td className="px-6 py-4 text-xs text-white">
-                                                    {log.reason}
-                                                </td>
-                                                <td className="px-6 py-4 text-xs text-gray-500">
-                                                    {log.operator}
-                                                </td>
-                                            </tr>
-                                        ))
-                                    ) : (
-                                        <tr>
-                                            <td colSpan={5} className="px-6 py-12 text-center text-gray-500 text-xs italic">
-                                                暂无库存变动记录
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-
+                </div>
             </div>
+
+            {/* Block 2: Supply Chain (Restore Logic) */}
+            <Section title="产品与供应链" icon={Factory}>
+                <div className="grid grid-cols-3 gap-8">
+                    <InputField label="供应商名称" value={formData.supplier} onChange={v => handleNestedUpdate('supplier', v)} />
+                    <InputField label="起订量 (MOQ)" type="number" value={formData.moq} onChange={v => handleNestedUpdate('moq', parseInt(v))} />
+                    <InputField label="单价 (CNY)" type="number" value={(formData as any).financials?.costOfGoods} onChange={v => handleNestedUpdate('financials.costOfGoods', parseFloat(v))} />
+                </div>
+            </Section>
+
+            {/* Block 3: Packaging */}
+            <Section title="包装与装箱" icon={Package}>
+                <div className="grid grid-cols-4 gap-6">
+                    <InputField label="单品重量 (kg)" type="number" value={formData.unitWeight} onChange={v => handleNestedUpdate('unitWeight', parseFloat(v))} />
+                    <InputField label="装箱数 (pcs)" type="number" value={formData.itemsPerBox} onChange={v => handleNestedUpdate('itemsPerBox', parseInt(v))} />
+                    <InputField label="外箱重量 (kg)" type="number" value={formData.boxWeight} onChange={v => handleNestedUpdate('boxWeight', parseFloat(v))} />
+                    <div className="grid grid-cols-3 gap-2">
+                         <InputField label="L" minimal value={formData.boxLength} onChange={v => handleNestedUpdate('boxLength', parseFloat(v))} />
+                         <InputField label="W" minimal value={formData.boxWidth} onChange={v => handleNestedUpdate('boxWidth', parseFloat(v))} />
+                         <InputField label="H" minimal value={formData.boxHeight} onChange={v => handleNestedUpdate('boxHeight', parseFloat(v))} />
+                    </div>
+                </div>
+            </Section>
+
+            {/* Block 4: Logistics */}
+            <Section title="头程物流配置" icon={Truck}>
+                <div className="grid grid-cols-3 gap-8">
+                    <SelectField label="默认运输方式" value={formData.logistics?.method} onChange={v => handleNestedUpdate('logistics.method', v)} options={['Sea', 'Air', 'Rail', 'Truck']} />
+                    <InputField label="物流单价 (RMB/kg)" type="number" value={formData.logistics?.shippingRate} onChange={v => handleNestedUpdate('logistics.shippingRate', parseFloat(v))} />
+                    <InputField label="预估关税率 (%)" type="number" value={formData.logistics?.dutyRate} onChange={v => handleNestedUpdate('logistics.dutyRate', parseFloat(v))} />
+                </div>
+            </Section>
+
+            {/* Block 5: Financial Lab (Embedded) */}
+            <Section title="利润实验室" icon={Calculator}>
+                <div className="grid grid-cols-3 gap-8">
+                    <InputField label="建议售价 ($)" type="number" value={formData.price} onChange={v => handleNestedUpdate('price', parseFloat(v))} />
+                    <InputField label="平台佣金 (%)" type="number" value={formData.platformCommission} onChange={v => handleNestedUpdate('platformCommission', parseFloat(v))} />
+                    <InputField label="广告单次成本 ($)" type="number" value={formData.adCostPerUnit} onChange={v => handleNestedUpdate('adCostPerUnit', parseFloat(v))} />
+                </div>
+            </Section>
+
         </div>
       </div>
     </div>
   );
 };
+
+// --- Sub-components ---
+const Section = ({ title, icon: Icon, children }: any) => (
+    <div className="space-y-6">
+        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] flex items-center gap-3">
+            <Icon size={14} className="text-white" /> {title}
+        </h3>
+        <div className="p-8 bg-zinc-900 rounded-[32px] border border-white/5">{children}</div>
+    </div>
+);
+
+const InputField = ({ label, type = "text", name, value, onChange, placeholder, isMono, minimal }: any) => (
+    <div className="space-y-1.5">
+        {!minimal && <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">{label}</label>}
+        <input 
+            type={type} 
+            name={name}
+            value={value} 
+            onChange={e => onChange(name ? e : e.target.value)} 
+            placeholder={placeholder || (minimal ? label : '')}
+            className={`w-full bg-white/5 border border-white/10 rounded-2xl px-4 text-sm font-bold text-white outline-none focus:border-white/20 transition-all ${minimal ? 'h-9 text-xs text-center' : 'h-11'} ${isMono ? 'font-mono text-neon-blue' : ''}`}
+        />
+    </div>
+);
+
+const SelectField = ({ label, value, onChange, options }: any) => (
+    <div className="space-y-1.5">
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">{label}</label>
+        <select 
+            value={value} 
+            onChange={e => onChange(e.target.value)}
+            className="w-full h-11 bg-white/5 border border-white/10 rounded-2xl px-4 text-sm font-bold text-white focus:bg-white/10 outline-none appearance-none cursor-pointer"
+        >
+            {options.map((opt: string) => <option key={opt} value={opt} className="bg-zinc-900">{opt}</option>)}
+        </select>
+    </div>
+);
 
 export default ProductEditor;

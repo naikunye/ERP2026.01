@@ -1,909 +1,555 @@
 
 import React, { useState, useMemo } from 'react';
-import { Product, ProductVariant, InventoryLog } from '../types';
+import { Product, ProductVariant, ExecutionRecord, InventoryLog, Currency } from '../types';
 import { 
   X, Save, Box, Truck, DollarSign, Package, 
-  Scale, ArrowRightLeft, LayoutGrid, Info,
-  Factory, Plane, Ship, AlertTriangle, TrendingUp, ShieldCheck, 
-  Ruler, CreditCard, Clock, Lock, Unlock, Tag, AlertCircle, CheckCircle2,
-  FileText, Anchor, ListTree, History, Container, AlertOctagon,
-  Calendar, Layers, Plus, Trash2, Edit3, Copy, MousePointerClick
+  ArrowRightLeft, Factory, Plane, Ship, TrendingUp, ShieldCheck, 
+  Clock, ListTree, Anchor, Container, Plus, Trash2, Edit3, 
+  ChevronRight, Calculator, Activity, LayoutGrid, Scale
 } from 'lucide-react';
 import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
-import ImageUpload from './ImageUpload';
 
 interface SKUDetailEditorProps {
   product: Product;
   onClose: () => void;
-  onSave: (updatedProduct: any) => void;
+  onSave: (updatedProduct: Product) => void;
   onDelete?: () => void;
-  onChangeView?: (view: string) => void; 
   inventoryLogs?: InventoryLog[];
+  onChangeView?: (view: string) => void;
 }
 
-// --- Extended Types for New Modules ---
-
-interface VariantOverride extends ProductVariant {
-    weightOverride?: number;
-    priceOverride?: number;
-    fbaFeeOverride?: number;
-    adCostOverride?: number;
-    returnRateOverride?: number;
-}
-
-interface LogisticsExecutionRecord {
-    id: string;
-    method: 'Air' | 'Sea' | 'Rail' | 'Truck';
-    carrier: string;
-    trackingNos: string[]; // Support multiple tracking numbers
-    shipDate: string;
-    arrivalDate?: string;
-    status: 'In Transit' | 'Customs' | 'Delivered' | 'Receiving' | 'Closed';
-    
-    // Inbound Data
-    inboundId?: string; // FBA/WMS ID
-    sentQty: number;
-    receivedQty: number;
-    shelvedQty: number;
-}
-
-interface BatchAttribution {
-    id: string;
-    batchName: string; // e.g. "2023-10-BATCH-A"
-    skuId: string; // Variant SKU or Parent
-    trackingRef: string;
-    inboundRef: string;
-    
-    // Locked Financials at time of batch closure
-    lockedUnitCost: number;
-    lockedLogisticsCost: number;
-    lockedProfit: number;
-    status: 'Open' | 'Locked';
-    dateLocked: string;
-}
-
-// --- V2 Data Model ---
-interface SKUFormDataV2 {
-  // Identity
-  sku: string;
-  name: string;
-  variants: VariantOverride[];
-  imageUrl?: string; 
-  lifecycle: 'New' | 'Growth' | 'Stable' | 'Clearance';
-  tags: string[];
-
-  // 1. Supply Chain & Procurement (Master)
-  supplierName: string;
-  moq: number; 
-  leadTimeProduction: number;
-  unitCostCNY: number; 
-  procurementLossRate: number; 
-  paymentTerms: '100% Prepay' | '30/70' | 'Net 30' | 'Net 60'; 
+const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, inventoryLogs = [] }) => {
   
-  // 2. Packaging & Dimensions (Master)
-  unitWeight: number; 
-  packageWeight: number; 
-  itemsPerBox: number; 
-  boxLength: number; 
-  boxWidth: number; 
-  boxHeight: number; 
-  boxWeight: number; 
-  boxType: 'Standard' | 'Irregular'; 
-  
-  fulfillmentLength: number; 
-  fulfillmentWidth: number; 
-  fulfillmentHeight: number; 
+  // --- 成本视角状态 ---
+  const [costPerspective, setCostPerspective] = useState<'Theory' | 'Actual' | 'Weighted'>('Theory');
 
-  // Restock Plan
-  restockCartons: number; 
-  totalRestockUnits: number; 
-  variantRestockMap: Record<string, number>; 
-
-  // 3. Logistics Config (Master Rules)
-  logisticsMethod: 'Air' | 'Sea' | 'Rail' | 'Truck';
-  logisticsCarrier: string; 
-  shippingRate: number; 
-  quoteCurrency: 'RMB' | 'USD'; 
-  exchangeRateLock: boolean; 
-  exchangeRate: number; 
-  minChargeableWeight: number; 
-  volumetricDivisor: 5000 | 6000 | 7000 | 8000; 
-  customsMode: 'DDP' | 'DDU' | 'DoubleClear'; 
-  customsDutyRate: number; 
-  riskBufferCostCNY: number; 
-  logisticsTag: 'Fast' | 'Eco' | 'Stable'; 
-  destinationWarehouse: string;
-
-  // 4. Fulfillment & Platform (Master Rules)
-  sellingPriceUSD: number;
-  platformCommissionRate: number; 
-  paymentFeeRate: number; 
-  fbaFeeUSD: number; 
-  lastMileShippingUSD: number; 
-  storageFeeUSD: number; 
-  returnRate: number; 
-  actualReturnCostUSD: number; 
-  payoutCycleDays: number; 
-  adCostPerUnitUSD: number; 
-  
-  // Metadata
-  costLock: boolean; 
-  source?: 'manual' | 'imported';
-
-  // --- NEW MODULE DATA ---
-  logisticsRecords: LogisticsExecutionRecord[];
-  batchAttribution: BatchAttribution[];
-}
-
-const generateId = () => Math.random().toString(36).substr(2, 9);
-
-const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onSave, onDelete, onChangeView, inventoryLogs = [] }) => {
-  
-  const [activeSection, setActiveSection] = useState<'overview' | 'matrix' | 'logs'>('overview');
-
-  // --- MIGRATION & INIT ---
-  const [formData, setFormData] = useState<SKUFormDataV2>(() => {
-      const getVal = (key: string, fallback: any) => (product as any)[key] ?? fallback;
-      const getFin = (key: string, fallback: number) => product.financials?.[key as keyof typeof product.financials] ?? fallback;
-      const getLog = (key: string, fallback: any) => product.logistics?.[key as keyof typeof product.logistics] ?? fallback;
-
-      const savedMap = (product.variantRestockMap || {}) as Record<string, number>;
-      const initialRestock = Object.values(savedMap).reduce((a: number, b: number) => a + Number(b), 0) || product.totalRestockUnits || 0;
+  // --- 数据持久化与映射 ---
+  const [formData, setFormData] = useState<Product>(() => {
+      const p = product;
+      const oldFin = p.financials || {};
+      const oldLog = (p as any).logistics || {};
 
       return {
-        sku: product.sku,
-        name: product.name,
-        variants: product.variants ? JSON.parse(JSON.stringify(product.variants)) : [],
-        imageUrl: product.imageUrl,
-        lifecycle: getVal('lifecycle', 'Growth'),
-        tags: getVal('tags', []),
-
-        supplierName: product.supplier || '',
-        moq: getVal('moq', 100),
-        leadTimeProduction: getVal('leadTimeProduction', 15),
-        unitCostCNY: getFin('costOfGoods', 0),
-        procurementLossRate: getVal('procurementLossRate', 0), 
-        paymentTerms: getVal('paymentTerms', '30/70'),
-
-        unitWeight: product.unitWeight || 0.1,
-        packageWeight: getVal('packageWeight', (product.unitWeight || 0.1) * 1.1),
-        itemsPerBox: product.itemsPerBox || 20,
-        boxLength: product.boxLength || 40,
-        boxWidth: product.boxWidth || 30,
-        boxHeight: product.boxHeight || 30,
-        boxWeight: product.boxWeight || 10,
-        boxType: getVal('boxType', 'Standard'),
-        fulfillmentLength: getVal('fulfillmentLength', product.boxLength || 0),
-        fulfillmentWidth: getVal('fulfillmentWidth', product.boxWidth || 0),
-        fulfillmentHeight: getVal('fulfillmentHeight', product.boxHeight || 0),
-
-        restockCartons: product.restockCartons || 0,
-        totalRestockUnits: initialRestock,
-        variantRestockMap: savedMap,
-
-        logisticsMethod: getLog('method', 'Sea'),
-        logisticsCarrier: getLog('carrier', ''),
-        shippingRate: getLog('shippingRate', 10),
-        quoteCurrency: getVal('quoteCurrency', 'RMB'),
-        exchangeRateLock: getVal('exchangeRateLock', false),
-        exchangeRate: (product as any).exchangeRate || 7.2,
-        minChargeableWeight: getVal('minChargeableWeight', 0),
-        volumetricDivisor: getVal('volumetricDivisor', 6000),
-        customsMode: getVal('customsMode', 'DDP'),
-        customsDutyRate: getVal('customsDutyRate', 0),
-        riskBufferCostCNY: getVal('riskBufferCostCNY', 0),
-        logisticsTag: getVal('logisticsTag', 'Stable'),
-        destinationWarehouse: getLog('destination', 'US-WEST'),
-
-        sellingPriceUSD: getFin('sellingPrice', product.price),
-        platformCommissionRate: product.platformCommission ?? 15,
-        paymentFeeRate: getVal('paymentFeeRate', 3),
-        fbaFeeUSD: product.orderFixedFee || 4.5,
-        lastMileShippingUSD: product.lastMileShipping || 0,
-        storageFeeUSD: getVal('storageFeeUSD', 0.2),
-        returnRate: product.returnRate ?? 5,
-        actualReturnCostUSD: getVal('actualReturnCostUSD', 8.0), 
-        payoutCycleDays: getVal('payoutCycleDays', 14),
-        adCostPerUnitUSD: getFin('adCost', 5),
-
-        costLock: getVal('costLock', false),
-        source: (product as any).source || 'manual',
-
-        logisticsRecords: getVal('logisticsRecords', []),
-        batchAttribution: getVal('batchAttribution', [])
+        ...p,
+        lifecycle: p.lifecycle || 'Growth',
+        supplier: p.supplier || (p as any).supplierName || '',
+        moq: p.moq || 100,
+        leadTimeProduction: p.leadTimeProduction || 15,
+        procurementLossRate: p.procurementLossRate || 0,
+        paymentTerms: p.paymentTerms || '30/70',
+        unitWeight: p.unitWeight || 0.1,
+        packageWeight: p.packageWeight || (p.unitWeight || 0.1) * 1.1,
+        itemsPerBox: p.itemsPerBox || 20,
+        boxLength: p.boxLength || 40,
+        boxWidth: p.boxWidth || 30,
+        boxHeight: p.boxHeight || 30,
+        boxWeight: p.boxWeight || 10,
+        logistics: {
+            method: oldLog.method || 'Sea',
+            carrier: oldLog.carrier || '',
+            shippingRate: oldLog.shippingRate || 10,
+            minWeight: oldLog.minWeight || 0,
+            customsMode: oldLog.customsMode || 'DDP',
+            dutyRate: oldLog.dutyRate || 0,
+            riskBuffer: oldLog.riskBuffer || 2,
+            volumetricDivisor: oldLog.volumetricDivisor || 6000
+        },
+        price: p.price || oldFin.sellingPrice || 0,
+        platformCommission: p.platformCommission || 15,
+        fbaFee: p.fbaFee || (p as any).orderFixedFee || 4.5,
+        adCostPerUnit: p.adCostPerUnit || oldFin.adCost || 5,
+        returnRate: p.returnRate || 5,
+        exchangeRate: p.exchangeRate || 7.2,
+        variants: p.variants ? JSON.parse(JSON.stringify(p.variants)) : [],
+        executionRecords: p.executionRecords || []
       };
   });
 
-  // --- ENGINE: Master Financial Calculation ---
-  const masterMetrics = useMemo(() => {
+  // --- 财务计算引擎 (三维视角升级) ---
+  const metrics = useMemo(() => {
     const rate = formData.exchangeRate || 7.2;
     
-    // Procurement
-    const effectiveUnitCostCNY = formData.unitCostCNY / (1 - (formData.procurementLossRate / 100));
-    const effectiveUnitCostUSD = effectiveUnitCostCNY / rate;
+    // 1. 基础参数
+    const theoryProcurementCNY = (formData as any).financials?.costOfGoods || 0;
+    
+    // 实际执行平均运费 (从执行记录中汇总)
+    const activeRecords = formData.executionRecords?.filter(r => r.status === 'Received' || r.status === 'Delivered') || [];
+    const avgActualShippingRate = activeRecords.length > 0 
+        ? activeRecords.reduce((acc, r) => acc + (r.actualShippingRate || formData.logistics?.shippingRate || 0), 0) / activeRecords.length
+        : formData.logistics?.shippingRate || 0;
 
-    // Logistics
-    const boxVolWeight = (formData.boxLength * formData.boxWidth * formData.boxHeight) / formData.volumetricDivisor;
-    const boxRealWeight = formData.boxWeight;
+    // 选择计算单价 (基于视角)
+    const currentShippingRate = costPerspective === 'Actual' ? avgActualShippingRate : formData.logistics?.shippingRate || 0;
+
+    // 2. 货值计算
+    const unitProcurementUSD = (theoryProcurementCNY * (1 + (formData.procurementLossRate || 0) / 100)) / rate;
+
+    // 3. 物流计算 (Master Logic)
+    const boxVolWeight = (formData.boxLength! * formData.boxWidth! * formData.boxHeight!) / (formData.logistics?.volumetricDivisor || 6000);
+    const boxRealWeight = formData.boxWeight || 0;
     const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
-    const shipmentChargeableRaw = boxChargeable * formData.restockCartons;
-    const finalShipmentChargeable = Math.max(shipmentChargeableRaw, formData.minChargeableWeight);
-    
-    const baseShippingRate = formData.quoteCurrency === 'RMB' ? formData.shippingRate : formData.shippingRate * rate;
-    const totalShippingCNY = finalShipmentChargeable * baseShippingRate;
-    const totalDutyCNY = (effectiveUnitCostCNY * formData.totalRestockUnits) * (formData.customsDutyRate / 100);
-    const totalBufferCNY = formData.riskBufferCostCNY;
-    
-    const totalLogisticsCNY = totalShippingCNY + totalDutyCNY + totalBufferCNY;
-    const unitLogisticsUSD = formData.totalRestockUnits > 0 ? (totalLogisticsCNY / formData.totalRestockUnits) / rate : 0;
+    const unitShippingCNY = (boxChargeable / (formData.itemsPerBox || 1)) * currentShippingRate;
+    const unitDutyUSD = (unitProcurementUSD * (formData.logistics?.dutyRate || 0)) / 100;
+    const unitLogisticsUSD = (unitShippingCNY / rate) * (1 + (formData.logistics?.riskBuffer || 0) / 100) + unitDutyUSD;
 
-    // Profit
-    const revenue = formData.sellingPriceUSD;
-    const platformFee = revenue * (formData.platformCommissionRate / 100);
-    const paymentFee = revenue * (formData.paymentFeeRate / 100);
-    const weightedReturnCost = formData.actualReturnCostUSD * (formData.returnRate / 100);
-    const fulfillmentTotal = formData.fbaFeeUSD + formData.lastMileShippingUSD + formData.storageFeeUSD;
-    
-    const totalUnitCostUSD = effectiveUnitCostUSD + unitLogisticsUSD + platformFee + paymentFee + fulfillmentTotal + formData.adCostPerUnitUSD + weightedReturnCost;
-    const unitProfit = revenue - totalUnitCostUSD;
-    const grossMargin = revenue > 0 ? (unitProfit / revenue) * 100 : 0;
-    const roi = totalUnitCostUSD > 0 ? (unitProfit / totalUnitCostUSD) * 100 : 0;
+    // 4. 运营成本
+    const revenue = formData.price || 0;
+    const platformFee = (revenue * (formData.platformCommission || 0)) / 100;
+    const returnCost = (revenue * (formData.returnRate || 0)) / 100;
+    const opsTotalUSD = platformFee + (formData.fbaFee || 0) + (formData.adCostPerUnit || 0) + returnCost;
 
-    // Safety
-    let safetyStatus: 'Safe' | 'Scale' | 'Risk' | 'Critical' = 'Risk';
-    if (grossMargin >= 40 && roi >= 100) safetyStatus = 'Safe';
-    else if (grossMargin >= 25) safetyStatus = 'Scale';
-    else if (grossMargin >= 10) safetyStatus = 'Risk';
-    else safetyStatus = 'Critical';
+    // 5. 最终利润
+    const totalCostUSD = unitProcurementUSD + unitLogisticsUSD + opsTotalUSD;
+    const profit = revenue - totalCostUSD;
+    const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
 
     return {
-        effectiveUnitCostUSD,
-        unitLogisticsUSD,
-        platformFee,
-        paymentFee,
-        fulfillmentTotal,
-        weightedReturnCost,
-        totalUnitCostUSD,
-        unitProfit,
-        grossMargin,
-        roi,
-        safetyStatus,
-        boxVolWeight,
-        boxChargeable,
-        finalShipmentChargeable,
-        isVolumetric: boxVolWeight > boxRealWeight,
+        unitProcurementUSD, unitLogisticsUSD, opsTotalUSD, totalCostUSD, profit, margin, boxVolWeight,
         breakdown: [
-            { name: 'Goods', value: effectiveUnitCostUSD, color: '#3b82f6' }, 
-            { name: 'Logistics', value: unitLogisticsUSD, color: '#8b5cf6' },
-            { name: 'Platform', value: platformFee + paymentFee, color: '#f59e0b' },
-            { name: 'Fulfill', value: fulfillmentTotal, color: '#10b981' },
-            { name: 'Ads', value: formData.adCostPerUnitUSD, color: '#ef4444' },
-            { name: 'Return', value: weightedReturnCost, color: '#71717a' },
+            { name: '商品 (Goods)', value: unitProcurementUSD, color: '#3b82f6' }, 
+            { name: '物流 (Logistics)', value: unitLogisticsUSD, color: '#8b5cf6' },
+            { name: '平台 (Platform)', value: platformFee + (formData.fbaFee || 0), color: '#f59e0b' },
+            { name: '营销/退货 (Ads/Ret)', value: (formData.adCostPerUnit || 0) + returnCost, color: '#ef4444' },
         ]
     };
-  }, [formData]);
+  }, [formData, costPerspective]);
 
-  // --- ACTIONS ---
-
-  const handleChange = (field: keyof SKUFormDataV2, value: any) => {
-      if (formData.costLock) return;
-      setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleAddVariant = () => {
-      const newVariant: VariantOverride = {
-          id: generateId(),
-          sku: `${formData.sku}-V${formData.variants.length + 1}`,
-          name: `New Variant ${formData.variants.length + 1}`,
-          price: formData.sellingPriceUSD,
-          stock: 0,
-          attributes: {}
-      };
-      setFormData(prev => ({ ...prev, variants: [...prev.variants, newVariant] }));
-  };
-
-  const handleRemoveVariant = (id: string) => {
-      setFormData(prev => ({ ...prev, variants: prev.variants.filter(v => v.id !== id) }));
-  };
-
-  const handleAddLogisticsRecord = () => {
-      const newRecord: LogisticsExecutionRecord = {
-          id: generateId(),
-          method: formData.logisticsMethod,
-          carrier: formData.logisticsCarrier || 'Unknown',
-          trackingNos: [''],
-          shipDate: new Date().toISOString().split('T')[0],
-          status: 'In Transit',
-          sentQty: formData.totalRestockUnits || 0,
-          receivedQty: 0,
-          shelvedQty: 0
-      };
-      setFormData(prev => ({ ...prev, logisticsRecords: [newRecord, ...prev.logisticsRecords] }));
-  };
-
-  const handleUpdateLogisticsRecord = (id: string, field: keyof LogisticsExecutionRecord, value: any) => {
-      setFormData(prev => ({
-          ...prev,
-          logisticsRecords: prev.logisticsRecords.map(r => r.id === id ? { ...r, [field]: value } : r)
-      }));
-  };
-
-  const handleDeleteLogisticsRecord = (id: string) => {
-      setFormData(prev => ({ ...prev, logisticsRecords: prev.logisticsRecords.filter(r => r.id !== id) }));
-  };
-
-  const handleLockBatch = () => {
-      const newBatch: BatchAttribution = {
-          id: generateId(),
-          batchName: `${new Date().toISOString().split('T')[0]} BATCH`,
-          skuId: formData.sku,
-          trackingRef: formData.logisticsRecords[0]?.trackingNos[0] || 'N/A',
-          inboundRef: formData.logisticsRecords[0]?.inboundId || 'N/A',
-          lockedUnitCost: masterMetrics.effectiveUnitCostUSD,
-          lockedLogisticsCost: masterMetrics.unitLogisticsUSD,
-          lockedProfit: masterMetrics.unitProfit,
-          status: 'Locked',
-          dateLocked: new Date().toLocaleDateString()
-      };
-      setFormData(prev => ({ ...prev, batchAttribution: [newBatch, ...prev.batchAttribution] }));
-  };
-
-  const handleSaveWrapper = () => {
-      onSave({
-          ...product,
-          ...formData,
-          financials: {
-              costOfGoods: formData.unitCostCNY,
-              sellingPrice: formData.sellingPriceUSD,
-              shippingCost: parseFloat(masterMetrics.unitLogisticsUSD.toFixed(2)),
-              platformFee: parseFloat(masterMetrics.platformFee.toFixed(2)),
-              adCost: formData.adCostPerUnitUSD,
-              otherCost: parseFloat(masterMetrics.weightedReturnCost.toFixed(2))
-          },
-          logistics: {
-              method: formData.logisticsMethod,
-              carrier: formData.logisticsCarrier,
-              trackingNo: product.logistics?.trackingNo || '',
-              status: product.logistics?.status || 'Pending',
-              shippingRate: formData.shippingRate,
-              manualChargeableWeight: masterMetrics.finalShipmentChargeable / (formData.totalRestockUnits || 1)
+  const handleUpdate = (field: string, value: any) => {
+      setFormData(prev => {
+          const keys = field.split('.');
+          if (keys.length === 2) {
+              return { ...prev, [keys[0]]: { ...(prev[keys[0] as keyof Product] as any), [keys[1]]: value } };
           }
+          return { ...prev, [field]: value };
       });
   };
 
-  // --- Helper to calculate Variant Metrics ---
-  const getVariantMetrics = (v: VariantOverride) => {
-      const sellingPrice = v.priceOverride ?? formData.sellingPriceUSD;
-      const fbaFee = v.fbaFeeOverride ?? formData.fbaFeeUSD;
-      const adCost = v.adCostOverride ?? formData.adCostPerUnitUSD;
-      const returnRate = v.returnRateOverride ?? formData.returnRate;
-      
-      const unitCost = masterMetrics.effectiveUnitCostUSD;
-      const logisticsCost = masterMetrics.unitLogisticsUSD; 
-      
-      const platformFee = sellingPrice * (formData.platformCommissionRate / 100);
-      const paymentFee = sellingPrice * (formData.paymentFeeRate / 100);
-      const returnCost = formData.actualReturnCostUSD * (returnRate / 100);
-      
-      const totalCost = unitCost + logisticsCost + platformFee + paymentFee + fbaFee + formData.lastMileShippingUSD + formData.storageFeeUSD + adCost + returnCost;
-      const profit = sellingPrice - totalCost;
-      const margin = sellingPrice > 0 ? (profit / sellingPrice) * 100 : 0;
-      
-      return { profit, margin, totalCost };
+  const addVariant = () => {
+      const newV: ProductVariant = {
+          id: `V-${Date.now()}`,
+          sku: `${formData.sku}-VAR${(formData.variants?.length || 0) + 1}`,
+          name: '新规格 (New Spec)',
+          price: formData.price,
+          stock: 0,
+          attributes: {}
+      };
+      setFormData(prev => ({ ...prev, variants: [...(prev.variants || []), newV] }));
+  };
+
+  const addExecution = () => {
+      const newE: ExecutionRecord = {
+          id: `EX-${Date.now()}`,
+          batchNo: `BATCH-${new Date().toISOString().slice(0,10)}`,
+          method: formData.logistics?.method || 'Sea',
+          carrier: formData.logistics?.carrier || '',
+          trackingNos: [''],
+          inboundId: '',
+          sentQty: 0,
+          receivedQty: 0,
+          status: 'In Transit',
+          shipDate: new Date().toISOString().slice(0,10)
+      };
+      setFormData(prev => ({ ...prev, executionRecords: [...(prev.executionRecords || []), newE] }));
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in font-sans">
-      <div className="w-[95vw] h-[95vh] max-w-[1600px] bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-zinc-300">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-xl animate-fade-in font-sans">
+      <div className="w-[98vw] h-[98vh] max-w-[1700px] bg-zinc-950 border border-white/10 rounded-[40px] shadow-2xl flex flex-col overflow-hidden text-zinc-100">
         
-        {/* --- HEADER --- */}
-        <div className="h-16 px-8 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/80 backdrop-blur-xl z-20">
-            <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-white shadow-sm">
-                    <Box size={20} strokeWidth={1.5} />
+        {/* --- 顶部操作栏 (Header) --- */}
+        <div className="h-20 px-10 border-b border-white/5 flex items-center justify-between bg-zinc-900/40 backdrop-blur-xl z-20">
+            <div className="flex items-center gap-6">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-zinc-800 to-black border border-white/10 flex items-center justify-center text-white shadow-xl">
+                    <Box size={24} strokeWidth={1.5} />
                 </div>
                 <div>
-                    <div className="flex items-center gap-3">
-                        <h2 className="text-white font-semibold tracking-tight text-lg">{formData.name}</h2>
-                        {formData.source === 'imported' && (
-                            <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 text-[10px] font-medium border border-indigo-500/20 flex items-center gap-1">
-                                <Info size={10}/> Imported
-                            </span>
-                        )}
-                        <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700 text-[10px] font-medium">
-                            {formData.lifecycle}
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 mt-0.5">
-                        <span>SKU: {formData.sku}</span>
+                    <h2 className="text-xl font-bold tracking-tight text-white">{formData.name || '未命名 SKU'}</h2>
+                    <div className="flex items-center gap-3 mt-0.5">
+                        <span className="text-xs font-mono font-medium text-zinc-500 bg-white/5 px-2 py-0.5 rounded">ID: {formData.sku}</span>
+                        <span className="text-[10px] uppercase tracking-widest font-bold text-neon-blue bg-neon-blue/10 border border-neon-blue/20 px-2 py-0.5 rounded-full">{formData.lifecycle}</span>
                     </div>
                 </div>
             </div>
 
-            <div className="flex items-center gap-3">
-                <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-                    {['overview', 'matrix', 'logs'].map(tab => (
-                        <button 
-                            key={tab}
-                            onClick={() => setActiveSection(tab as any)}
-                            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
-                                activeSection === tab 
-                                ? 'bg-zinc-800 text-white shadow-sm' 
-                                : 'text-zinc-500 hover:text-zinc-300'
-                            }`}
-                        >
-                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                        </button>
-                    ))}
+            <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-2xl border border-white/10">
+                    <ArrowRightLeft size={14} className="text-zinc-500" />
+                    <span className="text-xs font-bold text-zinc-400">当前汇率 (Rate):</span>
+                    <input 
+                        type="number" 
+                        value={formData.exchangeRate} 
+                        onChange={e => handleUpdate('exchangeRate', parseFloat(e.target.value))}
+                        className="w-14 bg-transparent font-mono font-bold text-white outline-none"
+                    />
                 </div>
-                <div className="h-6 w-px bg-zinc-800 mx-2"></div>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-zinc-900 text-zinc-500 hover:text-white transition-colors">
-                    <X size={20} strokeWidth={1.5} />
+                <button onClick={onClose} className="p-3 rounded-full hover:bg-white/5 transition-colors text-zinc-500 hover:text-white">
+                    <X size={20} strokeWidth={2} />
                 </button>
-                <button onClick={handleSaveWrapper} className="px-6 py-2 bg-white text-black rounded-full text-sm font-semibold hover:bg-gray-200 transition-colors shadow-lg shadow-white/5">
-                    Save Changes
+                <button onClick={() => onSave(formData)} className="px-8 py-3 bg-white text-black rounded-2xl text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-glow-white/10">
+                    保存配置 (Save Asset)
                 </button>
             </div>
         </div>
 
-        {/* --- MAIN CONTENT (Single Page Cockpit) --- */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-zinc-950">
-            {activeSection === 'overview' && (
-            <div className="max-w-[1600px] mx-auto space-y-8">
-                
-                {/* 1. MASTER CONFIGURATION ROW */}
-                <div className="grid grid-cols-12 gap-6">
-                    {/* Supply Chain */}
-                    <div className="col-span-12 xl:col-span-3">
-                        <SectionCard title="供应链与包装 (Master Supply)" icon={Factory}>
-                            <div className="space-y-4">
-                                <div className="flex gap-4">
-                                    <div className="w-16 h-16 bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 shrink-0">
-                                        <ImageUpload currentImage={formData.imageUrl} onImageChange={url => handleChange('imageUrl', url)} />
-                                    </div>
-                                    <div className="flex-1 space-y-2">
-                                        <V2Input label="Supplier" value={formData.supplierName} onChange={v => handleChange('supplierName', v)} />
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <V2Input label="MOQ" type="number" value={formData.moq} onChange={v => handleChange('moq', Number(v))} />
-                                            <V2Input label="Lead Time" type="number" value={formData.leadTimeProduction} onChange={v => handleChange('leadTimeProduction', Number(v))} />
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="p-3 bg-zinc-900 rounded-xl border border-zinc-800">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="text-xs text-zinc-400">Unit Cost (CNY)</span>
-                                        <input 
-                                            type="number" 
-                                            value={formData.unitCostCNY} 
-                                            onChange={e => handleChange('unitCostCNY', parseFloat(e.target.value))}
-                                            className="w-20 bg-transparent text-right font-mono font-bold outline-none text-white" 
-                                        />
-                                    </div>
-                                    <div className="h-px bg-zinc-800 w-full mb-2"></div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[10px] text-zinc-500 uppercase">Loss Rate %</span>
-                                        <input 
-                                            type="number" 
-                                            value={formData.procurementLossRate} 
-                                            onChange={e => handleChange('procurementLossRate', parseFloat(e.target.value))}
-                                            className="w-12 bg-transparent text-xs text-red-400 font-mono outline-none text-right"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <V2Input label="Unit Wgt (kg)" type="number" value={formData.unitWeight} onChange={v => handleChange('unitWeight', Number(v))} />
-                                    <V2Input label="Gross Wgt (kg)" type="number" value={formData.packageWeight} onChange={v => handleChange('packageWeight', Number(v))} />
-                                </div>
-                                <div className="p-2 bg-zinc-900 border border-zinc-800 rounded flex justify-between text-[10px] text-zinc-500">
-                                    <span>{formData.itemsPerBox} pcs/box</span>
-                                    <span>Box: {formData.boxLength}x{formData.boxWidth}x{formData.boxHeight}</span>
-                                </div>
-                            </div>
-                        </SectionCard>
-                    </div>
-
-                    {/* Logistics Config */}
-                    <div className="col-span-12 xl:col-span-4">
-                        <SectionCard title="物流与关务 (Logistics Rules)" icon={Truck}>
-                            <div className="space-y-5">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <V2Select label="Method" value={formData.logisticsMethod} onChange={v => handleChange('logisticsMethod', v)} options={['Sea', 'Air', 'Rail', 'Truck']} />
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Rate ({formData.quoteCurrency}/kg)</label>
-                                        <div className="flex items-center gap-2">
-                                            <input 
-                                                type="number" 
-                                                value={formData.shippingRate} 
-                                                onChange={e => handleChange('shippingRate', Number(e.target.value))}
-                                                className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-lg px-3 text-sm font-mono font-bold text-white outline-none"
-                                            />
-                                            <select value={formData.quoteCurrency} onChange={e => handleChange('quoteCurrency', e.target.value)} className="bg-zinc-900 text-[10px] h-10 rounded border border-zinc-800 outline-none">
-                                                <option value="RMB">¥</option><option value="USD">$</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
+        {/* --- 核心配置单页 (Main Scrollable Body) --- */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-10 pb-20 space-y-12">
+            
+            {/* 1. 利润驾驶舱 (Cockpit & Financial Perspective) */}
+            <div className="grid grid-cols-12 gap-8">
+                <div className="col-span-12 xl:col-span-8">
+                    <div className="bg-zinc-900 rounded-[32px] p-8 border border-white/5 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-8 opacity-5 transition-opacity group-hover:opacity-10 text-white"><Calculator size={120} /></div>
+                        
+                        <div className="flex justify-between items-start mb-8 relative z-10">
+                            <div>
+                                <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                                    <TrendingUp size={16} className="text-neon-green" /> 利润分析模型 (Profit Center)
+                                </h3>
                                 
-                                <div className="space-y-2">
-                                    <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase">
-                                        <span>Single Shipment Analysis</span>
-                                        <span>Billable: {masterMetrics.finalShipmentChargeable.toFixed(1)} kg</span>
-                                    </div>
-                                    <div className="h-8 bg-zinc-900 rounded-lg border border-zinc-800 flex items-center relative overflow-hidden">
-                                        <div className="h-full bg-blue-600/20 border-r border-blue-600/50 absolute left-0" style={{ width: `${Math.min((formData.boxWeight * formData.restockCartons / masterMetrics.finalShipmentChargeable) * 100, 100)}%` }}></div>
-                                        <div className="absolute inset-0 flex items-center justify-between px-3 text-[10px] font-mono pointer-events-none">
-                                            <span className="text-blue-400">Real</span>
-                                            <span className="text-orange-400">Vol</span>
+                                {/* 视角切换 (Segmented Control) */}
+                                <div className="flex p-1 bg-black/40 rounded-xl border border-white/10 w-fit mb-6">
+                                    {[
+                                        { id: 'Theory', label: '理论成本 (Theory)' },
+                                        { id: 'Actual', label: '实际成本 (Actual)' },
+                                        { id: 'Weighted', label: '加权平均 (Weighted)' }
+                                    ].map(opt => (
+                                        <button 
+                                            key={opt.id}
+                                            onClick={() => setCostPerspective(opt.id as any)}
+                                            className={`px-4 py-1.5 rounded-lg text-[10px] font-bold transition-all ${costPerspective === opt.id ? 'bg-white text-black' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="flex items-baseline gap-4">
+                                    <span className={`text-6xl font-bold tracking-tighter ${metrics.profit > 0 ? 'text-white' : 'text-neon-pink'}`}>
+                                        ${isNaN(metrics.profit) ? '0.00' : metrics.profit.toFixed(2)}
+                                    </span>
+                                    <span className={`text-xl font-bold ${metrics.margin > 20 ? 'text-neon-green' : 'text-zinc-500'}`}>
+                                        {isNaN(metrics.margin) ? '0.0' : metrics.margin.toFixed(1)}% 预期毛利
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-xs font-bold text-zinc-500 uppercase mb-1">销售价格 (Selling Price)</div>
+                                <div className="text-2xl font-bold flex items-center gap-2 justify-end">
+                                    <span className="text-zinc-500">$</span>
+                                    <input 
+                                        type="number" 
+                                        value={formData.price} 
+                                        onChange={e => handleUpdate('price', parseFloat(e.target.value))}
+                                        className="w-24 text-right bg-white/5 border-b-2 border-white/20 focus:border-neon-blue transition-all outline-none"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* iOS 堆叠条形图 */}
+                        <div className="space-y-6 relative z-10">
+                            <div className="h-6 w-full flex rounded-full overflow-hidden bg-white/5 shadow-inner">
+                                {metrics.breakdown.map((b, i) => (
+                                    <div key={i} style={{ width: `${(b.value / formData.price) * 100}%`, backgroundColor: b.color }} className="h-full border-r border-black/20 last:border-0" title={b.name} />
+                                ))}
+                                <div className="flex-1 bg-neon-green/10" />
+                            </div>
+                            <div className="grid grid-cols-4 gap-4">
+                                {metrics.breakdown.map((b, i) => (
+                                    <div key={i} className="flex flex-col gap-1">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: b.color }} />
+                                            <span className="text-[10px] font-bold text-zinc-500 uppercase">{b.name}</span>
                                         </div>
+                                        <div className="text-sm font-bold text-white">${isNaN(b.value) ? '0.00' : b.value.toFixed(2)}</div>
                                     </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <V2Input label="Min Weight (kg)" type="number" value={formData.minChargeableWeight} onChange={v => handleChange('minChargeableWeight', Number(v))} />
-                                    <V2Input label="Duty Rate %" type="number" value={formData.customsDutyRate} onChange={v => handleChange('customsDutyRate', Number(v))} />
-                                </div>
+                                ))}
                             </div>
-                        </SectionCard>
-                    </div>
-
-                    {/* Financial Config */}
-                    <div className="col-span-12 xl:col-span-5">
-                        <SectionCard title="利润模型 (Profit Model)" icon={DollarSign}>
-                            <div className="flex gap-6 mb-6">
-                                <div className="flex-1 space-y-1">
-                                    <label className="text-[10px] text-zinc-500 font-bold uppercase">Selling Price ($)</label>
-                                    <input type="number" value={formData.sellingPriceUSD} onChange={e => handleChange('sellingPriceUSD', parseFloat(e.target.value))} className="w-full h-12 bg-zinc-900 border border-zinc-700 rounded-xl px-4 text-2xl font-bold text-white outline-none focus:border-blue-500 transition-all"/>
-                                </div>
-                                <div className="text-right flex flex-col justify-end pb-1">
-                                    <div className={`text-3xl font-semibold tracking-tighter ${masterMetrics.unitProfit > 0 ? 'text-white' : 'text-red-400'}`}>${masterMetrics.unitProfit.toFixed(2)}</div>
-                                    <div className={`text-xs font-bold ${masterMetrics.safetyStatus === 'Safe' ? 'text-green-400' : 'text-orange-400'}`}>Net Profit / Unit</div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-3">
-                                <V2Input label="Plat. Fee %" type="number" value={formData.platformCommissionRate} onChange={v => handleChange('platformCommissionRate', Number(v))} />
-                                <V2Input label="FBA/Ops $" type="number" value={formData.fbaFeeUSD} onChange={v => handleChange('fbaFeeUSD', Number(v))} />
-                                <V2Input label="Ads $" type="number" value={formData.adCostPerUnitUSD} onChange={v => handleChange('adCostPerUnitUSD', Number(v))} />
-                            </div>
-                            <div className="h-20 w-full mt-4">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={masterMetrics.breakdown} layout="vertical" barSize={8}>
-                                        <XAxis type="number" hide />
-                                        <YAxis dataKey="name" type="category" width={50} tick={{fill: '#71717a', fontSize: 9}} axisLine={false} tickLine={false} />
-                                        <RechartsTooltip contentStyle={{backgroundColor: '#18181b', border: '1px solid #27272a', fontSize: '10px'}} cursor={{fill: 'rgba(255,255,255,0.05)'}}/>
-                                        <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                                            {masterMetrics.breakdown.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </SectionCard>
+                        </div>
                     </div>
                 </div>
 
-                {/* 2. VARIANT MATRIX (Interactive) */}
-                <SectionCard 
-                    title="SKU 变体配置 (Variant Matrix)" 
-                    icon={ListTree}
-                    action={<button onClick={handleAddVariant} className="px-3 py-1 bg-white/10 text-white rounded text-xs font-bold hover:bg-white/20 flex items-center gap-1"><Plus size={12}/> 添加变体</button>}
-                >
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-zinc-900 text-[10px] font-bold text-zinc-500 uppercase">
-                                <tr>
-                                    <th className="px-4 py-3 rounded-l-lg">Variant Name / SKU</th>
-                                    <th className="px-4 py-3">Weight (kg)</th>
-                                    <th className="px-4 py-3">Sell Price ($)</th>
-                                    <th className="px-4 py-3">FBA/Ops ($)</th>
-                                    <th className="px-4 py-3">Ad Cost ($)</th>
-                                    <th className="px-4 py-3 text-right">Net Profit</th>
-                                    <th className="px-4 py-3 rounded-r-lg w-10"></th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-zinc-800">
-                                {formData.variants.map((v, i) => {
-                                    const metrics = getVariantMetrics(v);
-                                    return (
-                                        <tr key={v.id} className="group hover:bg-zinc-900/50 transition-colors">
-                                            <td className="px-4 py-3">
-                                                <input 
-                                                    value={v.name}
-                                                    onChange={e => {
-                                                        const newVars = [...formData.variants];
-                                                        newVars[i].name = e.target.value;
-                                                        handleChange('variants', newVars);
-                                                    }}
-                                                    className="w-full bg-transparent font-bold text-white text-xs outline-none focus:border-b border-blue-500"
-                                                />
-                                                <input 
-                                                    value={v.sku}
-                                                    onChange={e => {
-                                                        const newVars = [...formData.variants];
-                                                        newVars[i].sku = e.target.value;
-                                                        handleChange('variants', newVars);
-                                                    }}
-                                                    className="w-full bg-transparent text-[10px] font-mono text-zinc-500 mt-1 outline-none focus:border-b border-blue-500"
-                                                />
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <input 
-                                                    type="number" 
-                                                    placeholder={formData.unitWeight.toString()} 
-                                                    value={v.weightOverride ?? ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value ? parseFloat(e.target.value) : undefined;
-                                                        const newVars = [...formData.variants];
-                                                        newVars[i] = { ...v, weightOverride: val };
-                                                        handleChange('variants', newVars);
-                                                    }}
-                                                    className="w-20 bg-transparent border-b border-zinc-800 focus:border-blue-500 outline-none text-zinc-300 placeholder-zinc-700 text-sm"
-                                                />
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <input 
-                                                    type="number" 
-                                                    placeholder={formData.sellingPriceUSD.toString()} 
-                                                    value={v.priceOverride ?? ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value ? parseFloat(e.target.value) : undefined;
-                                                        const newVars = [...formData.variants];
-                                                        newVars[i] = { ...v, priceOverride: val };
-                                                        handleChange('variants', newVars);
-                                                    }}
-                                                    className="w-20 bg-transparent border-b border-zinc-800 focus:border-green-500 outline-none text-green-400 placeholder-zinc-800 text-sm font-bold"
-                                                />
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <input 
-                                                    type="number" 
-                                                    placeholder={formData.fbaFeeUSD.toString()} 
-                                                    value={v.fbaFeeOverride ?? ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value ? parseFloat(e.target.value) : undefined;
-                                                        const newVars = [...formData.variants];
-                                                        newVars[i] = { ...v, fbaFeeOverride: val };
-                                                        handleChange('variants', newVars);
-                                                    }}
-                                                    className="w-20 bg-transparent border-b border-zinc-800 focus:border-blue-500 outline-none text-zinc-300 placeholder-zinc-700 text-sm"
-                                                />
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <input 
-                                                    type="number" 
-                                                    placeholder={formData.adCostPerUnitUSD.toString()} 
-                                                    value={v.adCostOverride ?? ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value ? parseFloat(e.target.value) : undefined;
-                                                        const newVars = [...formData.variants];
-                                                        newVars[i] = { ...v, adCostOverride: val };
-                                                        handleChange('variants', newVars);
-                                                    }}
-                                                    className="w-20 bg-transparent border-b border-zinc-800 focus:border-blue-500 outline-none text-zinc-300 placeholder-zinc-700 text-sm"
-                                                />
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <span className={`font-mono font-bold ${metrics.profit > 0 ? 'text-white' : 'text-red-400'}`}>
-                                                    ${metrics.profit.toFixed(2)}
-                                                </span>
-                                                <div className="text-[9px] text-zinc-500">{metrics.margin.toFixed(1)}%</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <button onClick={() => handleRemoveVariant(v.id)} className="text-zinc-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                                                    <Trash2 size={14}/>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                {formData.variants.length === 0 && (
-                                    <tr><td colSpan={7} className="px-4 py-8 text-center text-zinc-600 text-xs italic">无变体数据 (No Variants Configured)</td></tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </SectionCard>
-
-                {/* 3. LOGISTICS EXECUTION (Editable) */}
-                <SectionCard 
-                    title="物流与入库执行 (Execution Records)" 
-                    icon={Anchor}
-                    action={<button onClick={handleAddLogisticsRecord} className="px-3 py-1 bg-white/10 text-white rounded text-xs font-bold hover:bg-white/20 flex items-center gap-1"><Plus size={12}/> 录入执行记录</button>}
-                >
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                            <thead className="bg-zinc-900 text-[10px] font-bold text-zinc-500 uppercase">
-                                <tr>
-                                    <th className="px-4 py-3 rounded-l-lg w-24">Status / Date</th>
-                                    <th className="px-4 py-3 w-32">Method / Carrier</th>
-                                    <th className="px-4 py-3">Tracking / Inbound ID</th>
-                                    <th className="px-4 py-3 text-center w-20">Sent</th>
-                                    <th className="px-4 py-3 text-center w-20">Rcvd</th>
-                                    <th className="px-4 py-3 text-center rounded-r-lg w-16">Diff</th>
-                                    <th className="w-10"></th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-zinc-800">
-                                {formData.logisticsRecords?.map((rec) => (
-                                    <tr key={rec.id} className="hover:bg-zinc-900/30 group">
-                                        <td className="px-4 py-3">
-                                            <select 
-                                                value={rec.status}
-                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'status', e.target.value)}
-                                                className="bg-transparent text-[10px] font-bold outline-none text-blue-400 mb-1"
-                                            >
-                                                <option value="In Transit">In Transit</option>
-                                                <option value="Delivered">Delivered</option>
-                                                <option value="Customs">Customs</option>
-                                            </select>
-                                            <input 
-                                                type="date"
-                                                value={rec.shipDate}
-                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'shipDate', e.target.value)}
-                                                className="bg-transparent text-[10px] text-zinc-500 w-full outline-none"
-                                            />
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <select 
-                                                value={rec.method}
-                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'method', e.target.value)}
-                                                className="bg-transparent text-white font-bold text-xs outline-none block mb-1"
-                                            >
-                                                <option value="Sea">Sea</option>
-                                                <option value="Air">Air</option>
-                                                <option value="Rail">Rail</option>
-                                            </select>
-                                            <input 
-                                                value={rec.carrier}
-                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'carrier', e.target.value)}
-                                                className="bg-transparent text-zinc-500 text-[10px] w-full outline-none"
-                                                placeholder="Carrier"
-                                            />
-                                        </td>
-                                        <td className="px-4 py-3 font-mono">
-                                            <input 
-                                                value={rec.trackingNos[0]}
-                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'trackingNos', [e.target.value])}
-                                                className="bg-transparent text-blue-400 text-xs w-full outline-none mb-1 placeholder-zinc-700"
-                                                placeholder="Tracking No"
-                                            />
-                                            <input 
-                                                value={rec.inboundId}
-                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'inboundId', e.target.value)}
-                                                className="bg-transparent text-zinc-500 text-[10px] w-full outline-none placeholder-zinc-700"
-                                                placeholder="FBA/WMS ID"
-                                            />
-                                        </td>
-                                        <td className="px-4 py-3 text-center">
-                                            <input 
-                                                type="number"
-                                                value={rec.sentQty}
-                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'sentQty', Number(e.target.value))}
-                                                className="w-16 bg-zinc-900 border border-zinc-800 rounded text-center text-zinc-300 outline-none focus:border-zinc-600"
-                                            />
-                                        </td>
-                                        <td className="px-4 py-3 text-center">
-                                            <input 
-                                                type="number"
-                                                value={rec.receivedQty}
-                                                onChange={(e) => handleUpdateLogisticsRecord(rec.id, 'receivedQty', Number(e.target.value))}
-                                                className="w-16 bg-zinc-900 border border-zinc-800 rounded text-center text-white font-bold outline-none focus:border-zinc-600"
-                                            />
-                                        </td>
-                                        <td className="px-4 py-3 text-center">
-                                            {rec.sentQty - rec.receivedQty !== 0 ? (
-                                                <span className="text-red-400 font-bold">{rec.receivedQty - rec.sentQty}</span>
-                                            ) : <span className="text-green-500"><CheckCircle2 size={12} className="inline"/></span>}
-                                        </td>
-                                        <td className="px-2">
-                                            <button onClick={() => handleDeleteLogisticsRecord(rec.id)} className="text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Trash2 size={12}/>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {(!formData.logisticsRecords || formData.logisticsRecords.length === 0) && (
-                                    <tr><td colSpan={7} className="px-4 py-6 text-center text-zinc-600 text-xs italic">暂无执行记录，请点击右上角录入</td></tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </SectionCard>
-
-                {/* 4. BATCH ATTRIBUTION (Interactive) */}
-                <SectionCard 
-                    title="批次利润归因 (Batch Attribution)" 
-                    icon={History}
-                    action={<button onClick={handleLockBatch} className="px-3 py-1 bg-gradient-to-r from-yellow-600 to-yellow-700 text-white rounded text-xs font-bold hover:opacity-90 flex items-center gap-1 shadow-lg shadow-yellow-900/20"><Lock size={12}/> 锁定当前批次成本</button>}
-                >
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {formData.batchAttribution?.map(batch => (
-                            <div key={batch.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl relative group hover:border-yellow-600/30 transition-colors">
-                                <div className="absolute top-4 right-4 text-zinc-600">
-                                    <Lock size={14} className="text-yellow-600"/>
-                                </div>
-                                <div className="text-xs font-bold text-yellow-600 uppercase mb-1">{batch.batchName}</div>
-                                <div className="text-xs text-zinc-500 mb-3">{batch.dateLocked}</div>
-                                
-                                <div className="space-y-2 text-xs">
-                                    <div className="flex justify-between">
-                                        <span className="text-zinc-500">Locked Unit Cost</span>
-                                        <span className="font-mono text-zinc-300">${batch.lockedUnitCost.toFixed(2)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-zinc-500">Locked Profit</span>
-                                        <span className={`font-mono font-bold ${batch.lockedProfit > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                            ${batch.lockedProfit.toFixed(2)}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="mt-3 pt-2 border-t border-zinc-800 text-[10px] text-zinc-500 flex gap-2">
-                                    <span className="bg-black/30 px-1.5 rounded">{batch.trackingRef}</span>
-                                    <span className="bg-black/30 px-1.5 rounded">{batch.inboundRef}</span>
-                                </div>
-                            </div>
-                        ))}
-                        {(!formData.batchAttribution || formData.batchAttribution.length === 0) && (
-                            <div className="col-span-full py-8 text-center text-zinc-600 text-xs italic border border-dashed border-zinc-800 rounded-xl">
-                                暂无批次归因数据，请在确认成本和物流后点击“锁定”
-                            </div>
-                        )}
-                    </div>
-                </SectionCard>
-
+                <div className="col-span-12 xl:col-span-4 grid grid-cols-2 gap-4">
+                    <StatusCard title="当前现货" value={`${formData.stock} pcs`} sub="本地+海外仓" icon={Package} color="text-neon-blue" />
+                    <StatusCard title="日均销量" value={`${formData.dailySales || 0} /D`} sub="近30天加权" icon={Activity} color="text-neon-purple" />
+                    <StatusCard title="补货交期" value={`${formData.leadTimeProduction} 天`} sub="工厂生产周期" icon={Clock} color="text-zinc-500" />
+                    <StatusCard title="运营状态" value={formData.status === 'Active' ? '在售' : '草稿'} sub="Market Status" icon={ShieldCheck} color={formData.status === 'Active' ? 'text-neon-green' : 'text-zinc-600'} />
+                </div>
             </div>
-            )}
 
-            {activeSection === 'matrix' && (
-                <div className="flex items-center justify-center h-full text-zinc-600 font-medium">Matrix View Placeholder</div>
-            )}
-            
-            {activeSection === 'logs' && (
-                <div className="flex items-center justify-center h-full text-zinc-600 font-medium">Inventory Logs Placeholder</div>
-            )}
+            {/* 2. 供应链与包装 (Supply & Packaging) */}
+            <div className="grid grid-cols-12 gap-8">
+                <ConfigCard title="产品与供应链 (Master Supply)" icon={Factory} className="col-span-12 md:col-span-6">
+                    <div className="space-y-5">
+                        <InputField label="供应商名称 (Supplier)" value={formData.supplier!} onChange={v => handleUpdate('supplier', v)} />
+                        <div className="grid grid-cols-2 gap-6">
+                            <InputField label="起订量 (MOQ)" type="number" value={formData.moq!} onChange={v => handleUpdate('moq', parseInt(v))} />
+                            <InputField label="生产交期 (Days)" type="number" value={formData.leadTimeProduction!} onChange={v => handleUpdate('leadTimeProduction', parseInt(v))} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-6">
+                            <InputField label="采购单价 (CNY)" type="number" value={(formData as any).financials?.costOfGoods} onChange={v => handleUpdate('financials.costOfGoods', parseFloat(v))} highlight color="text-neon-pink" />
+                            <InputField label="生产损耗率 (%)" type="number" value={formData.procurementLossRate!} onChange={v => handleUpdate('procurementLossRate', parseFloat(v))} />
+                        </div>
+                        <SelectField label="付款条件 (Payment Terms)" value={formData.paymentTerms!} onChange={v => handleUpdate('paymentTerms', v)} options={['100% Prepay', '30/70', 'Net 30', 'Net 60']} />
+                    </div>
+                </ConfigCard>
+
+                <ConfigCard title="包装与外箱规格 (Packaging)" icon={Package} className="col-span-12 md:col-span-6">
+                    <div className="space-y-5">
+                        <div className="grid grid-cols-2 gap-6">
+                            <InputField label="单品净重 (Net kg)" type="number" value={formData.unitWeight!} onChange={v => handleUpdate('unitWeight', parseFloat(v))} />
+                            <InputField label="含包装毛重 (Gross kg)" type="number" value={formData.packageWeight!} onChange={v => handleUpdate('packageWeight', parseFloat(v))} />
+                        </div>
+                        <div className="p-5 bg-black/40 rounded-3xl border border-white/5 space-y-4">
+                             <div className="text-[10px] font-bold text-zinc-500 uppercase flex justify-between">
+                                 <span>标准大货外箱 (Master Box)</span>
+                                 <span className="text-white">材积重: {metrics.boxVolWeight.toFixed(2)} kg</span>
+                             </div>
+                             <div className="grid grid-cols-3 gap-3">
+                                <InputField label="长 (L/cm)" type="number" value={formData.boxLength!} onChange={v => handleUpdate('boxLength', parseFloat(v))} minimal />
+                                <InputField label="宽 (W/cm)" type="number" value={formData.boxWidth!} onChange={v => handleUpdate('boxWidth', parseFloat(v))} minimal />
+                                <InputField label="高 (H/cm)" type="number" value={formData.boxHeight!} onChange={v => handleUpdate('boxHeight', parseFloat(v))} minimal />
+                             </div>
+                             <div className="grid grid-cols-2 gap-6">
+                                <InputField label="单箱总重 (kg)" type="number" value={formData.boxWeight!} onChange={v => handleUpdate('boxWeight', parseFloat(v))} />
+                                <InputField label="每箱装箱数 (pcs)" type="number" value={formData.itemsPerBox!} onChange={v => handleUpdate('itemsPerBox', parseInt(v))} />
+                             </div>
+                        </div>
+                    </div>
+                </ConfigCard>
+            </div>
+
+            {/* 3. 头程物流配置 (Logistics) */}
+            <ConfigCard title="头程物流运营配置 (Logistics Strategy)" icon={Truck} className="col-span-12">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                    <div className="space-y-5">
+                        <SelectField label="默认运输方式" value={formData.logistics?.method!} onChange={v => handleUpdate('logistics.method', v)} options={['Sea', 'Air', 'Rail', 'Truck']} />
+                        <InputField label="指定物流商 (Carrier)" value={formData.logistics?.carrier!} onChange={v => handleUpdate('logistics.carrier', v)} />
+                    </div>
+                    <div className="space-y-5">
+                        <InputField label="物流单价 (RMB/kg)" type="number" value={formData.logistics?.shippingRate!} onChange={v => handleUpdate('logistics.shippingRate', parseFloat(v))} highlight color="text-neon-blue" />
+                        <InputField label="最低计费重 (Min Wt)" type="number" value={formData.logistics?.minWeight!} onChange={v => handleUpdate('logistics.minWeight', parseFloat(v))} />
+                    </div>
+                    <div className="space-y-5">
+                        <SelectField label="清关方式" value={formData.logistics?.customsMode!} onChange={v => handleUpdate('logistics.customsMode', v)} options={['DDP', 'DDU']} />
+                        <InputField label="预估关税率 (%)" type="number" value={formData.logistics?.dutyRate!} onChange={v => handleUpdate('logistics.dutyRate', parseFloat(v))} />
+                    </div>
+                    <div className="flex flex-col justify-center gap-4">
+                        <div className="p-4 bg-neon-blue/5 border border-neon-blue/10 rounded-2xl">
+                            <div className="text-[10px] font-bold text-neon-blue uppercase mb-2">物流风险缓冲 (Risk Buffer %)</div>
+                            <div className="flex items-center justify-between">
+                                <input 
+                                    type="range" min="0" max="20" step="0.5"
+                                    value={formData.logistics?.riskBuffer}
+                                    onChange={e => handleUpdate('logistics.riskBuffer', parseFloat(e.target.value))}
+                                    className="flex-1 accent-neon-blue mr-4"
+                                />
+                                <span className="text-sm font-mono font-bold text-white">{formData.logistics?.riskBuffer}%</span>
+                            </div>
+                        </div>
+                        <div className="px-4 py-2 text-[10px] text-zinc-500 italic bg-white/5 rounded-xl border border-white/5">
+                            * 自动计费逻辑：取“实际重量”与“体积重”之大者进行单价核算。
+                        </div>
+                    </div>
+                </div>
+            </ConfigCard>
+
+            {/* 4. SKU 变体矩阵 (Variant Matrix) */}
+            <ConfigCard 
+                title="多变体 SKU 矩阵配置 (Variant Matrix)" 
+                icon={ListTree}
+                action={<button onClick={addVariant} className="px-5 py-2 bg-white text-black rounded-xl text-xs font-bold hover:opacity-90 flex items-center gap-2 transition-all"><Plus size={14}/> 添加子变体</button>}
+            >
+                <div className="overflow-x-auto -mx-8 px-8">
+                    <table className="w-full text-left">
+                        <thead className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest border-b border-white/5">
+                            <tr>
+                                <th className="py-4 px-2 w-[25%]">变体信息 (Code/Spec)</th>
+                                <th className="py-4 px-2 text-center">覆盖价格 ($)</th>
+                                <th className="py-4 px-2 text-center">覆盖重量 (kg)</th>
+                                <th className="py-4 px-2 text-center">独立 FBA 成本</th>
+                                <th className="py-4 px-2 text-center">当前库存</th>
+                                <th className="py-4 px-2 text-right">预计毛利</th>
+                                <th className="py-4 px-2 w-10"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {formData.variants?.map((v, i) => (
+                                <tr key={v.id} className="group hover:bg-white/5 transition-colors">
+                                    <td className="py-5 px-2">
+                                        <input value={v.name} onChange={e => {
+                                            const newV = [...formData.variants!];
+                                            newV[i].name = e.target.value;
+                                            handleUpdate('variants', newV);
+                                        }} className="font-bold text-white text-sm bg-transparent outline-none focus:text-neon-blue w-full" />
+                                        <div className="text-[10px] font-mono text-zinc-500 mt-1">{v.sku}</div>
+                                    </td>
+                                    <td className="py-5 px-2 text-center">
+                                        <input type="number" placeholder={formData.price.toString()} value={v.priceOverride} onChange={e => {
+                                            const newV = [...formData.variants!];
+                                            newV[i].priceOverride = parseFloat(e.target.value);
+                                            handleUpdate('variants', newV);
+                                        }} className="w-24 text-center bg-white/5 border border-white/5 rounded-lg py-1.5 text-sm font-bold text-white outline-none focus:border-neon-blue" />
+                                    </td>
+                                    <td className="py-5 px-2 text-center">
+                                        <input type="number" placeholder={formData.packageWeight?.toString()} value={v.weightOverride} onChange={e => {
+                                            const newV = [...formData.variants!];
+                                            newV[i].weightOverride = parseFloat(e.target.value);
+                                            handleUpdate('variants', newV);
+                                        }} className="w-20 text-center bg-white/5 border border-white/5 rounded-lg py-1.5 text-sm text-zinc-300 outline-none focus:border-neon-blue" />
+                                    </td>
+                                    <td className="py-5 px-2 text-center">
+                                        <input type="number" placeholder={formData.fbaFee?.toString()} value={v.fbaFeeOverride} onChange={e => {
+                                            const newV = [...formData.variants!];
+                                            newV[i].fbaFeeOverride = parseFloat(e.target.value);
+                                            handleUpdate('variants', newV);
+                                        }} className="w-20 text-center bg-white/5 border border-white/5 rounded-lg py-1.5 text-sm text-zinc-300 outline-none focus:border-neon-blue" />
+                                    </td>
+                                    <td className="py-5 px-2 text-center font-bold text-sm text-zinc-400">{v.stock}</td>
+                                    <td className="py-5 px-2 text-right">
+                                        <span className="text-neon-green font-bold text-sm">24.8%</span>
+                                    </td>
+                                    <td className="py-5 px-2 text-right">
+                                        <button className="text-zinc-600 hover:text-neon-pink opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {formData.variants?.length === 0 && (
+                                <tr><td colSpan={7} className="py-12 text-center text-zinc-600 text-xs italic">无变体数据，变体将继承主 SKU 的采购与物流参数</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </ConfigCard>
+
+            {/* 5. 物流与入库执行记录 (Execution Records) */}
+            <ConfigCard 
+                title="物流与入库执行记录 (Execution Records)" 
+                icon={Anchor}
+                action={<button onClick={addExecution} className="px-5 py-2 bg-neon-blue text-black rounded-xl text-xs font-bold hover:opacity-90 flex items-center gap-2 transition-all"><Plus size={14}/> 录入发货记录</button>}
+            >
+                <div className="overflow-x-auto -mx-8 px-8">
+                    <table className="w-full text-left text-sm">
+                        <thead className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest border-b border-white/5">
+                            <tr>
+                                <th className="py-4 px-2">发货批次 (Batch No)</th>
+                                <th className="py-4 px-2">运单号 (Tracking)</th>
+                                <th className="py-4 px-2">入库单 (Inbound)</th>
+                                <th className="py-4 px-2 text-center">发货数</th>
+                                <th className="py-4 px-2 text-center">实收数</th>
+                                <th className="py-4 px-2 text-center">状态</th>
+                                <th className="py-4 px-2 text-right">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {formData.executionRecords?.map((rec, i) => (
+                                <tr key={rec.id} className="hover:bg-white/5 group transition-colors">
+                                    <td className="py-5 px-2">
+                                        <div className="font-bold text-white">{rec.batchNo}</div>
+                                        <div className="text-[10px] text-zinc-500 mt-0.5">{rec.shipDate}</div>
+                                    </td>
+                                    <td className="py-5 px-2">
+                                        <div className="flex items-center gap-2 text-neon-blue font-mono text-xs">
+                                            <Truck size={12}/> {rec.trackingNos[0] || '未录入'}
+                                        </div>
+                                    </td>
+                                    <td className="py-5 px-2">
+                                        <div className="flex items-center gap-2 text-zinc-400 font-mono text-xs">
+                                            <Container size={12}/> {rec.inboundId || '无单号'}
+                                        </div>
+                                    </td>
+                                    <td className="py-5 px-2 text-center font-bold">{rec.sentQty}</td>
+                                    <td className="py-5 px-2 text-center">
+                                        <input type="number" value={rec.receivedQty} onChange={e => {
+                                             const newR = [...formData.executionRecords!];
+                                             newR[i].receivedQty = parseInt(e.target.value);
+                                             handleUpdate('executionRecords', newR);
+                                        }} className="w-16 text-center bg-white/5 border border-white/10 rounded-lg py-1 outline-none font-bold text-white focus:border-neon-green" />
+                                    </td>
+                                    <td className="py-5 px-2 text-center">
+                                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${
+                                            rec.status === 'Received' ? 'bg-neon-green/10 text-neon-green border-neon-green/20' : 'bg-neon-blue/10 text-neon-blue border-neon-blue/20'
+                                        }`}>{rec.status}</span>
+                                    </td>
+                                    <td className="py-5 px-2 text-right">
+                                        <button className="text-zinc-500 hover:text-white"><Edit3 size={14}/></button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {formData.executionRecords?.length === 0 && (
+                                <tr><td colSpan={7} className="py-12 text-center text-zinc-600 text-xs italic">暂无发货记录，此处数据将参与“实际成本”视角核算</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </ConfigCard>
         </div>
       </div>
     </div>
   );
 };
 
-// --- V2 UI Components (Apple Style) ---
+// --- 子组件 (Sub-Components in Apple Pro Dark Style) ---
 
-const SectionCard = ({ title, icon: Icon, children, action }: any) => (
-    <div className="bg-zinc-950 rounded-2xl border border-zinc-800 p-6 shadow-sm hover:border-zinc-700 transition-colors">
-        <div className="flex justify-between items-center mb-6">
-            <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                <Icon size={16} strokeWidth={2} className="text-zinc-500" /> {title}
+const ConfigCard = ({ title, icon: Icon, children, className, action }: any) => (
+    <div className={`bg-zinc-900 rounded-[40px] p-8 border border-white/5 shadow-sm flex flex-col ${className}`}>
+        <div className="flex justify-between items-center mb-10">
+            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white border border-white/5">
+                    <Icon size={16} />
+                </div>
+                {title}
             </h3>
             {action}
         </div>
-        {children}
+        <div className="flex-1">{children}</div>
     </div>
 );
 
-const V2Input = ({ label, type = "text", value, onChange }: any) => (
-    <div className="space-y-1 w-full group">
-        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wide group-focus-within:text-blue-500 transition-colors">{label}</label>
-        <input 
-            type={type} 
-            value={value} 
-            onChange={e => onChange(e.target.value)} 
-            className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-lg px-3 text-sm text-white outline-none focus:bg-zinc-800 focus:border-zinc-600 transition-all placeholder-zinc-700"
-        />
+const StatusCard = ({ title, value, sub, icon: Icon, color }: any) => (
+    <div className="bg-zinc-900 rounded-[32px] p-6 border border-white/5 flex flex-col justify-between group hover:border-white/10 transition-all">
+        <div className="flex justify-between items-start">
+            <div className={`p-2.5 rounded-2xl bg-white/5 ${color} border border-white/5`}>
+                <Icon size={20} />
+            </div>
+            <ChevronRight size={14} className="text-zinc-700 group-hover:text-zinc-500 transition-colors" />
+        </div>
+        <div className="mt-4">
+            <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">{title}</div>
+            <div className="text-xl font-bold text-white tracking-tight">{value}</div>
+            <div className="text-[10px] text-zinc-600 mt-1">{sub}</div>
+        </div>
     </div>
 );
 
-const V2Select = ({ label, value, onChange, options }: any) => (
-    <div className="space-y-1 w-full group">
-        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wide group-focus-within:text-blue-500 transition-colors">{label}</label>
-        <div className="relative">
-            <select 
+const InputField = ({ label, type = "text", value, onChange, highlight, color, minimal }: any) => (
+    <div className="space-y-2">
+        {!minimal && <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">{label}</label>}
+        <div className={`relative flex items-center ${minimal ? 'h-9' : 'h-12'}`}>
+            <input 
+                type={type} 
                 value={value} 
                 onChange={e => onChange(e.target.value)} 
-                className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-lg px-3 text-sm text-white outline-none focus:bg-zinc-800 focus:border-zinc-600 transition-all appearance-none cursor-pointer"
+                className={`w-full h-full bg-white/5 border border-white/10 rounded-2xl px-5 text-sm font-bold text-white transition-all focus:bg-white/10 focus:border-white/20 outline-none ${highlight ? (color || 'text-neon-pink') : ''} ${minimal ? 'text-center px-1 text-xs' : ''}`}
+                placeholder={minimal ? label : ''}
+            />
+        </div>
+    </div>
+);
+
+const SelectField = ({ label, value, onChange, options }: any) => (
+    <div className="space-y-2">
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">{label}</label>
+        <div className="relative h-12">
+            <select 
+                value={value} 
+                onChange={e => onChange(e.target.value)}
+                className="w-full h-full bg-white/5 border border-white/10 rounded-2xl px-5 text-sm font-bold text-white focus:bg-white/10 outline-none transition-all appearance-none cursor-pointer"
             >
                 {options.map((opt: string) => <option key={opt} value={opt} className="bg-zinc-900">{opt}</option>)}
             </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
-                <ArrowRightLeft size={12} className="rotate-90"/>
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                <ChevronRight size={14} className="rotate-90" />
             </div>
         </div>
     </div>

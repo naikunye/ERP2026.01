@@ -1,4 +1,5 @@
 
+
 export enum ProductStatus {
   Draft = 'Draft',
   Active = 'Active',
@@ -14,7 +15,6 @@ export enum Currency {
 
 export type Theme = 'neon' | 'ivory' | 'midnight' | 'sunset' | 'forest' | 'nebula';
 
-// 全局通知类型
 export interface Notification {
     id: string;
     type: 'success' | 'error' | 'info' | 'warning';
@@ -22,7 +22,6 @@ export interface Notification {
     message: string;
 }
 
-// 库存流水记录
 export interface InventoryLog {
     id: string;
     productId: string;
@@ -33,38 +32,36 @@ export interface InventoryLog {
     operator: string;
 }
 
-// 核心物流数据结构
-export interface LogisticsInfo {
-  method: 'Air' | 'Sea' | 'Rail' | 'Truck';
-  carrier: string;
-  trackingNo: string;
-  status: 'In Production' | 'In Transit' | 'Customs' | 'Delivered' | 'Pending' | 'Exception' | 'Out for Delivery'; 
-  etd?: string;
-  eta?: string;
-  origin: string;
-  destination: string;
-  shippingRate?: number; // RMB per kg
-  manualChargeableWeight?: number; // Added: Persist manual weight override
-}
-
-// 核心财务数据结构
-export interface FinancialInfo {
-  costOfGoods: number; 
-  shippingCost: number; 
-  otherCost: number; 
-  sellingPrice: number; 
-  platformFee: number; 
-  adCost: number; 
-}
-
-// SKU 变体结构
+// --- 增强型变体模型 ---
 export interface ProductVariant {
   id: string;
   sku: string;
   name: string; 
   price: number;
   stock: number;
-  attributes: Record<string, string>; 
+  attributes: Record<string, string>;
+  // 覆盖字段
+  weightOverride?: number;
+  priceOverride?: number;
+  fbaFeeOverride?: number;
+  adCostOverride?: number;
+  returnRateOverride?: number;
+}
+
+// --- 物流执行记录模型 ---
+export interface ExecutionRecord {
+    id: string;
+    batchNo: string; // 发货批次号
+    method: 'Air' | 'Sea' | 'Rail' | 'Truck';
+    carrier: string;
+    trackingNos: string[];
+    inboundId: string;
+    sentQty: number;
+    receivedQty: number;
+    status: 'In Transit' | 'Delivered' | 'Exception' | 'Received';
+    shipDate: string;
+    arrivalDate?: string;
+    actualShippingRate?: number; // 实际产生的运费单价
 }
 
 export interface Product {
@@ -80,48 +77,64 @@ export interface Product {
   imageUrl: string;
   marketplaces: string[];
   lastUpdated: string;
-  note?: string;
+  lifecycle: 'New' | 'Growth' | 'Stable' | 'Clearance';
+  
+  // 1. 供应链核心
   supplier?: string;
+  moq?: number;
+  leadTimeProduction?: number;
+  procurementLossRate?: number;
+  paymentTerms?: string;
   
-  inboundId?: string; 
-  inboundStatus?: 'Pending' | 'Received'; 
-  dailySales?: number; 
-  restockDate?: string; 
-  
-  // Extended Physical Props
-  unitWeight?: number; // kg
-  boxLength?: number; // cm
+  // 2. 包装核心
+  unitWeight?: number;
+  packageWeight?: number;
+  itemsPerBox?: number;
+  boxLength?: number;
   boxWidth?: number;
   boxHeight?: number;
-  boxWeight?: number; // kg
-  itemsPerBox?: number;
-  restockCartons?: number;
-  totalRestockUnits?: number; // Persist manual restock quantity (Non-standard)
-  variantRestockMap?: Record<string, number>; // Added: Map of variant SKU/ID to restock quantity
+  boxWeight?: number;
 
-  logistics?: LogisticsInfo;
-  financials?: FinancialInfo;
-  
-  hasVariants?: boolean;
-  variants?: ProductVariant[];
-  
-  seoTitle?: string;
-  seoKeywords?: string[];
-  marketingHook?: string;
+  // 3. 物流核心
+  logistics?: {
+      method: 'Air' | 'Sea' | 'Rail' | 'Truck';
+      carrier: string;
+      shippingRate: number; // RMB/kg
+      minWeight: number;
+      customsMode: 'DDP' | 'DDU';
+      dutyRate: number;
+      riskBuffer: number;
+      volumetricDivisor: number; // 6000, 7000 etc
+      // Add manualChargeableWeight to resolve type errors in RestockModule
+      manualChargeableWeight?: number;
+      // Also used in RestockModule list view for tracking details
+      trackingNo?: string;
+  };
 
-  // TikTok Cost Structure Specifics
+  // 4. 运营核心
   platformCommission?: number;
+  fbaFee?: number;
+  adCostPerUnit?: number;
+  returnRate?: number;
+  exchangeRate?: number;
+  // Add operation specific fields used in RestockModule calculations
   influencerCommission?: number;
   orderFixedFee?: number;
-  returnRate?: number;
-  lastMileShipping?: number;
-
-  // Added for legacy/flat structure support (fixes RestockModule errors)
-  adCostPerUnit?: number;
   otherCost?: number;
+  dailySales?: number;
+
+  // 5. 变体与记录
+  variants?: ProductVariant[];
+  executionRecords?: ExecutionRecord[];
   
-  // Financial Config
-  exchangeRate?: number; // USD:CNY Rate
+  // 6. 补货与库存计划 (Used in RestockModule)
+  inboundId?: string;
+  totalRestockUnits?: number;
+  restockCartons?: number;
+  variantRestockMap?: Record<string, number>;
+  
+  // 历史数据暂存
+  financials?: any;
 }
 
 export interface ShipmentItem {
@@ -143,17 +156,9 @@ export interface Shipment {
   progress: number; 
   weight: number; 
   cartons: number;
-  riskReason?: string;
   items: ShipmentItem[]; 
-  vesselName?: string;
-  voyageNo?: string;
-  containerNo?: string;
-  sealNo?: string;
-  customsStatus?: 'Cleared' | 'Held' | 'Inspection' | 'Pending';
-  customsBroker?: string;
-  podName?: string; 
-  podTime?: string;
-  lastUpdate?: string; 
+  // Add optional field for risk description used in Restock/Dashboard
+  riskReason?: string;
 }
 
 export interface Influencer {
@@ -222,3 +227,4 @@ export interface CustomerMessage {
     orderId?: string;
     aiDraft?: string;
 }
+

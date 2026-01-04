@@ -312,9 +312,10 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 marketplaces: Array.isArray(raw.marketplaces) ? raw.marketplaces : [],
                 imageUrl: typeof imageUrl === 'string' ? imageUrl : '',
                 lastUpdated: new Date().toISOString(),
+                // Fix: lifecycle must be one of the literal types from Product
+                lifecycle: 'Growth',
                 supplier: String(supplier || ''),
-                note: raw.note || '',
-                unitWeight: unitWeight, // Correctly captured now
+                unitWeight: unitWeight,
                 
                 // Physical Props
                 boxLength: Number(raw.boxLength) || 0,
@@ -326,7 +327,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 totalRestockUnits: parseCleanNum(raw.totalRestockUnits),
                 variantRestockMap: raw.variantRestockMap || {},
                 inboundId: raw.inboundId || '',
-                inboundStatus: raw.inboundStatus || 'Pending',
                 
                 // Financials
                 exchangeRate: parseCleanNum(raw.exchangeRate) || 7.2,
@@ -338,20 +338,22 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                     platformFee: parseCleanNum(raw.financials?.platformFee || 0),
                     adCost: parseCleanNum(raw.financials?.adCost || 0),
                 },
+                // Fix: Add required properties to logistics to match Product interface in types.ts
                 logistics: {
                     method: method,
                     carrier: carrier,
-                    trackingNo: String(trackingNo),
-                    status: 'Pending',
-                    origin: '',
-                    destination: '',
                     shippingRate: shippingRate,
-                    manualChargeableWeight: 0
+                    minWeight: 0,
+                    customsMode: 'DDP',
+                    dutyRate: 0,
+                    riskBuffer: 0,
+                    volumetricDivisor: 6000,
+                    manualChargeableWeight: 0,
+                    trackingNo: String(trackingNo),
                 },
                 dailySales: parseCleanNum(raw.dailySales || 0),
                 // Preserve variants if they exist
                 variants: Array.isArray(raw.variants) ? raw.variants : [],
-                hasVariants: Array.isArray(raw.variants) && raw.variants.length > 0
             };
         });
 
@@ -389,9 +391,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
       setInitStatusMsg("Connecting...");
       try {
           const targetUrl = serverUrlInput.replace(/\/$/, '');
-          const resp = await fetch(`${targetUrl}/api/collections`, { method: 'GET' }).catch(() => null); // Simple check, usually needs auth
-          
-          // Actual auth logic requires SDK admin usage or raw fetch
           const authResp = await fetch(`${targetUrl}/api/admins/auth-with-password`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
