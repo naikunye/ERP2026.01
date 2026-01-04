@@ -24,7 +24,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   const [isPOModalOpen, setIsPOModalOpen] = useState(false);
   
   // Updated PO Draft Structure to support Variants
-  // skuId: original product ID (for reference)
   const [poDraft, setPoDraft] = useState<{ uniqueKey: string, skuId: string, name: string, sku: string, qty: number, cost: number, isVariant: boolean }[]>([]);
   const [supplierName, setSupplierName] = useState('Default Supplier');
 
@@ -33,7 +32,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- STRICT CALCULATION CORE (MUST MIRROR SKUDETAILEDITOR EXACTLY) ---
+  // --- STRICT CALCULATION CORE (MIRROR OF SKUDETAILEDITOR) ---
   const getFinancials = (item: Product) => {
       // 1. Core Params
       const rate = item.exchangeRate && item.exchangeRate > 0 ? item.exchangeRate : 7.2;
@@ -42,21 +41,22 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       // 2. Hard Costs (RMB -> USD)
       const unitCostRMB = item.financials?.costOfGoods || 0;
       
-      // Calculate Shipping RMB
-      // STRICT LOGIC: Always prefer manualChargeableWeight if it exists (it comes from the Total Weight input in Editor)
-      let unitChargeableWeight = item.logistics?.manualChargeableWeight;
-      
-      // Fallback only if manual is explicitly missing or 0
-      if (!unitChargeableWeight || unitChargeableWeight === 0) {
-          unitChargeableWeight = item.unitWeight || 0;
-          
-          // Double fallback to box dims
-          if (unitChargeableWeight === 0 && item.itemsPerBox && item.boxLength && item.boxWidth && item.boxHeight && item.boxWeight) {
-               const boxVolWeight = (item.boxLength * item.boxWidth * item.boxHeight) / 6000;
-               const boxRealWeight = item.boxWeight;
-               const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
+      // Calculate Chargeable Weight Logic:
+      // Priority 1: Manual Override (from Editor "Total Weight" calculation)
+      // Priority 2: Volumetric Weight (if box dims exist)
+      // Priority 3: Unit Weight (fallback)
+      let unitChargeableWeight = item.unitWeight || 0;
+
+      if (item.logistics?.manualChargeableWeight && item.logistics.manualChargeableWeight > 0) {
+          unitChargeableWeight = item.logistics.manualChargeableWeight;
+      } else if (item.itemsPerBox && item.boxLength && item.boxWidth && item.boxHeight) {
+           const boxVolWeight = (item.boxLength * item.boxWidth * item.boxHeight) / 6000;
+           // If box weight is provided, compare vol vs real box weight
+           const boxRealWeight = item.boxWeight || 0; 
+           const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
+           if (item.itemsPerBox > 0) {
                unitChargeableWeight = boxChargeable / item.itemsPerBox;
-          }
+           }
       }
 
       const shippingRate = item.logistics?.shippingRate || 0;
@@ -73,7 +73,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       const fixedFee = item.orderFixedFee || 0;
       const adCost = item.financials?.adCost || 0;
       const otherCost = item.financials?.otherCost || 0;
-      // Last Mile Shipping excluded per request
 
       const totalSoftCostUSD = platformFee + influencerFee + fixedFee + adCost + returnCost + otherCost;
 
@@ -123,7 +122,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       }
   };
 
-  // --- PO Logic (Revised for Multi-SKU) ---
+  // --- PO Logic (Multi-SKU Support) ---
   const handleOpenPO = () => {
       if (selectedIds.size === 0) return;
       
@@ -458,7 +457,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           )}
                       </div>
 
-                      {/* 4. Inventory Plan (FIXED) */}
+                      {/* 4. Inventory Plan */}
                       <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
                            <div className="flex justify-between items-center text-[10px] text-gray-500 mb-1">
                                <span>现货库存:</span>
@@ -516,7 +515,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           </div>
       </div>
 
-      {/* PO Creation Modal (REFACTORED) */}
+      {/* PO Creation Modal */}
       {isPOModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
               <div className="w-full max-w-5xl glass-card border border-white/20 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
