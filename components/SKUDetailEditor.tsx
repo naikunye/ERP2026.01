@@ -308,6 +308,12 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   };
 
   const handleSave = () => {
+      // FORCE SAVE THE EFFECTIVE CHARGEABLE WEIGHT
+      // Even if the user didn't type it manually (e.g. calculated from box dims), 
+      // we must save what the user SEES as the calculation basis.
+      // This solves the issue where list view falls back to unitWeight (0.5) instead of calculated weight (0.6).
+      const effectiveWeightToSave = metrics.unitChargeableWeight || formData.unitWeight;
+
       onSave({
           ...formData,
           financials: {
@@ -323,7 +329,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
               carrier: formData.carrier,
               trackingNo: formData.trackingNo,
               shippingRate: formData.shippingRate, // RMB per KG
-              manualChargeableWeight: formData.manualChargeableWeight, // CRITICAL: Save derived unit weight
+              manualChargeableWeight: effectiveWeightToSave, // CRITICAL FIX: Save the metrics-derived weight
               destination: formData.destinationWarehouse
           },
           platformCommission: formData.platformCommission,
@@ -332,7 +338,6 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
           returnRate: formData.returnRate,
           lastMileShipping: formData.lastMileShipping,
           exchangeRate: formData.exchangeRate,
-          // IMPORTANT: Save these root level physical props so import data isn't lost
           unitWeight: formData.unitWeight
       });
   };

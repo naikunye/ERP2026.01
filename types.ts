@@ -115,6 +115,10 @@ export interface Product {
   orderFixedFee?: number;
   returnRate?: number;
   lastMileShipping?: number;
+
+  // Added for legacy/flat structure support (fixes RestockModule errors)
+  adCostPerUnit?: number;
+  otherCost?: number;
   
   // Financial Config
   exchangeRate?: number; // USD:CNY Rate

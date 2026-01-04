@@ -23,7 +23,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isPOModalOpen, setIsPOModalOpen] = useState(false);
   
-  // Updated PO Draft Structure
   const [poDraft, setPoDraft] = useState<{ uniqueKey: string, skuId: string, name: string, sku: string, qty: number, cost: number, isVariant: boolean }[]>([]);
   const [supplierName, setSupplierName] = useState('Default Supplier');
 
@@ -32,46 +31,52 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- STRICT FINANCIAL CORE (Must match SKUDetailEditor EXACTLY) ---
+  // --- STRICT FINANCIAL CORE (MIRRORING SKUDetailEditor) ---
   const getFinancials = (item: Product) => {
+      // 1. Core Params
       const rate = item.exchangeRate && item.exchangeRate > 0 ? item.exchangeRate : 7.2;
       const sellingPrice = item.financials?.sellingPrice || item.price || 0;
       
-      // 1. Hard Costs
+      // 2. Hard Costs (RMB -> USD)
       const unitCostRMB = item.financials?.costOfGoods || 0;
       
-      // LOGISTICS LOGIC: Priority = Manual Override > Volumetric > Real Weight
+      // LOGISTICS LOGIC: Priority = Manual Override > Volumetric Calculation > Unit Weight
+      // This ensures list view matches editor even if data wasn't explicitly saved as 'manualChargeableWeight' yet.
       let unitChargeableWeight = item.unitWeight || 0;
+      let weightSource = 'Real';
 
-      // If manual weight is set (calculated from "Total Batch Weight" in editor), USE IT.
       if (item.logistics?.manualChargeableWeight && item.logistics.manualChargeableWeight > 0.001) {
           unitChargeableWeight = item.logistics.manualChargeableWeight;
+          weightSource = 'Manual';
       } else if (item.itemsPerBox && item.boxLength && item.boxWidth && item.boxHeight) {
            const boxVolWeight = (item.boxLength * item.boxWidth * item.boxHeight) / 6000;
            const boxRealWeight = item.boxWeight || 0; 
            const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
            if (item.itemsPerBox > 0) {
                unitChargeableWeight = boxChargeable / item.itemsPerBox;
+               weightSource = 'Volumetric';
            }
       }
 
       const shippingRate = item.logistics?.shippingRate || 0;
+      // FORMULA: Unit Shipping RMB = Unit Weight * Rate
       const unitShippingCostRMB = unitChargeableWeight * shippingRate;
       
       const totalHardCostRMB = unitCostRMB + unitShippingCostRMB;
       const totalHardCostUSD = totalHardCostRMB / rate;
 
-      // 2. Soft Costs (USD)
-      const platformFee = sellingPrice * ((item.platformCommission || 0) / 100);
+      // 3. Soft Costs (USD) - STRICT MODE
+      // Ensure we pull from all possible locations
+      const platformFee = sellingPrice * ((item.platformCommission || item.financials?.platformFee || 0) / 100);
       const influencerFee = sellingPrice * ((item.influencerCommission || 0) / 100);
       const returnCost = sellingPrice * ((item.returnRate || 0) / 100);
       const fixedFee = item.orderFixedFee || 0;
-      const adCost = item.financials?.adCost || 0;
-      const otherCost = item.financials?.otherCost || 0;
+      const adCost = item.financials?.adCost || item.adCostPerUnit || 0; 
+      const otherCost = item.financials?.otherCost || item.otherCost || 0;
 
       const totalSoftCostUSD = platformFee + influencerFee + fixedFee + adCost + returnCost + otherCost;
 
-      // 3. Profit
+      // 4. Profit
       const totalUnitCostUSD = totalHardCostUSD + totalSoftCostUSD;
       const unitProfitUSD = sellingPrice - totalUnitCostUSD;
 
@@ -79,7 +84,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           rate,
           costRMB: unitCostRMB, 
           shippingCostRMB_Display: unitShippingCostRMB,
-          unitChargeableWeight, // Exposed for UI
+          unitChargeableWeight,
+          weightSource,
           totalHardCostRMB,
           unitProfitUSD,
           totalUnitCostUSD
@@ -91,7 +97,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       return sum + (totalHardCostRMB * item.stock);
   }, 0);
 
-  // --- Multi-Select Logic ---
+  // ... (Selection Logic) ...
   const toggleSelect = (id: string) => {
       const newSet = new Set(selectedIds);
       if (newSet.has(id)) newSet.delete(id);
@@ -114,10 +120,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       }
   };
 
-  // --- PO Logic ---
+  // ... (PO Logic) ...
   const handleOpenPO = () => {
       if (selectedIds.size === 0) return;
-      
       const draftItems: typeof poDraft = [];
       const selectedProducts = products.filter(p => selectedIds.has(p.id));
 
@@ -307,8 +312,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               </div>
           ) : (
              filteredData.map((item) => {
-                 // Use EXACTLY the same calculation function as the editor
-                 const { unitProfitUSD, costRMB, shippingCostRMB_Display, totalHardCostRMB, unitChargeableWeight } = getFinancials(item);
+                 // EXACT Calculation Call
+                 const { unitProfitUSD, costRMB, shippingCostRMB_Display, totalHardCostRMB, unitChargeableWeight, weightSource } = getFinancials(item);
                  
                  const hasData = !!item.financials;
                  const trackingUrl = getTrackingUrl(item.logistics?.carrier, item.logistics?.trackingNo);
@@ -381,9 +386,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           {unitChargeableWeight > 0 && (
                               <div className="text-[9px] text-gray-500 mt-1 flex items-center gap-1">
                                   <Scale size={8}/> 计费重: {unitChargeableWeight.toFixed(3)}kg
-                                  {item.logistics?.manualChargeableWeight && item.logistics.manualChargeableWeight > 0 && (
-                                      <span className="text-neon-purple text-[8px] border border-neon-purple/30 px-1 rounded">手工</span>
-                                  )}
+                                  {weightSource === 'Volumetric' && <span className="text-[8px] bg-white/10 px-1 rounded text-gray-400">材积</span>}
+                                  {weightSource === 'Manual' && <span className="text-[8px] bg-neon-purple/20 text-neon-purple px-1 rounded border border-neon-purple/30">锁定</span>}
                               </div>
                           )}
                       </div>
@@ -424,7 +428,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           {hasData ? (
                               <div className="flex flex-col gap-2">
                                   <div className="flex flex-col">
-                                      <span className="text-[9px] text-gray-500 uppercase">净利 (Net Profit)</span>
+                                      <span className="text-[9px] text-gray-500 uppercase flex items-center gap-1">
+                                          净利 (Net) <Activity size={8} className="text-neon-purple"/>
+                                      </span>
                                       <span className={`text-[11px] font-bold leading-none ${unitProfitUSD > 0 ? 'text-neon-green' : 'text-neon-pink'}`}>{unitProfitUSD > 0 ? '+' : ''}${unitProfitUSD.toFixed(2)}</span>
                                   </div>
                               </div>
