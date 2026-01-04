@@ -391,14 +391,14 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                           placeholder="产品名称 (Editable)"
                       />
                       {/* SKU CODE INPUT - Fully Editable */}
-                      <div className="flex items-center gap-2 bg-white/5 rounded-lg px-2 py-1 border border-white/10 group focus-within:border-neon-blue/50 transition-colors">
+                      <div className="flex items-center gap-2 bg-black/30 rounded-lg px-3 py-1.5 border border-white/10 group focus-within:border-neon-blue/50 focus-within:bg-black/50 transition-all">
                           <span className="text-[10px] text-gray-500 font-bold shrink-0">SKU:</span>
                           <input 
                               type="text" 
                               name="sku"
                               value={formData.sku}
                               onChange={handleChange}
-                              className="bg-transparent text-[10px] font-mono text-neon-blue font-bold outline-none w-28 focus:w-36 transition-all"
+                              className="bg-transparent text-xs font-mono text-neon-blue font-bold outline-none w-32 focus:w-40 transition-all"
                               placeholder="SKU-CODE"
                           />
                       </div>
@@ -410,7 +410,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
               </div>
           </div>
 
-          {/* TAB BAR */}
+          {/* TAB BAR - Integrating all functional modules here as requested */}
           <div className="flex gap-1 overflow-x-auto pb-0">
               {[
                   { id: 'core', label: '运营配置 (Operations)', icon: <LayoutGrid size={14}/> },
