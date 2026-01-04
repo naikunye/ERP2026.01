@@ -63,8 +63,7 @@ const COLLECTIONS_SCHEMA = [
             { name: 'restockDate', type: 'text' },
         ]
     },
-    // ... (Other collections omitted for brevity but logic is same as before) ...
-    { name: 'shipments', type: 'base', schema: [{ name: 'trackingNo', type: 'text' }] }, // Placeholder for full schema if needed
+    { name: 'shipments', type: 'base', schema: [{ name: 'trackingNo', type: 'text' }] }, 
     { name: 'transactions', type: 'base', schema: [{ name: 'amount', type: 'number' }] },
     { name: 'influencers', type: 'base', schema: [{ name: 'name', type: 'text' }] },
     { name: 'tasks', type: 'base', schema: [{ name: 'title', type: 'text' }] },
@@ -175,8 +174,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [initStatusMsg, setInitStatusMsg] = useState('');
   const [detailedError, setDetailedError] = useState<string | null>(null);
 
-  const isMixedContent = window.location.protocol === 'https:' && serverUrlInput.startsWith('http:');
-
   useEffect(() => {
       calculateStorage();
       checkCurrentConnection();
@@ -242,27 +239,56 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             const stock = parseCleanNum(raw.stock || findValueGreedy(raw, ['qty', 'quantity', 'stock_level', '库存', '数量']));
             const imageUrl = raw.imageUrl || findValueGreedy(raw, ['image', 'img', 'pic', 'url']);
 
-            // 3. Logistics Logic Repair (ENHANCED)
-            // Step A: Get the Rate (e.g. 12 RMB/kg)
+            // 3. Logistics Logic & Tracking Extraction (INTELLIGENT)
+            // Tracking Number
+            const trackingNo = raw.logistics?.trackingNo || 
+                               raw.trackingNo || 
+                               findValueGreedy(raw, ['tracking', 'tracking_no', 'waybill', '运单号', '追踪号', '提单号', 'bol', 'bill_of_lading', 'ups_no', 'ups_tracking', 'sea_tracking']) || '';
+
+            // Carrier
+            let carrier = raw.logistics?.carrier || 
+                          raw.carrier || 
+                          findValueGreedy(raw, ['carrier', 'provider', '承运商', '物流公司', '快递']) || '';
+
+            // Method Raw
+            let methodRaw = raw.logistics?.method || 
+                            raw.method || 
+                            findValueGreedy(raw, ['method', 'transport', 'mode', '运输方式', '渠道']) || 'Sea';
+
+            // Normalize Method
+            let method: 'Air' | 'Sea' | 'Rail' | 'Truck' = 'Sea';
+            const mStr = String(methodRaw).toLowerCase();
+            if (mStr.includes('air') || mStr.includes('空')) method = 'Air';
+            else if (mStr.includes('rail') || mStr.includes('铁')) method = 'Rail';
+            else if (mStr.includes('truck') || mStr.includes('卡')) method = 'Truck';
+            
+            // Smart Detection based on Tracking & Carrier
+            const tUpper = String(trackingNo).toUpperCase();
+            const cUpper = String(carrier).toUpperCase();
+            
+            if (tUpper.startsWith('1Z') || cUpper.includes('UPS')) {
+                if(!carrier) carrier = 'UPS';
+                if(method === 'Sea') method = 'Air'; // Bias towards Air for UPS unless specified
+            }
+            if (cUpper.includes('DHL') || cUpper.includes('FEDEX')) method = 'Air';
+            if (cUpper.includes('MATSON') || cUpper.includes('COSCO') || cUpper.includes('MSK') || cUpper.includes('ZIM')) method = 'Sea';
+
+            // Cost Logic
             let shippingRate = parseCleanNum(
                 raw.logistics?.shippingRate || 
                 raw.shippingRate || 
                 findValueGreedy(raw, ['shipping_rate', 'freight_rate', '头程单价', '运费单价', 'kg_price', 'rate_per_kg', '头程费率', '海运单价', '空运单价'])
             );
 
-            // Step B: Get the Total Unit Cost (e.g. 6 RMB)
             let shippingCost = parseCleanNum(
                 raw.financials?.shippingCost || 
                 findValueGreedy(raw, ['shipping', 'freight', 'logistics_cost', '运费', '头程', 'unit_shipping', '头程分摊'])
             );
 
-            // Step C: LOGIC FIX -> 
-            // Case 1: If Rate is missing but we have Total Cost and Weight, deduce Rate
+            // Auto-Calculate Missing Rates/Costs
             if (shippingRate === 0 && shippingCost > 0 && unitWeight > 0) {
                 shippingRate = parseFloat((shippingCost / unitWeight).toFixed(2));
-            }
-            // Case 2: If Total Cost is missing, but Rate and Weight exist, calculate Cost
-            else if (shippingCost === 0 && shippingRate > 0 && unitWeight > 0) {
+            } else if (shippingCost === 0 && shippingRate > 0 && unitWeight > 0) {
                 shippingCost = parseFloat((shippingRate * unitWeight).toFixed(2));
             }
 
@@ -299,20 +325,20 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
                 exchangeRate: parseCleanNum(raw.exchangeRate) || 7.2,
                 financials: {
                     costOfGoods: unitCost,
-                    shippingCost: shippingCost, // Now correctly populated
+                    shippingCost: shippingCost, 
                     otherCost: parseCleanNum(raw.financials?.otherCost || 0),
                     sellingPrice: price,
                     platformFee: parseCleanNum(raw.financials?.platformFee || 0),
                     adCost: parseCleanNum(raw.financials?.adCost || 0),
                 },
                 logistics: {
-                    method: 'Sea',
-                    carrier: '',
-                    trackingNo: '',
+                    method: method,
+                    carrier: carrier,
+                    trackingNo: String(trackingNo),
                     status: 'Pending',
                     origin: '',
                     destination: '',
-                    shippingRate: shippingRate, // Persist the rate
+                    shippingRate: shippingRate,
                     manualChargeableWeight: 0
                 },
                 dailySales: parseCleanNum(raw.dailySales || 0)
@@ -321,7 +347,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
 
         onImportData(sanitized);
         setImportStatus('success');
-        setImportMessage(`导入成功: ${sanitized.length} 条数据 (已自动修复运费计算)`);
+        setImportMessage(`导入成功: ${sanitized.length} 条数据 (已智能识别物流信息)`);
         setTimeout(() => { setImportStatus('idle'); setImportMessage(''); }, 4000);
       } catch (err: any) {
         setImportStatus('error');
