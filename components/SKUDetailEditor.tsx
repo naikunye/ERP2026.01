@@ -113,7 +113,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         itemsPerBox: product.itemsPerBox || 24,
         restockCartons: product.restockCartons || 10,
         
-        totalRestockUnits: initialTotal || 0, // Default to 0, prevent assumptions
+        totalRestockUnits: initialTotal || 0, 
         variantRestockMap: savedMap,
         
         inboundId: product.inboundId || `IB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
@@ -237,7 +237,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
 
   const handleTotalWeightChange = (val: number) => {
       // Reverse calculate unit weight: Unit Weight = Total Weight / Total Units
-      // BUG FIX: Prevent Division by Zero if totalRestockUnits is 0
+      // Safe Guard: Prevent Division by Zero if totalRestockUnits is 0
       const totalUnits = formData.totalRestockUnits || 0;
       
       if (totalUnits > 0) {
@@ -247,8 +247,6 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
               manualChargeableWeight: newUnitWeight
           }));
       } else {
-          // If 0 units, we cannot set unit weight effectively from total weight. 
-          // Set to 0 to be safe or alert user? Just safe logic for now.
           setFormData(prev => ({
               ...prev,
               manualChargeableWeight: 0 
@@ -293,7 +291,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       setFormData(prev => {
           const updatedVars = prev.variants.filter(v => v.sku !== skuToDelete);
           
-          // BUG FIX: Completely remove key from map to prevent dirty data
+          // Completely remove key from map to prevent dirty data
           const updatedMap = { ...prev.variantRestockMap };
           delete updatedMap[skuToDelete];
           
