@@ -5,7 +5,8 @@ import {
   X, Save, History, Box, Layers, Truck, 
   DollarSign, TrendingUp, Calculator, Package, 
   Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText, CheckCircle2, Clock,
-  RefreshCcw, ArrowRightLeft, LayoutGrid, ChevronDown, ChevronUp, Edit3, Plus, HelpCircle
+  RefreshCcw, ArrowRightLeft, LayoutGrid, ChevronDown, ChevronUp, Edit3, Plus, HelpCircle,
+  Container, Sigma
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import ImageUpload from './ImageUpload';
@@ -131,11 +132,12 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   const metrics = useMemo(() => {
     const rate = formData.exchangeRate || 7.2;
     
-    // --- 1. RMB HARD COSTS ---
-    // Procurement Cost (RMB)
+    // --- 1. PROCUREMENT ---
     const unitProcurementRMB = formData.unitCost;
+    // FORMULA: Total Goods Value = Unit Cost * Total Quantity
+    const totalBatchProcurementRMB = unitProcurementRMB * formData.totalRestockUnits;
 
-    // Logistics Calculation (Standardized Per Unit)
+    // --- 2. LOGISTICS ---
     let unitChargeableWeight = formData.unitWeight; 
     
     // Priority: Manual Override > Box Calc > Unit Weight
@@ -148,15 +150,23 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
         unitChargeableWeight = boxChargeable / formData.itemsPerBox;
     }
 
-    const unitShippingCostRMB = unitChargeableWeight * formData.shippingRate;
+    // FORMULA: Total Weight = Unit Weight * Total Quantity
+    const totalBatchWeight = unitChargeableWeight * formData.totalRestockUnits;
+    
+    // FORMULA: Total Shipping = Shipping Rate * Total Weight
+    const totalBatchShippingRMB = formData.shippingRate * totalBatchWeight;
+    
+    const unitShippingCostRMB = totalBatchWeight > 0 && formData.totalRestockUnits > 0 
+        ? totalBatchShippingRMB / formData.totalRestockUnits 
+        : 0;
     
     // Total Hard Cost in RMB
     const totalHardCostRMB = unitProcurementRMB + unitShippingCostRMB;
+    
     // CONVERT TO USD
     const totalHardCostUSD = totalHardCostRMB / rate;
 
-
-    // --- 2. USD SOFT COSTS ---
+    // --- 3. USD SOFT COSTS ---
     const revenue = formData.sellingPrice;
     
     const platformFeeUSD = revenue * (formData.platformCommission / 100);
@@ -173,7 +183,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     const totalSoftCostUSD = platformFeeUSD + influencerFeeUSD + estimatedReturnCostUSD + fixedFeeUSD + lastMileUSD + adCostUSD + otherCostUSD;
 
     
-    // --- 3. PROFITABILITY ---
+    // --- 4. PROFITABILITY ---
     const totalUnitCostUSD = totalHardCostUSD + totalSoftCostUSD;
     const unitProfit = revenue - totalUnitCostUSD;
     const netMargin = revenue > 0 ? (unitProfit / revenue) * 100 : 0;
@@ -183,6 +193,10 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       unitChargeableWeight, 
       unitShippingCostRMB,
       unitProcurementRMB,
+      totalBatchProcurementRMB, // EXPOSED
+      totalBatchWeight, // EXPOSED
+      totalBatchShippingRMB, // EXPOSED
+      
       totalHardCostRMB,
       
       // USD Values
@@ -334,57 +348,77 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                             <InputGroup label="采购单价 (¥ CNY)" name="unitCost" value={formData.unitCost} highlight="text-neon-blue" onChange={handleChange} />
                             <InputGroup label="单品实重 (kg)" name="unitWeight" value={formData.unitWeight} onChange={handleChange} />
                         </div>
-                        <div className="text-[10px] text-gray-500 text-right -mt-2">≈ ${metrics.unitCostUSD.toFixed(2)} USD</div>
+                        {/* TOTAL PROCUREMENT COST DISPLAY */}
+                        <div className="p-3 bg-neon-blue/5 border border-neon-blue/10 rounded-xl mt-2">
+                            <div className="flex justify-between items-center mb-1">
+                                <span className="text-[10px] text-gray-400 font-bold uppercase">本批次总货值 (Total Goods Value)</span>
+                                <span className="text-sm font-bold text-neon-blue">¥{metrics.totalBatchProcurementRMB.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                            </div>
+                            <div className="text-[9px] text-gray-500 font-mono text-right">
+                                {formData.unitCost} (单价) × {formData.totalRestockUnits} (数量)
+                            </div>
+                        </div>
                     </div>
                 </section>
 
                 <section className="glass-card p-6 border-l-4 border-l-gray-500 group hover:border-white/20 transition-all">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Package size={16} className="text-gray-300" /> 装箱配置</h3>
                     
-                    {/* Variant Restock Matrix */}
-                    {formData.variants && formData.variants.length > 0 ? (
-                        <div className="mb-4 space-y-2 bg-white/5 p-3 rounded-xl border border-white/10">
-                            <div className="text-[10px] font-bold text-neon-purple uppercase mb-2">Multi-SKU 补货矩阵</div>
-                            <div className="max-h-[150px] overflow-y-auto custom-scrollbar space-y-2">
-                                {formData.variants.map((v) => (
-                                    <div key={v.sku} className="flex items-center justify-between gap-2 bg-black/20 p-2 rounded-lg">
-                                        <div className="text-xs text-white truncate w-1/3">{v.name}</div>
-                                        <div className="flex-1">
-                                            <input 
-                                                type="number"
-                                                value={formData.variantRestockMap[v.sku] || 0}
-                                                onChange={(e) => handleVariantQtyChange(v.sku, parseInt(e.target.value) || 0)}
-                                                className="w-full bg-transparent text-right text-sm font-bold text-neon-purple outline-none border-b border-neon-purple/30 focus:border-neon-purple"
-                                            />
+                    {/* Variant Restock Matrix - Explicitly render if variants exist OR if user wants to add them */}
+                    <div className="mb-4">
+                        {formData.variants && formData.variants.length > 0 ? (
+                            <div className="space-y-2 bg-white/5 p-3 rounded-xl border border-white/10">
+                                <div className="text-[10px] font-bold text-neon-purple uppercase mb-2 flex items-center gap-2">
+                                    <Box size={10}/> Multi-SKU 补货矩阵
+                                </div>
+                                <div className="max-h-[150px] overflow-y-auto custom-scrollbar space-y-2">
+                                    {formData.variants.map((v) => (
+                                        <div key={v.sku} className="flex items-center justify-between gap-2 bg-black/20 p-2 rounded-lg">
+                                            <div className="text-xs text-white truncate w-1/3" title={v.name}>{v.name}</div>
+                                            <div className="flex-1">
+                                                <input 
+                                                    type="number"
+                                                    value={formData.variantRestockMap[v.sku] || 0}
+                                                    onChange={(e) => handleVariantQtyChange(v.sku, parseInt(e.target.value) || 0)}
+                                                    className="w-full bg-transparent text-right text-sm font-bold text-neon-purple outline-none border-b border-neon-purple/30 focus:border-neon-purple"
+                                                    placeholder="0"
+                                                />
+                                            </div>
+                                            <div className="text-[10px] text-gray-500">pcs</div>
                                         </div>
-                                        <div className="text-[10px] text-gray-500">pcs</div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="text-right text-xs font-bold text-white pt-2 border-t border-white/5">
-                                Total: {formData.totalRestockUnits} pcs
-                            </div>
-                        </div>
-                    ) : (
-                        // Normal Restock
-                        <>
-                            <div className="grid grid-cols-3 gap-3 mb-4">
-                                <InputGroup label="长 (cm)" name="boxLength" value={formData.boxLength} onChange={handleChange} />
-                                <InputGroup label="宽 (cm)" name="boxWidth" value={formData.boxWidth} onChange={handleChange} />
-                                <InputGroup label="高 (cm)" name="boxHeight" value={formData.boxHeight} onChange={handleChange} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4 mb-4">
-                                <InputGroup label="单箱实重 (kg)" name="boxWeight" value={formData.boxWeight} onChange={handleChange} />
-                                <InputGroup label="单箱数量" name="itemsPerBox" value={formData.itemsPerBox} onChange={handleChange} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5 mb-4">
-                                <InputGroup label="补货箱数" name="restockCartons" value={formData.restockCartons} highlight="text-white bg-white/10 rounded px-2" onChange={handleChange} />
-                                <div className="space-y-1 w-full">
-                                    <label className="text-[10px] text-neon-yellow font-bold uppercase">总数量 (pcs)</label>
-                                    <input type="number" name="totalRestockUnits" value={formData.totalRestockUnits} onChange={handleChange} className={`w-full h-10 bg-black/40 border border-neon-yellow/30 rounded-lg px-3 text-sm text-neon-yellow font-bold outline-none focus:border-neon-yellow transition-colors`}/>
+                                    ))}
+                                </div>
+                                <div className="text-right text-xs font-bold text-white pt-2 border-t border-white/5">
+                                    Total: {formData.totalRestockUnits} pcs
                                 </div>
                             </div>
-                        </>
+                        ) : (
+                            <div className="p-3 border border-dashed border-white/10 rounded-xl text-center text-xs text-gray-500 hover:border-neon-purple/50 transition-colors">
+                                此为单品 (Single SKU)。如需多变体补货，请在商品编辑页添加变体。
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Standard Inputs (Always Visible for Box Dimensions) */}
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                        <InputGroup label="长 (cm)" name="boxLength" value={formData.boxLength} onChange={handleChange} />
+                        <InputGroup label="宽 (cm)" name="boxWidth" value={formData.boxWidth} onChange={handleChange} />
+                        <InputGroup label="高 (cm)" name="boxHeight" value={formData.boxHeight} onChange={handleChange} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <InputGroup label="单箱实重 (kg)" name="boxWeight" value={formData.boxWeight} onChange={handleChange} />
+                        <InputGroup label="单箱数量" name="itemsPerBox" value={formData.itemsPerBox} onChange={handleChange} />
+                    </div>
+                    
+                    {/* Fallback Single Input if no variants */}
+                    {(!formData.variants || formData.variants.length === 0) && (
+                        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5 mb-4">
+                            <InputGroup label="补货箱数" name="restockCartons" value={formData.restockCartons} highlight="text-white bg-white/10 rounded px-2" onChange={handleChange} />
+                            <div className="space-y-1 w-full">
+                                <label className="text-[10px] text-neon-yellow font-bold uppercase">总数量 (pcs)</label>
+                                <input type="number" name="totalRestockUnits" value={formData.totalRestockUnits} onChange={handleChange} className={`w-full h-10 bg-black/40 border border-neon-yellow/30 rounded-lg px-3 text-sm text-neon-yellow font-bold outline-none focus:border-neon-yellow transition-colors`}/>
+                            </div>
+                        </div>
                     )}
                 </section>
             </div>
@@ -426,8 +460,20 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                     </div>
                                  </div>
                              </div>
-                             <div className="text-[10px] text-gray-500 text-left -mt-2 flex items-center gap-2">
-                                <span className="text-neon-yellow font-bold">单品运费: ¥{metrics.unitShippingCostRMB.toFixed(2)} ≈ ${metrics.unitShippingCostUSD.toFixed(2)}</span>
+                             
+                             {/* Logistics Summary Block (TOTALS) */}
+                             <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
+                                <div className="flex justify-between items-center text-[10px] text-gray-400">
+                                    <span className="flex items-center gap-1"><Scale size={10}/> 总发货重量 (Total Weight)</span>
+                                    <span className="text-white font-mono font-bold">{metrics.totalBatchWeight.toFixed(2)} kg</span>
+                                </div>
+                                <div className="flex justify-between items-center text-[10px] text-gray-400">
+                                    <span className="flex items-center gap-1"><Sigma size={10}/> 总头程运费 (Total Shipping)</span>
+                                    <span className="text-neon-yellow font-mono font-bold">¥{metrics.totalBatchShippingRMB.toFixed(2)}</span>
+                                </div>
+                                <div className="text-[9px] text-gray-600 text-right">
+                                    公式: {metrics.totalBatchWeight.toFixed(2)}kg × ¥{formData.shippingRate}
+                                </div>
                              </div>
                          </div>
                     </div>
@@ -447,7 +493,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                              <InputGroup label="每单固定费 ($)" name="orderFixedFee" value={formData.orderFixedFee} onChange={handleChange} />
                              <div className="grid grid-cols-2 gap-4">
                                  <InputGroup label="预估退货率 (%)" name="returnRate" value={formData.returnRate} onChange={handleChange} />
-                                 <InputGroup label="尾程派送费 ($)" name="lastMileShipping" value={formData.lastMileShipping} onChange={handleChange} />
+                                 <InputGroup label="尾程派送费 ($)" name="lastMileShipping" value={formData.lastMileShipping} onChange={handleChange} placeholder="0 (Excluded)" />
                              </div>
                              <InputGroup label="预估广告费 ($)" name="adCostPerUnit" value={formData.adCostPerUnit} onChange={handleChange} />
                              <InputGroup label="其他杂费 ($)" name="otherCost" value={formData.otherCost} onChange={handleChange} />

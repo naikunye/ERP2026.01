@@ -247,7 +247,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({
             let unitWeight = parseCleanNum(
                 raw.unitWeight || 
                 raw.weight || 
-                findValueGreedy(raw, ['gross_weight', 'package_weight', '单重', '毛重', 'weight_kg', 'kg', '单品重量', 'weight_lbs', 'product_weight'])
+                findValueGreedy(raw, ['gross_weight', 'package_weight', '单重', '毛重', 'weight_kg', 'kg', '单品重量', 'weight_lbs', 'product_weight', 'total_weight'])
             );
             
             // 2. Cost & Price
