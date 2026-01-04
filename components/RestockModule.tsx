@@ -30,75 +30,61 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- STRICT CALCULATION CORE ---
-  // Calculates all financials based on RMB inputs converted to USD, plus native USD costs
+  // --- STRICT CALCULATION CORE (MATCHING EDITOR) ---
   const getFinancials = (item: Product) => {
       const rate = item.exchangeRate && item.exchangeRate > 0 ? item.exchangeRate : 7.2;
       const sellingPrice = item.financials?.sellingPrice || 0;
       
-      // 1. Procurement Cost (RMB -> USD)
+      // 1. HARD COSTS (RMB Inputs -> USD)
       const costRMB = item.financials?.costOfGoods || 0;
       const costUSD = costRMB / rate;
       
-      // 2. Shipping Cost (RMB -> USD)
-      // PRIORITY: Use stored shippingCost if available (this is saved in USD by the Editor)
-      // If missing, calculate dynamically using the standard formula.
+      // Shipping: Priority to saved USD value (calculated accurately in Editor)
+      // If missing, we fallback to a rough calc, but Editor save is the source of truth.
       let shippingCostUSD = item.financials?.shippingCost || 0;
       
-      if (shippingCostUSD === 0) {
-          // Dynamic Fallback
-          let unitChargeableWeight = item.unitWeight || 0;
-          const boxL = item.boxLength || 0;
-          const boxW = item.boxWidth || 0;
-          const boxH = item.boxHeight || 0;
-          const boxWt = item.boxWeight || 0;
-          const itemsPerBox = item.itemsPerBox || 0;
-
-          if (itemsPerBox > 0 && boxL > 0 && boxW > 0 && boxH > 0) {
-              const boxVolWeight = (boxL * boxW * boxH) / 6000;
-              const boxRealWeight = boxWt > 0 ? boxWt : (unitChargeableWeight * itemsPerBox);
-              const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
-              unitChargeableWeight = boxChargeable / itemsPerBox;
-          }
-          const shippingRate = item.logistics?.shippingRate || 0; // RMB per kg
-          const shippingCostRMB_Calc = unitChargeableWeight * shippingRate;
-          shippingCostUSD = shippingCostRMB_Calc / rate;
+      if (shippingCostUSD === 0 && (item.logistics?.shippingRate || 0) > 0) {
+          // Fallback: Unit Weight * Rate / Exchange
+          const weight = item.unitWeight || 0;
+          const rmbRate = item.logistics?.shippingRate || 0;
+          shippingCostUSD = (weight * rmbRate) / rate;
       }
 
-      // Display Value for RMB Column
+      // Display RMB Value (Back-calculated for consistency)
       const shippingCostRMB_Display = shippingCostUSD * rate;
 
-      // 3. Soft Costs (Native USD)
-      const platformFee = sellingPrice * ((item.platformCommission || 0) / 100);
+      // 2. SOFT COSTS (Native USD Inputs)
+      // IMPORTANT: These must match SKUDetailEditor's subtraction logic exactly
+      const platformFee = item.financials?.platformFee || (sellingPrice * ((item.platformCommission || 0) / 100));
       const influencerFee = sellingPrice * ((item.influencerCommission || 0) / 100);
       const returnCost = sellingPrice * ((item.returnRate || 0) / 100);
       
       const fixedFee = item.orderFixedFee || 0;
       const lastMile = item.lastMileShipping || 0;
-      const adCost = item.financials?.adCost || 0;
+      const adCost = item.financials?.adCost || 0; // Ad cost per unit
       const otherCost = item.financials?.otherCost || 0;
 
-      const totalSoftCostUSD = platformFee + influencerFee + fixedFee + lastMile + adCost + returnCost + otherCost;
+      // Sum of all deductions
+      const totalSoftCostsUSD = platformFee + influencerFee + fixedFee + lastMile + adCost + returnCost + otherCost;
       
-      // 4. Total Cost & Profit
-      const totalCostUSD = costUSD + shippingCostUSD + totalSoftCostUSD;
-      const unitProfitUSD = sellingPrice - totalCostUSD;
+      // 3. PROFIT CALCULATION
+      const totalUnitCostUSD = costUSD + shippingCostUSD + totalSoftCostsUSD;
+      const unitProfitUSD = sellingPrice - totalUnitCostUSD;
 
       return {
           rate,
-          costRMB,
-          shippingCostRMB_Display,
-          costUSD,
-          shippingCostUSD,
-          totalUnitCostRMB: costRMB + shippingCostRMB_Display, // Purely for display in RMB column
+          costRMB, // For display
+          shippingCostRMB_Display, // For display
+          totalUnitCostUSD,
           unitProfitUSD
       };
   };
 
   // Capital Calculation (RMB Base)
   const totalCapitalRMB = products.reduce((sum, item) => {
-      const { totalUnitCostRMB } = getFinancials(item);
-      return sum + (totalUnitCostRMB * item.stock);
+      // Inventory Value = (Purchase Cost + Shipping Cost) * Stock
+      const { costRMB, shippingCostRMB_Display } = getFinancials(item);
+      return sum + ((costRMB + shippingCostRMB_Display) * item.stock);
   }, 0);
 
   // --- Multi-Select Logic ---
@@ -220,7 +206,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                     <DollarSign size={20} />
                 </div>
                 <div className="relative z-10">
-                    <div className="text-[10px] text-neon-green font-bold uppercase tracking-widest">资金占用总额 (RMB)</div>
+                    <div className="text-[10px] text-neon-green font-bold uppercase tracking-widest">库存资产总额 (RMB)</div>
                     <div className="text-xl font-display font-bold text-white tracking-wide">
                         <span className="text-neon-green text-sm mr-1">¥</span>
                         {totalCapitalRMB.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}
@@ -290,7 +276,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               <div className="col-span-2">物流状态 / 费率</div>
               <div className="col-span-2">库存健康度 (DOI)</div>
               <div className="col-span-1">硬成本 (RMB)</div>
-              <div className="col-span-1">利润透视(USD)</div>
+              <div className="col-span-1">净利润 (USD)</div>
               <div className="col-span-2 text-center">操作</div>
           </div>
 
@@ -308,7 +294,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
           ) : (
              filteredData.map((item) => {
                  // Use unified calculation logic
-                 const { unitProfitUSD, shippingCostUSD, costRMB, shippingCostRMB_Display, totalUnitCostRMB } = getFinancials(item);
+                 const { unitProfitUSD, costRMB, shippingCostRMB_Display, totalUnitCostUSD } = getFinancials(item);
                  
                  const hasData = !!item.financials;
                  const trackingUrl = getTrackingUrl(item.logistics?.carrier, item.logistics?.trackingNo);
@@ -323,6 +309,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  
                  const totalPotentialProfitUSD = unitProfitUSD * item.stock;
                  const isSelected = selectedIds.has(item.id);
+
+                 // Display total RMB hard cost
+                 const totalHardCostRMB = costRMB + shippingCostRMB_Display;
 
                  return (
                   <div key={item.id} onClick={() => onEditSKU && onEditSKU(item)} className={`glass-card grid grid-cols-12 items-center p-0 min-h-[110px] hover:border-white/20 transition-all group relative overflow-visible cursor-pointer ${isSelected ? 'border-neon-blue/30 bg-neon-blue/5' : ''}`}>
@@ -407,9 +396,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                               </>
                           ) : <div className="text-[10px] text-gray-600 italic">暂无物流数据</div>}
                           
-                          {shippingCostUSD > 0 && (
+                          {shippingCostRMB_Display > 0 && (
                               <div className="text-[10px] text-neon-yellow flex items-center gap-1">
-                                  <Scale size={10}/> 头程分摊: ${shippingCostUSD.toFixed(2)}/pcs
+                                  <Scale size={10}/> 头程: ¥{shippingCostRMB_Display.toFixed(1)}/pcs
                               </div>
                           )}
                       </div>
@@ -444,9 +433,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                               <span className="text-[10px] text-gray-400 font-mono">¥{shippingCostRMB_Display.toFixed(1)}</span>
                           </div>
                           <div className="h-px w-full bg-white/10 my-1"></div>
-                          <div className="flex justify-between items-center">
-                              <span className="text-[9px] text-neon-yellow font-bold">总计</span>
-                              <span className="text-xs font-bold text-neon-yellow font-mono">¥{totalUnitCostRMB.toFixed(1)}</span>
+                          <div className="flex justify-between items-center" title="Hard Cost Only">
+                              <span className="text-[9px] text-neon-yellow font-bold">硬成本</span>
+                              <span className="text-xs font-bold text-neon-yellow font-mono">¥{totalHardCostRMB.toFixed(1)}</span>
                           </div>
                       </div>
 
@@ -455,7 +444,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           {hasData ? (
                               <div className="flex flex-col gap-2">
                                   <div className="flex flex-col">
-                                      <span className="text-[9px] text-gray-500 uppercase">单品净利 (USD)</span>
+                                      <span className="text-[9px] text-gray-500 uppercase">净利 (Net Profit)</span>
                                       <span className={`text-[11px] font-bold leading-none ${unitProfitUSD > 0 ? 'text-neon-green' : 'text-neon-pink'}`}>{unitProfitUSD > 0 ? '+' : ''}${unitProfitUSD.toFixed(2)}</span>
                                   </div>
                                   <div className="flex flex-col">
