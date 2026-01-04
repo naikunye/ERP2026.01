@@ -27,8 +27,8 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
   const [supplierName, setSupplierName] = useState('Default Supplier');
 
   const filteredData = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.sku.toLowerCase().includes(searchTerm.toLowerCase())
+    (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (p.sku || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // --- LOGISTICS STATUS MAPPING (CHINESE) ---

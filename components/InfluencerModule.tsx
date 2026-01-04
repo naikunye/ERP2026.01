@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Influencer } from '../types';
 import { 
@@ -29,7 +30,7 @@ const InfluencerModule: React.FC<InfluencerModuleProps> = ({ influencers, onAddI
 
   const filteredList = influencers.filter(inf => 
       (filterPlatform === 'All' || inf.platform === filterPlatform) &&
-      (inf.name.toLowerCase().includes(searchTerm.toLowerCase()) || inf.handle.toLowerCase().includes(searchTerm.toLowerCase()))
+      ((inf.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (inf.handle || '').toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const getPlatformIcon = (platform: string) => {

@@ -181,12 +181,12 @@ const LogisticsModule: React.FC<LogisticsModuleProps> = ({ shipments, products, 
   const selectedShipment = shipments.find(s => s.id === selectedShipmentId) || shipments[0];
 
   const filteredList = shipments.filter(s => 
-      s.trackingNo.toLowerCase().includes(searchTerm.toLowerCase())
+      (s.trackingNo || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredProducts = products.filter(p => 
-      p.sku.toLowerCase().includes(searchSkuTerm.toLowerCase()) || 
-      p.name.toLowerCase().includes(searchSkuTerm.toLowerCase())
+      (p.sku || '').toLowerCase().includes(searchSkuTerm.toLowerCase()) || 
+      (p.name || '').toLowerCase().includes(searchSkuTerm.toLowerCase())
   );
 
   return (

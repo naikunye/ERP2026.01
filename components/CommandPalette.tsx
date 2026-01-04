@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, ArrowRight, LayoutGrid, RefreshCw, ShoppingBag, 
@@ -64,7 +65,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChan
   ];
 
   const productItems = products
-    .filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.sku.toLowerCase().includes(query.toLowerCase()))
+    .filter(p => (p.name || '').toLowerCase().includes(query.toLowerCase()) || (p.sku || '').toLowerCase().includes(query.toLowerCase()))
     .slice(0, 5)
     .map(p => ({
         id: `prod-${p.id}`,
@@ -80,7 +81,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onChan
   const allItems = [...navigationItems, ...productItems];
   
   const filteredItems = query 
-    ? allItems.filter(item => item.label.toLowerCase().includes(query.toLowerCase()))
+    ? allItems.filter(item => (item.label || '').toLowerCase().includes(query.toLowerCase()))
     : allItems;
 
   if (!isOpen) return null;
