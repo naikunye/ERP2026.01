@@ -254,7 +254,19 @@ const App: React.FC = () => {
             <div className="absolute inset-0 top-0 bottom-0 left-0 right-0 overflow-y-auto custom-scrollbar p-8">{renderContent()}</div>
         </div>
         {editingProduct && <ProductEditor initialProduct={editingProduct} onClose={() => setEditingProduct(null)} onSave={handleSaveProduct} inventoryLogs={inventoryLogs.filter(l => l.productId === editingProduct.id)} />}
-        {editingSKU && <SKUDetailEditor product={editingSKU} onClose={() => setEditingSKU(null)} onSave={handleSaveSKU} onDelete={() => handleDeleteSKU(editingSKU.id)} onChangeView={setActiveView} />}
+        
+        {/* Pass InventoryLogs to SKUDetailEditor now */}
+        {editingSKU && (
+            <SKUDetailEditor 
+                product={editingSKU} 
+                inventoryLogs={inventoryLogs.filter(l => l.productId === editingSKU.id)}
+                onClose={() => setEditingSKU(null)} 
+                onSave={handleSaveSKU} 
+                onDelete={() => handleDeleteSKU(editingSKU.id)} 
+                onChangeView={setActiveView} 
+            />
+        )}
+        
         <ToastSystem notifications={notifications} onRemove={removeNotification} />
         <Copilot contextData={{ products, shipments }} />
         <CommandPalette isOpen={isCommandOpen} onClose={() => setIsCommandOpen(false)} onChangeView={setActiveView} products={products} onAddNewProduct={() => { setEditingProduct({} as Product); }} onOpenProduct={(p) => setEditingSKU(p)} />

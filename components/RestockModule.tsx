@@ -31,6 +31,20 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // --- LOGISTICS STATUS MAPPING (CHINESE) ---
+  const getLogisticsStatusCN = (status: string) => {
+      const map: Record<string, string> = {
+          'Pending': '待发货',
+          'In Production': '生产中',
+          'In Transit': '运输中',
+          'Customs': '清关中',
+          'Out for Delivery': '派送中',
+          'Delivered': '已送达',
+          'Exception': '异常',
+      };
+      return map[status] || status;
+  };
+
   // --- STRICT FINANCIAL CORE (MIRRORING SKUDetailEditor) ---
   const getFinancials = (item: Product) => {
       // 1. Core Params
@@ -293,9 +307,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               <div className="col-span-3">SKU / 入库信息</div>
               <div className="col-span-2">产品详情 / 箱规</div>
               <div className="col-span-2">物流状态</div>
-              <div className="col-span-2">库存 / <span className="text-neon-green">计划补货量</span></div>
+              <div className="col-span-2">库存 / 计划补货量</div>
               <div className="col-span-1">硬成本 (RMB)</div>
-              <div className="col-span-1">净利润 (USD)</div>
+              <div className="col-span-1">利润分析 (USD)</div>
               <div className="col-span-1 text-center">操作</div>
           </div>
 
@@ -320,6 +334,13 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  const isSelected = selectedIds.has(item.id);
                  const variantCount = item.variants?.length || 0;
                  const plannedRestock = item.totalRestockUnits || 0;
+                 
+                 // Total Profit Calculation
+                 const totalProfitUSD = unitProfitUSD * plannedRestock;
+                 
+                 // Progress Calculation (Current vs Total)
+                 const totalPotentialStock = item.stock + plannedRestock;
+                 const stockPercentage = totalPotentialStock > 0 ? (item.stock / totalPotentialStock) * 100 : 0;
 
                  return (
                   <div key={item.id} onClick={() => onEditSKU && onEditSKU(item)} className={`glass-card grid grid-cols-12 items-center p-0 min-h-[110px] hover:border-white/20 transition-all group relative overflow-visible cursor-pointer ${isSelected ? 'border-neon-blue/30 bg-neon-blue/5' : ''}`}>
@@ -367,7 +388,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                               <>
                                 <div className="flex items-center gap-2 text-white font-bold text-xs">
                                     {getLogisticsIcon(item.logistics.method)}
-                                    <span className={item.logistics.status === 'In Transit' ? 'text-neon-blue' : ''}>{item.logistics.status}</span>
+                                    <span className={item.logistics.status === 'In Transit' ? 'text-neon-blue' : ''}>{getLogisticsStatusCN(item.logistics.status)}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <div className="text-[10px] text-gray-500 font-mono truncate max-w-[80px]" title={item.logistics.trackingNo}>{item.logistics.trackingNo || 'No Track'}</div>
@@ -392,15 +413,20 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           )}
                       </div>
 
-                      {/* 4. Inventory Plan */}
-                      <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
-                           <div className="flex justify-between items-center text-[10px] text-gray-500 mb-1">
-                               <span>现货库存:</span>
-                               <span className="text-white font-bold">{item.stock}</span>
+                      {/* 4. Inventory Plan (Refactored) */}
+                      <div className="col-span-2 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-3">
+                           <div className="flex justify-between items-center text-[11px]">
+                               <span className="text-gray-400">现货库存:</span>
+                               <span className="text-white font-bold text-sm">{item.stock}</span>
                            </div>
-                           <div className="p-2 bg-neon-green/5 border border-neon-green/20 rounded-lg flex justify-between items-center">
-                               <span className="text-[10px] text-neon-green font-bold uppercase">本批计划</span>
-                               <span className="text-sm font-bold text-white">{plannedRestock} <span className="text-[10px] text-gray-500 font-normal">pcs</span></span>
+                           <div className="space-y-1.5">
+                               <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                                   <div className={`h-full ${plannedRestock > 0 ? 'bg-gradient-neon-blue' : 'bg-gray-500'}`} style={{ width: `${Math.max(5, stockPercentage)}%` }}></div>
+                               </div>
+                               <div className="flex justify-between text-[9px] text-gray-500">
+                                   <span>Inventory</span>
+                                   <span>补货: <strong className="text-neon-green">{plannedRestock}</strong></span>
+                               </div>
                            </div>
                       </div>
 
@@ -423,18 +449,24 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                           </div>
                       </div>
 
-                      {/* 6. Profit Analysis */}
+                      {/* 6. Profit Analysis (Unit & Total) */}
                       <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-2">
                           {hasData ? (
                               <div className="flex flex-col gap-2">
-                                  <div className="flex flex-col">
-                                      <span className="text-[9px] text-gray-500 uppercase flex items-center gap-1">
-                                          净利 (Net) <Activity size={8} className="text-neon-purple"/>
+                                  <div className="flex justify-between items-center">
+                                      <span className="text-[9px] text-gray-500">单品</span>
+                                      <span className={`text-[10px] font-bold font-mono ${unitProfitUSD > 0 ? 'text-neon-green' : 'text-neon-pink'}`}>
+                                          {unitProfitUSD > 0 ? '+' : ''}${unitProfitUSD.toFixed(2)}
                                       </span>
-                                      <span className={`text-[11px] font-bold leading-none ${unitProfitUSD > 0 ? 'text-neon-green' : 'text-neon-pink'}`}>{unitProfitUSD > 0 ? '+' : ''}${unitProfitUSD.toFixed(2)}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center bg-white/5 px-1.5 py-1 rounded">
+                                      <span className="text-[9px] text-gray-400 font-bold uppercase">总计 (Est)</span>
+                                      <span className={`text-[11px] font-bold font-mono ${totalProfitUSD > 0 ? 'text-neon-green' : 'text-neon-pink'}`}>
+                                          ${totalProfitUSD.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+                                      </span>
                                   </div>
                               </div>
-                          ) : <span className="text-[10px] text-gray-600">-</span>}
+                          ) : <span className="text-[10px] text-gray-600 text-center">-</span>}
                       </div>
 
                       {/* 7. Action */}
