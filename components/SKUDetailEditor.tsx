@@ -5,7 +5,7 @@ import {
   X, Save, History, Box, Layers, Truck, 
   DollarSign, TrendingUp, Calculator, Package, 
   Scale, Anchor, Globe, Share2, AlertCircle, Trash2, FileText, CheckCircle2, Clock,
-  RefreshCcw, ArrowRightLeft, LayoutGrid, ChevronDown, ChevronUp, Edit3, Plus
+  RefreshCcw, ArrowRightLeft, LayoutGrid, ChevronDown, ChevronUp, Edit3, Plus, HelpCircle
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import ImageUpload from './ImageUpload';
@@ -136,10 +136,12 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     const unitProcurementRMB = formData.unitCost;
 
     // Logistics Calculation (Standardized Per Unit)
-    // Rule: Use Box Dimensions to find Chargeable Weight per Unit if available
-    let unitChargeableWeight = formData.unitWeight; // fallback to real weight
+    let unitChargeableWeight = formData.unitWeight; 
     
-    if (formData.itemsPerBox > 0 && formData.boxLength > 0 && formData.boxWeight > 0) {
+    // Priority: Manual Override > Box Calc > Unit Weight
+    if (formData.manualChargeableWeight > 0) {
+        unitChargeableWeight = formData.manualChargeableWeight;
+    } else if (formData.itemsPerBox > 0 && formData.boxLength > 0 && formData.boxWeight > 0) {
         const boxVolWeight = (formData.boxLength * formData.boxWidth * formData.boxHeight) / 6000;
         const boxRealWeight = formData.boxWeight;
         const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
@@ -174,15 +176,11 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     const netMargin = revenue > 0 ? (unitProfit / revenue) * 100 : 0;
     const totalStockProfit = unitProfit * product.stock;
 
-    // Batch Calculation (Reference only, does not affect unit profit)
-    const totalBatchUnits = formData.restockCartons * formData.itemsPerBox;
-    const totalBatchShippingRMB = unitShippingCostRMB * totalBatchUnits;
-
     return {
       unitChargeableWeight, 
-      totalBatchShippingRMB,
       unitShippingCostRMB,
       unitProcurementRMB,
+      totalHardCostRMB,
       
       // USD Values
       unitShippingCostUSD: unitShippingCostRMB / rate,
@@ -196,7 +194,7 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
       netMargin,
       totalStockProfit,
       
-      breakdown: { platformFeeUSD, influencerFeeUSD, estimatedReturnCostUSD }
+      breakdown: { platformFeeUSD, influencerFeeUSD, estimatedReturnCostUSD, fixedFeeUSD, lastMileUSD, adCostUSD, otherCostUSD }
     };
   }, [formData, product.stock]);
 
@@ -218,13 +216,11 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
   };
 
   const handleSave = () => {
-      // Reconstruct nested objects for database
-      // CRITICAL: We explicitly save the calculated shipping cost (USD) to avoid drift in list view
       onSave({
           ...formData,
           financials: {
               costOfGoods: formData.unitCost, // RMB
-              shippingCost: parseFloat(metrics.unitShippingCostUSD.toFixed(3)), // USD (Calculated & Saved)
+              shippingCost: parseFloat(metrics.unitShippingCostUSD.toFixed(3)), // USD
               otherCost: formData.otherCost, // USD
               sellingPrice: formData.sellingPrice, // USD
               platformFee: parseFloat(metrics.breakdown.platformFeeUSD.toFixed(2)), // USD
@@ -238,7 +234,6 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
               manualChargeableWeight: formData.manualChargeableWeight,
               destination: formData.destinationWarehouse
           },
-          // Keep these strictly typed fields at root
           platformCommission: formData.platformCommission,
           influencerCommission: formData.influencerCommission,
           orderFixedFee: formData.orderFixedFee,
@@ -253,8 +248,8 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
     { name: '货值', value: metrics.unitCostUSD, color: '#3b82f6' }, // Blue
     { name: '头程', value: metrics.unitShippingCostUSD, color: '#eab308' }, // Yellow
     { name: '平台/达人', value: metrics.breakdown.platformFeeUSD + metrics.breakdown.influencerFeeUSD, color: '#a855f7' }, // Purple
-    { name: '物流/杂费', value: formData.lastMileShipping + formData.orderFixedFee + formData.otherCost, color: '#f97316' }, // Orange
-    { name: '广告/退货', value: formData.adCostPerUnit + metrics.breakdown.estimatedReturnCostUSD, color: '#ef4444' }, // Red
+    { name: '物流/杂费', value: metrics.breakdown.lastMileUSD + metrics.breakdown.fixedFeeUSD + metrics.breakdown.otherCostUSD, color: '#f97316' }, // Orange
+    { name: '广告/退货', value: metrics.breakdown.adCostUSD + metrics.breakdown.estimatedReturnCostUSD, color: '#ef4444' }, // Red
     { name: '净利', value: Math.max(0, metrics.unitProfit), color: '#22c55e' } // Green
   ].filter(d => d.value > 0);
 
@@ -371,8 +366,16 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                     <label className="text-[10px] text-gray-500 font-bold flex items-center gap-1">
                                         单品计费重 (kg)
                                     </label>
-                                    <div className="w-full h-10 flex items-center px-3 bg-black/20 border border-white/10 rounded-lg text-sm text-neon-yellow font-mono">
-                                        {metrics.unitChargeableWeight.toFixed(3)}
+                                    <div className="relative">
+                                        <input 
+                                            type="number"
+                                            name="manualChargeableWeight"
+                                            value={formData.manualChargeableWeight || ''}
+                                            placeholder={metrics.unitChargeableWeight.toFixed(3)}
+                                            onChange={handleChange}
+                                            className="w-full h-10 px-3 bg-black/20 border border-white/10 rounded-lg text-sm text-neon-yellow font-mono focus:border-neon-yellow/50 outline-none"
+                                        />
+                                        {formData.manualChargeableWeight > 0 && <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-gray-500">Manual</div>}
                                     </div>
                                  </div>
                              </div>
@@ -441,20 +444,31 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                                  <span className="text-xl text-neon-green mt-2">$</span>
                                  {metrics.unitProfit.toFixed(2)}
                              </div>
-                             <div className="text-sm font-bold text-neon-green/80 flex items-center justify-center gap-2 mt-2">
-                                <span>总利润预测:</span>
-                                <span>+${metrics.totalStockProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                             <div className="text-xs text-gray-500 font-mono mt-2">
+                                ≈ ¥{(metrics.unitProfit * formData.exchangeRate).toFixed(2)} RMB
                              </div>
                         </div>
 
-                        <div className="space-y-4 border-t border-white/10 pt-6 relative z-10">
-                            <div className="flex justify-between text-xs">
-                                <span className="text-gray-500">营收</span>
-                                <span className="text-white font-bold">${formData.sellingPrice.toFixed(2)}</span>
+                        {/* PROFIT EQUATION DISPLAY */}
+                        <div className="relative z-10 bg-black/40 rounded-xl p-3 border border-white/10 space-y-2 mb-6">
+                            <div className="flex justify-between items-center text-[10px] text-gray-400 border-b border-white/5 pb-1 mb-1">
+                                <span>PROFIT EQUATION</span>
+                                <HelpCircle size={10}/>
                             </div>
-                             <div className="flex justify-between text-xs">
-                                <span className="text-gray-500">总成本</span>
-                                <span className="text-neon-pink font-bold">-${metrics.totalUnitCostUSD.toFixed(2)}</span>
+                            <div className="flex justify-between text-xs items-center">
+                                <span className="text-white font-bold">${formData.sellingPrice.toFixed(2)}</span>
+                                <span className="text-gray-500">-</span>
+                                <span className="text-blue-400 font-bold">${metrics.totalHardCostUSD.toFixed(2)}</span>
+                                <span className="text-gray-500">-</span>
+                                <span className="text-pink-400 font-bold">${metrics.totalSoftCostUSD.toFixed(2)}</span>
+                                <span className="text-gray-500">=</span>
+                                <span className="text-neon-green font-bold">${metrics.unitProfit.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-[9px] text-gray-500 px-1">
+                                <span>Revenue</span>
+                                <span>Hard Cost</span>
+                                <span>Soft Cost</span>
+                                <span>Profit</span>
                             </div>
                         </div>
 
@@ -462,8 +476,8 @@ const SKUDetailEditor: React.FC<SKUDetailEditorProps> = ({ product, onClose, onS
                              <CostItem label={`货值 (¥${formData.unitCost})`} value={metrics.unitCostUSD} color="bg-blue-500" />
                              <CostItem label={`头程 (¥${metrics.unitShippingCostRMB.toFixed(1)})`} value={metrics.unitShippingCostUSD} color="bg-yellow-500" />
                              <CostItem label="平台/达人佣金" value={metrics.breakdown.platformFeeUSD + metrics.breakdown.influencerFeeUSD} color="bg-purple-500" />
-                             <CostItem label="尾程/定费/杂" value={formData.lastMileShipping + formData.orderFixedFee + formData.otherCost} color="bg-orange-500" />
-                             <CostItem label="广告/退货" value={formData.adCostPerUnit + metrics.breakdown.estimatedReturnCostUSD} color="bg-red-500" />
+                             <CostItem label="尾程/定费/杂" value={metrics.breakdown.lastMileUSD + metrics.breakdown.fixedFeeUSD + metrics.breakdown.otherCostUSD} color="bg-orange-500" />
+                             <CostItem label="广告/退货" value={metrics.breakdown.adCostUSD + metrics.breakdown.estimatedReturnCostUSD} color="bg-red-500" />
                         </div>
                     </section>
                     
