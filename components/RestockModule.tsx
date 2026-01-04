@@ -30,14 +30,71 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Capital Calculation (RMB Base for Procurement + Logistics)
-  // FIX: Use dynamic calculation for consistency
+  // --- STRICT CALCULATION CORE ---
+  // Mirrors SKUDetailEditor logic to ensure "Single Source of Truth"
+  const getFinancials = (item: Product) => {
+      const rate = item.exchangeRate && item.exchangeRate > 0 ? item.exchangeRate : 7.2;
+      const sellingPrice = item.financials?.sellingPrice || 0;
+      
+      // 1. Cost of Goods (RMB -> USD)
+      const costRMB = item.financials?.costOfGoods || 0;
+      const costUSD = costRMB / rate;
+      
+      // 2. Shipping Cost (RMB -> USD)
+      // Logic: Box Volumetric Weight vs Real Weight per unit
+      let unitChargeableWeight = item.unitWeight || 0;
+      
+      const boxL = item.boxLength || 0;
+      const boxW = item.boxWidth || 0;
+      const boxH = item.boxHeight || 0;
+      const boxWt = item.boxWeight || 0;
+      const itemsPerBox = item.itemsPerBox || 0;
+
+      if (itemsPerBox > 0 && boxL > 0 && boxW > 0 && boxH > 0) {
+          const boxVolWeight = (boxL * boxW * boxH) / 6000;
+          // Use box weight if valid, otherwise assume sum of unit weights (fallback)
+          const boxRealWeight = boxWt > 0 ? boxWt : (unitChargeableWeight * itemsPerBox);
+          const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
+          unitChargeableWeight = boxChargeable / itemsPerBox;
+      }
+
+      const shippingRate = item.logistics?.shippingRate || 0; // RMB per kg
+      let shippingCostUSD = (unitChargeableWeight * shippingRate) / rate;
+
+      // Fallback: If dynamic calc yields 0 (missing rate/dims), use stored static cost if available
+      // This handles legacy data or manual overrides from Editor
+      if (shippingCostUSD === 0 && item.financials?.shippingCost && item.financials.shippingCost > 0) {
+          shippingCostUSD = item.financials.shippingCost;
+      }
+
+      // 3. Fees (USD)
+      const platformFee = sellingPrice * ((item.platformCommission || 0) / 100);
+      const influencerFee = sellingPrice * ((item.influencerCommission || 0) / 100);
+      const returnCost = sellingPrice * ((item.returnRate || 0) / 100);
+      
+      const fixedFee = item.orderFixedFee || 0;
+      const lastMile = item.lastMileShipping || 0;
+      const adCost = item.financials?.adCost || 0;
+      const otherCost = item.financials?.otherCost || 0;
+
+      const totalCostUSD = costUSD + shippingCostUSD + platformFee + influencerFee + fixedFee + lastMile + adCost + returnCost + otherCost;
+      const unitProfitUSD = sellingPrice - totalCostUSD;
+
+      return {
+          rate,
+          costRMB,
+          shippingCostUSD,
+          shippingCostRMB: shippingCostUSD * rate,
+          totalCostUSD,
+          unitProfitUSD,
+          totalUnitCostRMB: costRMB + (shippingCostUSD * rate)
+      };
+  };
+
+  // Capital Calculation (RMB Base)
   const totalCapitalRMB = products.reduce((sum, item) => {
-      const costRMB = item.financials?.costOfGoods || 0; 
-      const weight = item.unitWeight || 0;
-      const shipRate = item.logistics?.shippingRate || 0;
-      const shipRMB = weight * shipRate;
-      return sum + ((costRMB + shipRMB) * item.stock);
+      const { totalUnitCostRMB } = getFinancials(item);
+      return sum + (totalUnitCostRMB * item.stock);
   }, 0);
 
   // --- Multi-Select Logic ---
@@ -128,46 +185,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
       if (c.includes('dhl')) return `https://www.dhl.com/cn-zh/home/tracking/tracking-express.html?submit=1&tracking-id=${trackingNo}`;
       if (c.includes('fedex')) return `https://www.fedex.com/zh-cn/home.html`;
       return `https://www.17track.net/zh-cn/track?nums=${trackingNo}`;
-  };
-
-  // STRICT CALCULATION LOGIC (Matching Editor)
-  const calculateMetrics = (item: Product) => {
-      const rate = item.exchangeRate || 7.2;
-      const sellingPrice = item.financials?.sellingPrice || 0;
-      
-      const costOfGoodsUSD = (item.financials?.costOfGoods || 0) / rate;
-      
-      // Dynamic Shipping Calculation: Use Box Chargeable Weight Logic
-      // 1. Calculate Standard Unit Chargeable Weight
-      let unitChargeableWeight = item.unitWeight || 0; // fallback
-      const boxL = item.boxLength || 0;
-      const boxW = item.boxWidth || 0;
-      const boxH = item.boxHeight || 0;
-      const boxWt = item.boxWeight || 0;
-      const itemsPerBox = item.itemsPerBox || 0;
-
-      if (itemsPerBox > 0 && boxL > 0 && boxWt > 0) {
-          const boxVolWeight = (boxL * boxW * boxH) / 6000;
-          const boxRealWeight = boxWt;
-          const boxChargeable = Math.max(boxVolWeight, boxRealWeight);
-          unitChargeableWeight = boxChargeable / itemsPerBox;
-      }
-
-      const shippingRate = item.logistics?.shippingRate || 0;
-      const shippingCostUSD = (unitChargeableWeight * shippingRate) / rate;
-      
-      const platformFee = sellingPrice * ((item.platformCommission || 0) / 100);
-      const influencerFee = sellingPrice * ((item.influencerCommission || 0) / 100);
-      const fixedFee = item.orderFixedFee || 0;
-      const lastMile = item.lastMileShipping || 0;
-      const adCost = item.financials?.adCost || 0;
-      const returnCost = sellingPrice * ((item.returnRate || 0) / 100);
-      const otherCost = item.financials?.otherCost || 0;
-
-      const totalCostUSD = costOfGoodsUSD + shippingCostUSD + platformFee + influencerFee + fixedFee + lastMile + adCost + returnCost + otherCost;
-      const unitProfitUSD = sellingPrice - totalCostUSD;
-      
-      return { unitProfitUSD, shippingCostUSD };
   };
 
   return (
@@ -286,7 +303,9 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
               </div>
           ) : (
              filteredData.map((item) => {
-                 const { unitProfitUSD, shippingCostUSD } = calculateMetrics(item);
+                 // Use unified calculation logic
+                 const { unitProfitUSD, shippingCostUSD, costRMB, shippingCostRMB, totalUnitCostRMB, unitProfitUSD: profitVal } = getFinancials(item);
+                 
                  const hasData = !!item.financials;
                  const trackingUrl = getTrackingUrl(item.logistics?.carrier, item.logistics?.trackingNo);
                  const dailySales = item.dailySales || 1; 
@@ -300,12 +319,6 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                  
                  const totalPotentialProfitUSD = unitProfitUSD * item.stock;
                  const isSelected = selectedIds.has(item.id);
-
-                 // Dynamic Display Values
-                 const exchangeRate = item.exchangeRate || 7.2;
-                 const costOfGoodsRMB = item.financials?.costOfGoods || 0; 
-                 const shippingCostRMB = shippingCostUSD * exchangeRate; 
-                 const totalUnitCostRMB = costOfGoodsRMB + shippingCostRMB;
 
                  return (
                   <div key={item.id} onClick={() => onEditSKU && onEditSKU(item)} className={`glass-card grid grid-cols-12 items-center p-0 min-h-[110px] hover:border-white/20 transition-all group relative overflow-visible cursor-pointer ${isSelected ? 'border-neon-blue/30 bg-neon-blue/5' : ''}`}>
@@ -420,7 +433,7 @@ const RestockModule: React.FC<RestockModuleProps> = ({ products, onEditSKU, onCl
                       <div className="col-span-1 p-4 border-r border-white/5 h-full flex flex-col justify-center gap-1">
                           <div className="flex justify-between items-center">
                               <span className="text-[9px] text-gray-500">采购</span>
-                              <span className="text-[10px] font-bold text-white font-mono">¥{costOfGoodsRMB.toFixed(1)}</span>
+                              <span className="text-[10px] font-bold text-white font-mono">¥{costRMB.toFixed(1)}</span>
                           </div>
                           <div className="flex justify-between items-center">
                               <span className="text-[9px] text-gray-500">头程</span>
